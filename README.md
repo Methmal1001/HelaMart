@@ -61,34 +61,40 @@ function maps to one endpoint (`/auth/login`, `/auth/google`, `/auth/refresh`, `
 HttpOnly cookie set by the server, and prices/offers must be re-validated server-side (the mock
 already re-prices orders with `priceCart`).
 
-## Admin panel (`/admin`)
+## Multi-supermarket portal (`/admin`)
 
-Back office with its own sign-in (password → 6-digit two-factor code → forced password change for
-new/reset accounts). Sample data is seeded in this browser and can be reset from Settings.
+HelaMart is a platform for **verified Sri Lankan supermarkets**. Three levels:
 
-| Account | Email | Password |
+| Level | Who | Can do |
+|---|---|---|
+| **Platform** | Super Admin (+ HelaMart head-office team) | Review applications, approve / reject, **restrict / ban / reinstate** supermarkets, manage every chain's admins, see all customers island-wide, platform security & commission |
+| **Chain** | Chain Admin (the supermarket's owner/head) | Open branches and appoint branch heads, add officers with custom roles and permissions, products & prices, branch stock, orders, promotions, tasks, chain customers across Sri Lanka, settings |
+| **Branch** | Branch Manager (branch head) + officers | Their branch's orders, stock, team, tasks — nothing from other branches or other chains |
+
+Restricted supermarkets can sign in read-only and disappear from the storefront; banned ones are
+signed out and blocked. Shoppers pick a verified supermarket + branch, and their orders go to that
+branch's admin. New supermarkets apply at **`/partner`** (status check with reference + email).
+
+| Test account | Email | Password |
 |---|---|---|
 | **Super Admin** | `superadmin@helamart.test` | `Super@HelaMart2026` |
-| Admin | `admin@helamart.test` | `Admin@HelaMart2026` |
-| Store Manager / Inventory Clerk / Support | `manager@` · `stock@` · `support@helamart.test` | `Staff@HelaMart2026` |
+| Platform Support | `support@helamart.test` | `Staff@HelaMart2026` |
+| Chain Admin — Lanka Fresh Mart | `admin@lankafresh.test` | `Admin@HelaMart2026` |
+| Branch Manager — Divulapitiya | `divulapitiya@lankafresh.test` | `Staff@HelaMart2026` |
+| Cashier / Stock Officer — Divulapitiya | `cashier.div@` · `stock.div@lankafresh.test` | `Staff@HelaMart2026` |
+| Chain Admin — Ceylon Daily Super | `admin@ceylondaily.test` | `Admin@HelaMart2026` |
+| Chain Admin — Ruhuna Mega Mart (restricted) | `admin@ruhunamega.test` | `Admin@HelaMart2026` |
+| Chain Admin — QuickBuy (banned → blocked) | `admin@quickbuy.test` | `Admin@HelaMart2026` |
 
-In prototype mode the 2FA screen shows the current code (stands in for an authenticator app);
-set `NUXT_PUBLIC_ADMIN_DEMO_MODE=false` to hide it.
+Every sign-in needs a 6-digit two-factor code; in prototype mode it is shown on the sign-in screen
+(`NUXT_PUBLIC_ADMIN_DEMO_MODE=false` hides it). All supermarkets and people are fictional sample data.
 
-Modules: Dashboard · Orders (incl. live storefront orders) · Products & stock · Categories ·
-Customers · Promotions · Tasks · Staff · Roles & permissions · Audit log · Settings · My account.
-
-Security model: 20 granular permissions grouped into roles; Super Admin (everything) and Admin
-(everything except security/store settings) are built in; custom roles get a seniority level —
-staff can only manage people/roles below them and can never grant permissions they don't hold;
-at least one Super Admin must remain. Every page is guarded by route middleware and every API call
-re-checks the session and permission. Sensitive actions (staff, roles, refunds, blocking customers,
-settings) require the password again (valid 5 min). Sessions: 10-minute access tokens, rotating
-refresh tokens with reuse detection, inactivity sign-out with a warning, absolute session limit,
-browser-session-only cookie scoped to `/admin`, cross-tab sign-out. Lockout after repeated failed
-sign-ins, a full audit log (exportable to CSV), and `noindex` / `no-store` / anti-framing headers
-(+ a strict CSP in production builds).
-
+**Security model:** tenant isolation enforced in every API call (other chains' records behave as
+"not found"), branch scoping for branch staff, separate platform vs. supermarket permission sets,
+seniority levels (you can only manage people/roles below you and only grant permissions you hold),
+password step-up for sensitive actions, 10-minute rotating sessions with inactivity sign-out,
+lockouts, forced password change for temporary passwords, full audit trail per supermarket and
+platform-wide, security headers / no-index / no-store on `/admin`, strict CSP in production.
 ## Controls
 
 Desktop: **WASD / arrows** walk · **Q/E, ←/→** turn · **Shift** faster · **drag** to look ·

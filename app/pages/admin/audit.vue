@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import type { AuditEntry, TableColumn } from '~/types/admin'
-import { listAudit } from '~/services/admin/api'
+import { listAudit } from '~/services/admin/common'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'audit.view' })
+type Entry = AuditEntry & { tenantName: string | null }
+
+definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: 'platform.audit.view', tenant: 'audit.view' } })
 useHead({ title: 'Audit log' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
-const entries = ref<AuditEntry[]>([])
+const entries = ref<Entry[]>([])
+const org = ref('all')
+const orgs = computed(() => [...new Set(entries.value.map((e) => e.tenantName ?? 'HelaMart platform'))].sort())
 const loading = ref(true)
 const severity = ref<'all' | 'warning' | 'critical'>('all')
 const area = ref('all')
@@ -24,15 +28,17 @@ async function load() {
 }
 onMounted(load)
 
-const AREAS = ['auth', 'order', 'product', 'inventory', 'category', 'customer', 'promotion', 'task', 'staff', 'role', 'settings', 'access']
+const AREAS = ['auth', 'tenant', 'branch', 'order', 'product', 'inventory', 'category', 'customer', 'promotion', 'task', 'staff', 'role', 'settings', 'platform', 'access']
 const rows = computed(() =>
   entries.value.filter(
-    (e) => (severity.value === 'all' || e.severity === severity.value || (severity.value === 'warning' && e.severity === 'critical')) && (area.value === 'all' || e.action.startsWith(area.value)),
+    (e) => (severity.value === 'all' || e.severity === severity.value || (severity.value === 'warning' && e.severity === 'critical')) && (area.value === 'all' || e.action.startsWith(area.value)) &&
+      (org.value === 'all' || (e.tenantName ?? 'HelaMart platform') === org.value),
   ),
 )
 const columns: TableColumn[] = [
   { key: 'at', label: 'When', sortable: true },
   { key: 'actorName', label: 'Who', sortable: true },
+  ...(auth.isPlatform.value ? [{ key: 'tenantName', label: 'Supermarket', sortable: true, value: (e: Entry) => e.tenantName ?? 'HelaMart platform' }] : []),
   { key: 'action', label: 'Action', sortable: true },
   { key: 'target', label: 'Target' },
   { key: 'details', label: 'Details', value: (e: AuditEntry) => e.details ?? '' },
@@ -58,11 +64,13 @@ function exportCsv() {
     </AdminPageHeader>
     <AdminDataTable :rows="rows" :columns="columns" row-key="id" :loading="loading" :page-size="20" search-placeholder="Search person, action or target…" :initial-sort="{ key: 'at', dir: 'desc' }">
       <template #toolbar>
+        <select v-if="auth.isPlatform.value" v-model="org" class="field w-auto" aria-label="Supermarket"><option value="all">All organisations</option><option v-for="o in orgs" :key="o" :value="o">{{ o }}</option></select>
         <select v-model="area" class="field w-auto" aria-label="Area"><option value="all">All areas</option><option v-for="a in AREAS" :key="a" :value="a">{{ a }}</option></select>
         <select v-model="severity" class="field w-auto" aria-label="Level"><option value="all">All levels</option><option value="warning">Warnings & critical</option><option value="critical">Critical only</option></select>
       </template>
       <template #cell-at="{ row }"><span class="whitespace-nowrap text-xs text-muted">{{ when(row.at) }}</span></template>
       <template #cell-actorName="{ row }"><span class="font-semibold text-ink">{{ row.actorName }}</span></template>
+      <template #cell-tenantName="{ row }"><span class="text-xs text-muted">{{ row.tenantName ?? 'HelaMart platform' }}</span></template>
       <template #cell-action="{ row }"><code class="text-xs">{{ row.action }}</code></template>
       <template #cell-details="{ row }"><span class="text-xs text-muted">{{ row.details }}</span></template>
       <template #cell-severity="{ row }"><AdminBadge :value="row.severity" /></template>

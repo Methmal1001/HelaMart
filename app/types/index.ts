@@ -291,6 +291,9 @@ export interface OrderLine extends PricedLine {
 export interface Order {
   id: string
   number: string
+  /** Supermarket chain + branch the order was placed with. */
+  storeId?: string
+  branchId?: string
   createdAt: string
   userId: string
   customerName: string

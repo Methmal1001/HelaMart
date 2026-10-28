@@ -6,6 +6,8 @@ const ui = useStoreUi()
 const { itemCount, lastAdded } = useCart()
 const bill = useBill()
 const { startCheckout } = useCheckout()
+const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
+onMounted(() => !storeChoice.value && refreshStores())
 
 const isTouch = ref(false)
 const showHint = ref(true)
@@ -50,7 +52,11 @@ async function locate(id: string) {
       <div class="hud-surface pointer-events-auto flex items-center gap-3 rounded-2xl py-2 pr-4 pl-2">
         <BrandLogo size="sm" />
         <span class="hidden h-7 w-px bg-line md:block" aria-hidden="true" />
-        <span class="hidden text-xs font-semibold text-hela-gold-600 md:block">Everything for Every Home.</span>
+        <span v-if="storeChoice" class="hidden min-w-0 leading-tight md:block">
+          <span class="block text-[0.65rem] font-semibold tracking-wide text-muted uppercase">Shopping at</span>
+          <span class="block max-w-52 truncate text-xs font-bold text-ink">{{ storeChoice.storeName }} · {{ storeChoice.branchName }}</span>
+        </span>
+        <span v-else class="hidden text-xs font-semibold text-hela-gold-600 md:block">Everything for Every Home.</span>
       </div>
 
       <div

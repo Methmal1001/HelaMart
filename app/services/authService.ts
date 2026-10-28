@@ -2,6 +2,7 @@ import type { AuthResult, AuthTokens, User } from '~/types'
 import { mockAccounts } from '~/data/mockUsers'
 import { decodeJwt } from '~/utils/jwt'
 import { ApiError } from './apiError'
+import { readAdminDb } from './admin/db'
 import { EMAIL_RE, isSriLankanMobile, isStrongPassword } from '~/utils/validation'
 import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccessToken, verifyAccessToken, writeDb } from './mock/server'
 
@@ -10,6 +11,12 @@ import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccess
  *   POST /auth/register · POST /auth/login · POST /auth/google · POST /auth/refresh · POST /auth/logout · GET /auth/me
  * Only the bodies change when the backend exists.
  */
+
+/** Customers suspended platform-wide by HelaMart can't sign in. */
+function assertNotSuspended(user: User) {
+  const record = readAdminDb().customers.find((c) => c.id === user.id || c.email === user.email)
+  if (record?.status === 'blocked') throw new ApiError(403, 'Your HelaMart account is suspended. Contact HelaMart support.', 'ACCOUNT_SUSPENDED')
+}
 
 function findUserById(id: string): User | undefined {
   return mockAccounts.find((a) => a.user.id === id)?.user ?? readDb().extraUsers.find((u) => u.id === id)
@@ -61,6 +68,7 @@ export async function login(email: string, password: string, remember: boolean):
   }
   delete db.failedLogins[key]
   writeDb(db)
+  assertNotSuspended(user)
   return { user, tokens: issueSession(user, remember) }
 }
 
@@ -151,6 +159,7 @@ export async function loginWithGoogle(
       writeDb(db)
     }
   }
+  assertNotSuspended(user)
   return { user, tokens: issueSession(user, remember) }
 }
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AdminCategory, AdminProduct } from '~/types/admin'
-import { listCategories, listProducts, updateCategory } from '~/services/admin/api'
+import { listCategories, listProducts, updateCategory } from '~/services/admin/tenantApi'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'products.view' })
+definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'products.view' })
 useHead({ title: 'Categories' })
 
 const auth = useAdminAuth()
@@ -55,7 +55,7 @@ async function save() {
           <p class="mt-1 text-xs text-muted">{{ c.description }}</p>
           <p class="mt-2 text-xs font-semibold text-ink">{{ countFor(c.id) }} products</p>
         </div>
-        <button v-if="auth.can('categories.manage')" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Edit ${c.name}`" @click="open(c)"><AppIcon name="edit" :size="14" />Edit</button>
+        <button v-if="auth.can('categories.manage') && !auth.readOnly.value" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Edit ${c.name}`" @click="open(c)"><AppIcon name="edit" :size="14" />Edit</button>
       </article>
     </div>
 

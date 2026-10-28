@@ -220,6 +220,12 @@ export function useAdminAuth() {
   const { user, status, idleWarning, stepUp, signedOutReason } = bind()
   const permissions = computed(() => new Set<Permission>(user.value?.effectivePermissions ?? []))
   const isAuthenticated = computed(() => status.value === 'authenticated')
+  /** HelaMart head office (vs. a supermarket's staff). */
+  const isPlatform = computed(() => !!user.value && user.value.tenantId === null)
+  /** Supermarket staff who work across every branch (e.g. the Chain Admin). */
+  const isChainLevel = computed(() => !!user.value?.tenantId && user.value.branchIds.length === 0)
+  /** Restricted supermarkets are read-only. */
+  const readOnly = computed(() => user.value?.tenantStatus === 'restricted')
 
   function can(...perms: Permission[]) {
     return perms.every((p) => permissions.value.has(p))
@@ -284,6 +290,9 @@ export function useAdminAuth() {
     user,
     status,
     isAuthenticated,
+    isPlatform,
+    isChainLevel,
+    readOnly,
     permissions,
     idleWarning,
     stepUp,

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { StaffTask, TaskStatus } from '~/types/admin'
-import { commentOnTask, deleteTask, listTasks, saveTask, setTaskStatus, staffDirectory, type TaskInput } from '~/services/admin/api'
+import { commentOnTask, deleteTask, listTasks, saveTask, setTaskStatus, teamDirectory, type TaskInput } from '~/services/admin/common'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'tasks.view' })
+definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: [], tenant: 'tasks.view' } })
 useHead({ title: 'Tasks' })
 
 const auth = useAdminAuth()
@@ -12,14 +12,14 @@ const tasks = ref<StaffTask[]>([])
 const scope = ref<'all' | 'mine'>('mine')
 const people = ref<{ id: string; name: string; title: string; avatarColor: string; status: string }[]>([])
 const who = ref<string>('everyone')
-const canManage = computed(() => auth.can('tasks.manage'))
+const canManage = computed(() => (auth.isPlatform.value ? auth.can('platform.staff.manage') : auth.can('tasks.manage')) && !auth.readOnly.value)
 
 async function load() {
   try {
     const r = await auth.call(listTasks)
     tasks.value = r.tasks
     scope.value = r.scope
-    people.value = await auth.call(staffDirectory)
+    people.value = await auth.call(teamDirectory)
   } catch (e) {
     notify.error(e)
   }
@@ -44,7 +44,7 @@ const overdue = (t: StaffTask) => t.status !== 'done' && t.dueDate < today
 // ---- detail
 const open = ref<StaffTask | null>(null)
 const comment = ref('')
-const canUpdate = (t: StaffTask) => canManage.value || t.assigneeId === auth.user.value?.id
+const canUpdate = (t: StaffTask) => !auth.readOnly.value && (canManage.value || t.assigneeId === auth.user.value?.id)
 
 async function move(t: StaffTask, status: TaskStatus) {
   try {

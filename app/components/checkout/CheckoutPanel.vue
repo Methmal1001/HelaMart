@@ -11,6 +11,7 @@ const { user, authorized, isAuthenticated } = useAuth()
 const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
+const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
 
 const open = computed(() => panel.value === 'checkout')
 const step = ref<Step>('review')
@@ -46,6 +47,7 @@ watch(open, (v) => {
     return
   }
   error.value = ''
+  refreshStores()
   if (!delivery.fullName) delivery.fullName = user.value?.name ?? ''
   if (!delivery.phone) delivery.phone = user.value?.phone ?? ''
 })
@@ -111,7 +113,14 @@ async function pay() {
   if (!validateCard() || placing.value) return
   error.value = ''
   placing.value = true
+  if (!storeChoice.value) {
+    placing.value = false
+    error.value = 'Choose the supermarket and branch you’re ordering from first.'
+    return
+  }
   const request = {
+    storeId: storeChoice.value.storeId,
+    branchId: storeChoice.value.branchId,
     lines: lines.value.map((l) => ({ ...l })),
     delivery: { ...delivery, method: fulfilment.value },
     payment: { method: paymentMethod.value, card: paymentMethod.value === 'card' ? { ...card } : undefined },
@@ -161,6 +170,7 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
     <div class="px-5 py-5">
       <!-- 1. Review -->
       <section v-if="step === 'review'" aria-label="Review items">
+        <div class="mb-3"><StorePicker compact /></div>
         <p v-if="user" class="mb-4 flex items-center gap-2 text-sm text-muted">
           <UserAvatar :name="user.name" :color="user.avatarColor" :picture="user.pictureUrl" :size="26" />
           Billing to <b class="text-ink">{{ user.name }}</b>

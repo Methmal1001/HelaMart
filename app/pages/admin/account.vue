@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AdminSessionInfo } from '~/types/admin'
-import { PERMISSION_GROUPS } from '~/data/admin/permissions'
+import { groupsFor } from '~/data/admin/permissions'
 import { changeOwnPassword, mySessions, revokeMySession, sessionPolicy } from '~/services/admin/auth'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
@@ -9,6 +9,7 @@ useHead({ title: 'My account' })
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const sessions = ref<AdminSessionInfo[]>([])
+const groups = computed(() => groupsFor(auth.isPlatform.value ? 'platform' : 'tenant'))
 const pw = reactive({ current: '', next: '', confirm: '' })
 const pwError = ref('')
 const saving = ref(false)
@@ -63,11 +64,12 @@ const browser = (ua: string) => (/Edg\//.test(ua) ? 'Microsoft Edge' : /Chrome\/
             <p class="text-lg font-extrabold text-ink">{{ auth.user.value.name }}</p>
             <p class="text-sm text-muted">{{ auth.user.value.title }} · {{ auth.user.value.email }}</p>
             <span class="chip mt-1 bg-hela-green text-hela-gold">{{ auth.user.value.roleName }}</span>
+            <p class="mt-1 text-xs text-muted">{{ auth.user.value.tenantName ? `${auth.user.value.tenantName} · ${auth.user.value.branchNames.length ? auth.user.value.branchNames.join(", ") : "All branches"}` : "HelaMart head office" }}</p>
           </div>
         </div>
         <h2 class="mt-5 mb-2 text-sm font-bold text-ink">What you can do</h2>
         <ul class="space-y-2 text-sm">
-          <li v-for="g in PERMISSION_GROUPS" :key="g.id">
+          <li v-for="g in groups" :key="g.id">
             <p class="text-xs font-bold tracking-wide text-muted uppercase">{{ g.label }}</p>
             <p class="text-ink">
               {{ g.permissions.filter((p) => auth.can(p.id)).map((p) => p.label).join(' · ') || '—' }}

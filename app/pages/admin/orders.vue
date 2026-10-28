@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AdminOrder, OrderStatus, TableColumn } from '~/types/admin'
-import { allowedTransitions, listOrders, updateOrderStatus } from '~/services/admin/api'
+import { allowedTransitions, branchDirectory, listOrders, updateOrderStatus } from '~/services/admin/tenantApi'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'orders.view' })
+definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'orders.view' })
 useHead({ title: 'Orders' })
 
 const auth = useAdminAuth()
@@ -15,10 +15,14 @@ const filter = ref<'all' | 'open' | OrderStatus>('open')
 const selected = ref<AdminOrder | null>(null)
 const busy = ref(false)
 
+const branches = ref<{ id: string; name: string }[]>([])
+const branch = ref('all')
+const branchName = (id: string) => branches.value.find((b) => b.id === id)?.name ?? '—'
+
 async function load() {
   loading.value = true
   try {
-    orders.value = await auth.call(listOrders)
+    ;[orders.value, branches.value] = await Promise.all([auth.call(listOrders), auth.call(branchDirectory)])
   } catch (e) {
     notify.error(e)
   } finally {
@@ -29,7 +33,11 @@ onMounted(load)
 
 const OPEN: OrderStatus[] = ['pending', 'packing', 'out_for_delivery', 'ready_for_pickup']
 const rows = computed(() =>
-  orders.value.filter((o) => (filter.value === 'all' ? true : filter.value === 'open' ? OPEN.includes(o.status) : o.status === filter.value)),
+  orders.value.filter(
+    (o) =>
+      (branch.value === 'all' || o.branchId === branch.value) &&
+      (filter.value === 'all' ? true : filter.value === 'open' ? OPEN.includes(o.status) : o.status === filter.value),
+  ),
 )
 const counts = computed(() => ({
   open: orders.value.filter((o) => OPEN.includes(o.status)).length,
@@ -39,6 +47,7 @@ const counts = computed(() => ({
 const columns: TableColumn[] = [
   { key: 'number', label: 'Order', sortable: true },
   { key: 'createdAt', label: 'Placed', sortable: true },
+  { key: 'branchId', label: 'Branch', sortable: true, value: (o: AdminOrder) => branchName(o.branchId) },
   { key: 'customerName', label: 'Customer', sortable: true },
   { key: 'items', label: 'Items', align: 'right', value: (o: AdminOrder) => o.breakdown.itemCount },
   { key: 'total', label: 'Total', align: 'right', sortable: true, value: (o: AdminOrder) => o.breakdown.totalCents },
@@ -57,6 +66,7 @@ const LABEL: Record<OrderStatus, string> = {
 }
 
 function actionsFor(o: AdminOrder) {
+  if (auth.readOnly.value) return []
   return allowedTransitions(o).filter((s) => (s === 'refunded' ? auth.can('orders.refund') : auth.can('orders.manage')))
 }
 
@@ -100,6 +110,10 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
 
     <AdminDataTable :rows="rows" :columns="columns" row-key="id" :loading="loading" clickable search-placeholder="Search order number or customer…" :initial-sort="{ key: 'createdAt', dir: 'desc' }" empty-text="No orders in this view." @row-click="selected = $event">
       <template #toolbar>
+        <select v-if="branches.length > 1" v-model="branch" class="field w-auto" aria-label="Branch">
+          <option value="all">All branches</option>
+          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+        </select>
         <label class="sr-only" for="order-filter">Filter</label>
         <select id="order-filter" v-model="filter" class="field w-auto">
           <option value="open">Open ({{ counts.open }})</option>
@@ -117,6 +131,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
         <span class="font-semibold text-ink">{{ row.number }}</span>
         <span v-if="row.source === 'storefront'" class="ml-1.5 rounded bg-hela-gold-100 px-1.5 py-0.5 text-[0.65rem] font-bold text-hela-gold-600">LIVE</span>
       </template>
+      <template #cell-branchId="{ row }"><span class="text-xs font-semibold text-ink">{{ branchName(row.branchId) }}</span></template>
       <template #cell-createdAt="{ row }"><span class="whitespace-nowrap text-muted">{{ fmt(row.createdAt) }}</span></template>
       <template #cell-items="{ row }"><span class="tabular-nums">{{ row.breakdown.itemCount }}</span></template>
       <template #cell-total="{ row }"><span class="font-semibold tabular-nums">{{ formatLKR(row.breakdown.totalCents) }}</span></template>
@@ -124,7 +139,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
       <template #cell-status="{ row }"><AdminBadge :value="row.status" /></template>
     </AdminDataTable>
 
-    <AdminModal :open="!!selected" :title="selected ? `Order ${selected.number}` : ''" :description="selected ? `Placed ${fmt(selected.createdAt)}` : ''" size="lg" @close="selected = null">
+    <AdminModal :open="!!selected" :title="selected ? `Order ${selected.number}` : ''" :description="selected ? `${branchName(selected.branchId)} branch · placed ${fmt(selected.createdAt)}` : ''" size="lg" @close="selected = null">
       <div v-if="selected" class="grid gap-4 md:grid-cols-2">
         <section class="space-y-1 text-sm">
           <h3 class="mb-1 text-xs font-bold tracking-wide text-muted uppercase">Customer</h3>

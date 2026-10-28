@@ -4,8 +4,12 @@ import { priceCart } from '~/utils/pricing'
 import { ApiError } from './apiError'
 import { offersForUser } from './offerService'
 import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
+import { readAdminDb } from './admin/db'
 
 export interface PlaceOrderRequest {
+  /** Verified supermarket + branch the shopper is buying from. */
+  storeId: string
+  branchId: string
   lines: CartLine[]
   delivery: DeliveryDetails
   payment: { method: PaymentMethod; card?: CardDetails }
@@ -33,6 +37,16 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
   const userId = verifyAccessToken(accessToken)
   if (!req.lines.length) throw new ApiError(400, 'Your cart is empty.')
 
+  // The supermarket must be active (not pending/restricted/banned) and the branch open.
+  const platform = readAdminDb()
+  const store = platform.tenants.find((t) => t.id === req.storeId)
+  const branch = platform.branches.find((b) => b.id === req.branchId && b.tenantId === req.storeId)
+  if (!store || store.status !== 'active') throw new ApiError(409, 'This supermarket isn’t taking orders on HelaMart right now. Please choose another store.', 'STORE_UNAVAILABLE')
+  if (!branch || branch.status !== 'open') throw new ApiError(409, `${branch?.name ?? 'This'} branch is closed at the moment. Please choose another branch.`, 'BRANCH_CLOSED')
+  const customer = platform.customers.find((c) => c.id === userId)
+  if (customer?.status === 'blocked') throw new ApiError(403, 'Your HelaMart account is suspended. Contact HelaMart support.', 'ACCOUNT_SUSPENDED')
+  if (customer?.blockedByTenants.includes(store.id)) throw new ApiError(403, `${store.name} has blocked orders from this account. Contact the store for help.`, 'BLOCKED_BY_STORE')
+
   const offers = offersForUser(userId)
   const breakdown = priceCart(req.lines, offers, { fulfilment: req.delivery.method })
 
@@ -52,6 +66,8 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
     number: `HM-${now.getFullYear()}-${String(10000 + seq).slice(1)}${String(now.getTime()).slice(-3)}`,
     createdAt: now.toISOString(),
     userId,
+    storeId: store.id,
+    branchId: branch.id,
     customerName: user.name,
     customerEmail: user.email,
     lines: breakdown.lines.map((l) => {

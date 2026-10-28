@@ -16,6 +16,7 @@ const bill = useBill()
           <AppIcon name="door" :size="17" />
           {{ hasEntered ? 'Back to 3D store' : 'Enter 3D store' }}
         </NuxtLink>
+        <NuxtLink to="/partner" class="hidden h-10 items-center px-2 text-sm font-semibold text-hela-green hover:underline lg:inline-flex">Sell on HelaMart</NuxtLink>
         <NuxtLink to="/browse" class="btn-ghost h-10" active-class="!bg-hela-green-50 !ring-hela-green/30">
           <AppIcon name="list" :size="17" />
           <span class="hidden sm:inline">Aisles</span>

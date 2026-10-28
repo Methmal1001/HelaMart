@@ -1,3 +1,12 @@
+<script lang="ts">
+/** Open dialogs, top-most last (shared by every AdminModal instance). */
+const modalStack: symbol[] = []
+function removeFromStack(id: symbol) {
+  const i = modalStack.indexOf(id)
+  if (i >= 0) modalStack.splice(i, 1)
+}
+</script>
+
 <script setup lang="ts">
 /** Centred, accessible dialog for admin forms: focus trap, Esc to close, restores focus. */
 const props = withDefaults(defineProps<{ open: boolean; title: string; description?: string; size?: 'sm' | 'md' | 'lg' | 'xl'; persistent?: boolean }>(), {
@@ -9,22 +18,48 @@ const box = ref<HTMLElement | null>(null)
 const titleId = useId()
 let previous: HTMLElement | null = null
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const self = Symbol('modal')
 
 watch(
   () => props.open,
   async (v) => {
     if (v) {
       previous = document.activeElement as HTMLElement | null
+      modalStack.push(self)
       await nextTick()
       ;(box.value?.querySelector<HTMLElement>('[data-autofocus]') ?? box.value?.querySelector<HTMLElement>(FOCUSABLE))?.focus()
-    } else previous?.focus?.()
+    } else {
+      removeFromStack(self)
+      if (previous?.isConnected) previous.focus()
+    }
   },
+  { immediate: true },
 )
 
-function onKey(e: KeyboardEvent) {
+/** Esc closes the top-most dialog even when focus has drifted outside it (e.g. after its content re-rendered). */
+function onDocKey(e: KeyboardEvent) {
+  if (!props.open || modalStack.at(-1) !== self) return
   if (e.key === 'Escape' && !props.persistent) {
-    e.stopPropagation()
+    e.preventDefault()
     emit('close')
+  } else if (e.key === 'Tab' && box.value && !box.value.contains(document.activeElement)) {
+    // Focus was lost (the element it was on disappeared) — bring it back into the dialog.
+    e.preventDefault()
+    box.value.querySelector<HTMLElement>(FOCUSABLE)?.focus()
+  }
+}
+onMounted(() => document.addEventListener('keydown', onDocKey))
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocKey)
+  removeFromStack(self)
+})
+
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    // Handled by the document listener (top-most dialog only).
+    e.stopPropagation()
+    if (modalStack.at(-1) === self && !props.persistent) emit('close')
+    return
   }
   if (e.key !== 'Tab' || !box.value) return
   const items = [...box.value.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null)

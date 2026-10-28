@@ -71,7 +71,11 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         </li>
       </ol>
 
-      <div class="mt-5 lg:mt-7">
+      <div class="mt-5">
+        <StorePicker />
+      </div>
+
+      <div class="mt-5 lg:mt-6">
         <h2 class="text-base font-bold text-ink">Who is shopping today?</h2>
         <p class="mt-1 text-xs leading-relaxed text-muted sm:text-[0.8rem]">
           Pick a character for your visit — it’s only a visual preference, not information about you.
@@ -105,6 +109,10 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         <span>No sign-up needed. You can change avatar anytime.</span>
         <NuxtLink to="/browse" class="font-semibold text-hela-green underline-offset-4 hover:underline">Shop without 3D</NuxtLink>
       </div>
+      <p class="mt-3 border-t border-line pt-3 text-xs text-muted">
+        Own a supermarket in Sri Lanka?
+        <NuxtLink to="/partner" class="font-semibold text-hela-green underline-offset-4 hover:underline">Join HelaMart →</NuxtLink>
+      </p>
     </div>
   </aside>
 </template>

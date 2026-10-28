@@ -22,6 +22,7 @@ async function locate(productId: string) {
           <AppIcon name="pin" :size="14" class="inline align-[-2px]" /> to walk to a product in the 3D store.
           All products and prices are fictional samples for this prototype.
         </p>
+        <div class="mt-4 max-w-md"><StorePicker /></div>
       </div>
       <CatalogBrowser can-locate @locate="locate" />
     </main>

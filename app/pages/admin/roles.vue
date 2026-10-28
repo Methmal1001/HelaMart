@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import type { Permission, Role } from '~/types/admin'
-import { ALL_PERMISSIONS, ROLE_IDS, permissionLabel } from '~/data/admin/permissions'
-import { deleteRole, listRoles, saveRole, type RoleInput } from '~/services/admin/api'
+import type { Role } from '~/types/admin'
+import { ROLE_IDS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
+import { deleteTeamRole, listTeamRoles, saveTeamRole, type RoleInput } from '~/services/admin/common'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'roles.manage' })
+definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: 'platform.roles.manage', tenant: 'roles.manage' } })
 useHead({ title: 'Roles & permissions' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const { confirm } = useAdminConfirm()
 const roles = ref<(Role & { members: number })[]>([])
+const scope = computed(() => (auth.isPlatform.value ? 'platform' : 'tenant') as 'platform' | 'tenant')
+const total = computed(() => permissionsFor(scope.value).length)
 
 async function load() {
   try {
-    roles.value = await auth.call(listRoles)
+    roles.value = await auth.call(listTeamRoles)
   } catch (e) {
     notify.error(e)
   }
@@ -21,26 +23,31 @@ async function load() {
 onMounted(load)
 
 const iAmSuper = computed(() => auth.user.value?.roleId === ROLE_IDS.superAdmin)
-const myLevel = computed(() => roles.value.find((r) => r.id === auth.user.value?.roleId)?.level ?? 0)
-const editable = (r: Role) => !r.system && (iAmSuper.value || r.level < myLevel.value)
-const maxLevel = computed(() => (iAmSuper.value ? 79 : Math.min(79, myLevel.value - 1)))
+const myLevel = computed(() => auth.user.value?.roleLevel ?? 0)
+const editable = (r: Role) => !r.system && r.tenantId === (auth.user.value?.tenantId ?? null) && (iAmSuper.value || r.level < myLevel.value) && !auth.readOnly.value
+const maxLevel = computed(() => (iAmSuper.value ? 99 : Math.min(scope.value === 'platform' ? 99 : 79, myLevel.value - 1)))
 
 const editing = ref<Role | 'new' | null>(null)
-const f = reactive<RoleInput>({ name: '', description: '', permissions: [], level: 20 })
+const f = reactive<RoleInput>({ name: '', description: '', permissions: [], level: 20, branchScoped: true })
 const error = ref('')
 const viewing = ref<Role | null>(null)
 
 function open(r: Role | 'new') {
   editing.value = r
   error.value = ''
-  Object.assign(f, r === 'new' ? { name: '', description: '', permissions: ['dashboard.view', 'tasks.view'], level: Math.min(20, maxLevel.value) } : { name: r.name, description: r.description, permissions: [...r.permissions], level: r.level })
+  Object.assign(
+    f,
+    r === 'new'
+      ? { name: '', description: '', permissions: scope.value === 'tenant' ? ['dashboard.view', 'tasks.view'] : ['platform.dashboard'], level: Math.min(20, maxLevel.value), branchScoped: scope.value === 'tenant' }
+      : { name: r.name, description: r.description, permissions: [...r.permissions], level: r.level, branchScoped: r.branchScoped },
+  )
 }
 
 async function save() {
   error.value = ''
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
-    const r = await auth.call((t) => saveRole(t, { ...f, level: Number(f.level) }, id), 'Changing roles needs your password confirmed.')
+    const r = await auth.call((t) => saveTeamRole(t, { ...f, level: Number(f.level) }, id), 'Changing roles needs your password confirmed.')
     notify.ok(`${r.name} saved${id ? ' — members will sign in again with the new access' : ''}`)
     editing.value = null
     await load()
@@ -53,7 +60,7 @@ async function remove(r: Role & { members: number }) {
   const ok = await confirm({ title: `Delete the ${r.name} role?`, message: r.members ? `${r.members} staff still have this role — move them first.` : 'This cannot be undone.', confirmLabel: 'Delete role', tone: 'danger' })
   if (!ok.ok) return
   try {
-    await auth.call((t) => deleteRole(t, r.id), 'Deleting roles needs your password confirmed.')
+    await auth.call((t) => deleteTeamRole(t, r.id), 'Deleting roles needs your password confirmed.')
     notify.ok(`${r.name} deleted`)
     await load()
   } catch (e) {
@@ -64,26 +71,27 @@ async function remove(r: Role & { members: number }) {
 
 <template>
   <div>
-    <AdminPageHeader title="Roles & permissions" description="Roles bundle permissions. Create roles such as Store Manager or Cashier, then assign them to staff.">
-      <button type="button" class="btn-primary h-10" @click="open('new')"><AppIcon name="plus" :size="17" />New role</button>
+    <AdminPageHeader :title="scope === 'tenant' ? 'Roles & permissions' : 'Platform roles'" :description="scope === 'tenant' ? 'Create roles such as Cashier, Stock Officer or Floor Supervisor and choose exactly what each can do.' : 'Roles for the HelaMart head-office team.'">
+      <button v-if="!auth.readOnly.value" type="button" class="btn-primary h-10" @click="open('new')"><AppIcon name="plus" :size="17" />New role</button>
     </AdminPageHeader>
 
     <div class="mb-4 flex gap-2 rounded-xl bg-white p-3 text-xs text-muted ring-1 ring-line">
       <AppIcon name="shield" :size="16" class="shrink-0 text-hela-green" />
-      <span><b class="text-ink">Seniority</b> decides who can manage whom: you can only edit roles and staff below your own level, and only grant permissions you hold. Built-in roles can’t be changed.</span>
+      <span><b class="text-ink">Seniority</b> decides who can manage whom: you can only edit roles and people below your level, and only grant permissions you hold. Built-in roles (Chain Admin, Branch Manager{{ scope === 'platform' ? ', Super Admin' : '' }}) can’t be changed. <b class="text-ink">Branch roles</b> are tied to specific branches.</span>
     </div>
 
     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <article v-for="r in roles" :key="r.id" class="card flex flex-col p-4">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <h2 class="flex items-center gap-2 font-bold text-ink">
+            <h2 class="flex flex-wrap items-center gap-2 font-bold text-ink">
               {{ r.name }}
               <span v-if="r.system" class="chip bg-hela-green text-hela-gold">Built-in</span>
+              <span v-if="r.branchScoped" class="chip bg-cream text-ink">Branch role</span>
             </h2>
             <p class="text-xs text-muted">Level {{ r.level }} · {{ r.members }} {{ r.members === 1 ? 'member' : 'members' }}</p>
           </div>
-          <span class="text-right text-xs font-semibold text-hela-green">{{ r.permissions.length }}/{{ ALL_PERMISSIONS.length }}<br>permissions</span>
+          <span class="text-right text-xs font-semibold text-hela-green">{{ r.permissions.length }}/{{ total }}<br>permissions</span>
         </div>
         <p class="mt-2 flex-1 text-sm text-muted">{{ r.description }}</p>
         <div class="mt-3 flex gap-2">
@@ -110,12 +118,16 @@ async function remove(r: Role & { members: number }) {
           <label class="block">
             <span class="field-label">Seniority level (1–{{ maxLevel }})</span>
             <input v-model.number="f.level" type="number" min="1" :max="maxLevel" class="field">
-            <span class="mt-1 block text-xs text-muted">Higher levels can manage lower ones. Admin is 80, Super Admin 100.</span>
+            <span class="mt-1 block text-xs text-muted">{{ scope === 'tenant' ? 'Chain Admin is 80, Branch Manager 60.' : 'Super Admin is 100.' }}</span>
+          </label>
+          <label v-if="scope === 'tenant'" class="flex items-start gap-2.5 text-sm">
+            <input v-model="f.branchScoped" type="checkbox" class="mt-0.5 size-4 accent-hela-green">
+            <span>Branch role <span class="block text-xs text-muted">People with this role work at specific branches and only see those branches.</span></span>
           </label>
           <p class="text-xs font-semibold text-ink">{{ f.permissions.length }} permissions selected</p>
           <p v-if="error" class="text-sm text-[#8A2E2E]" role="alert">{{ error }}</p>
         </div>
-        <PermissionMatrix v-model="f.permissions" :grantable="auth.permissions.value" />
+        <PermissionMatrix v-model="f.permissions" :scope="scope" :grantable="auth.permissions.value" />
       </form>
       <template #footer>
         <button type="button" class="btn-ghost h-9" @click="editing = null">Cancel</button>

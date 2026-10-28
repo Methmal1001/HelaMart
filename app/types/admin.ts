@@ -1,9 +1,27 @@
 import type { CategoryId, DeliveryDetails, Offer, OrderLine, PriceBreakdown, Product } from './index'
 
-/** Every action an admin user can be allowed to perform. */
-export type Permission =
+// ================================================================== permissions
+
+/** Platform-level permissions (HelaMart head office). */
+export type PlatformPermission =
+  | 'platform.dashboard'
+  | 'tenants.view'
+  | 'tenants.review'
+  | 'tenants.moderate'
+  | 'tenant_admins.manage'
+  | 'customers.all.view'
+  | 'customers.all.manage'
+  | 'platform.staff.manage'
+  | 'platform.roles.manage'
+  | 'platform.audit.view'
+  | 'platform.settings.manage'
+
+/** Supermarket-level permissions (inside one chain). */
+export type TenantPermission =
   | 'dashboard.view'
   | 'reports.view'
+  | 'branches.view'
+  | 'branches.manage'
   | 'orders.view'
   | 'orders.manage'
   | 'orders.refund'
@@ -23,18 +41,94 @@ export type Permission =
   | 'audit.view'
   | 'settings.manage'
 
+export type Permission = PlatformPermission | TenantPermission
+export type Scope = 'platform' | 'tenant'
+
 export interface Role {
   id: string
   name: string
   description: string
   permissions: Permission[]
-  /** Built-in roles (Super Admin, Admin) cannot be edited or deleted. */
+  /** platform roles belong to HelaMart; tenant roles to supermarkets. */
+  scope: Scope
+  /** null = built-in template available to every supermarket (or a platform role). */
+  tenantId: string | null
+  /** Built-in roles cannot be edited or deleted. */
   system: boolean
-  /** Seniority — staff can only manage people in strictly lower levels. Super Admin = 100. */
+  /** Seniority — staff can only manage roles/people strictly below their own level. */
   level: number
+  /** Branch-level roles must be tied to specific branches. */
+  branchScoped: boolean
   createdAt: string
   createdBy?: string
 }
+
+// ================================================================== supermarkets
+
+export type TenantStatus = 'pending' | 'active' | 'restricted' | 'banned' | 'rejected'
+
+export interface TenantDocument {
+  kind: 'br_certificate' | 'owner_nic' | 'address_proof'
+  fileName: string
+  sizeKb: number
+  verified: boolean
+}
+
+/** A supermarket chain (one customer of the HelaMart platform). */
+export interface Tenant {
+  id: string
+  /** Reference shown to applicants, e.g. HMA-2026-0042. */
+  reference: string
+  name: string
+  legalName: string
+  brNumber: string
+  vatNumber?: string
+  ownerName: string
+  ownerNic: string
+  email: string
+  phone: string
+  hqAddress: string
+  district: string
+  brandColor: string
+  plan: 'standard' | 'premium'
+  commissionPercent: number
+  status: TenantStatus
+  statusReason?: string
+  statusChangedAt: string
+  statusChangedBy?: string
+  documents: TenantDocument[]
+  /** From the application: planned first branch. */
+  firstBranch: { name: string; city: string; district: string }
+  expectedBranches: number
+  createdAt: string
+  approvedAt?: string
+  // Chain-wide store settings (managed by the chain).
+  hotline: string
+  supportEmail: string
+  defaultHours: string
+  deliveryFeeCents: number
+  minOrderCents: number
+}
+
+export type BranchStatus = 'open' | 'temporarily_closed' | 'closed'
+
+export interface Branch {
+  id: string
+  tenantId: string
+  name: string
+  code: string
+  district: string
+  city: string
+  address: string
+  phone: string
+  openingHours: string
+  status: BranchStatus
+  deliveryRadiusKm: number
+  managerId?: string
+  createdAt: string
+}
+
+// ================================================================== people
 
 export type StaffStatus = 'active' | 'suspended'
 
@@ -44,15 +138,16 @@ export interface StaffUser {
   email: string
   phone?: string
   title: string
+  /** null = HelaMart platform staff. */
+  tenantId: string | null
+  /** Branches this person works at. Empty = every branch (chain-level). */
+  branchIds: string[]
   roleId: string
-  /** Individual grants on top of the role. */
   extraPermissions: Permission[]
   status: StaffStatus
-  /** Mock TOTP secret for two-factor sign-in. */
   mfaSecret: string
   passwordHash: string
   passwordChangedAt: string
-  /** Set for new accounts / password resets: must choose a new password at next sign-in. */
   mustChangePassword: boolean
   createdAt: string
   createdBy?: string
@@ -63,9 +158,36 @@ export interface StaffUser {
 /** Safe view of a staff member (never includes secrets). */
 export type StaffView = Omit<StaffUser, 'mfaSecret' | 'passwordHash'> & {
   roleName: string
+  roleLevel: number
   effectivePermissions: Permission[]
   activeSessions: number
+  tenantName: string | null
+  tenantStatus: TenantStatus | null
+  tenantStatusReason?: string
+  branchNames: string[]
 }
+
+export interface Customer {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  provider: 'password' | 'google'
+  /** Platform-wide account status (set by HelaMart). */
+  status: 'active' | 'blocked'
+  createdAt: string
+  district: string
+  city: string
+  /** Supermarket chains this customer is registered with / shops at. */
+  tenantIds: string[]
+  /** Chains that have blocked this customer from their stores. */
+  blockedByTenants: string[]
+  ordersCount: number
+  totalSpentCents: number
+  lastOrderAt?: string
+}
+
+// ================================================================== commerce
 
 export type OrderStatus = 'pending' | 'packing' | 'out_for_delivery' | 'ready_for_pickup' | 'delivered' | 'cancelled' | 'refunded'
 
@@ -79,6 +201,8 @@ export interface OrderEvent {
 export interface AdminOrder {
   id: string
   number: string
+  tenantId: string
+  branchId: string
   createdAt: string
   customerId: string
   customerName: string
@@ -89,12 +213,13 @@ export interface AdminOrder {
   payment: { method: 'cod' | 'card'; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
   status: OrderStatus
   history: OrderEvent[]
-  /** Placed through the live storefront (vs. seeded sample data). */
   source: 'storefront' | 'sample'
 }
 
 export interface AdminProduct extends Product {
-  stock: number
+  tenantId: string
+  /** Stock held at each branch. */
+  stock: Record<string, number>
   reorderLevel: number
   status: 'active' | 'hidden'
   updatedAt: string
@@ -102,29 +227,18 @@ export interface AdminProduct extends Product {
 
 export interface AdminCategory {
   id: CategoryId
+  tenantId: string
   name: string
   description: string
   color: string
   visible: boolean
 }
 
-export interface Customer {
-  id: string
-  name: string
-  email: string
-  phone?: string
-  provider: 'password' | 'google'
-  status: 'active' | 'blocked'
-  createdAt: string
-  city: string
-  ordersCount: number
-  totalSpentCents: number
-  lastOrderAt?: string
-}
-
 export interface AdminOffer extends Offer {
+  tenantId: string
+  /** Branches the offer runs at. Empty = all branches. */
+  branchIds: string[]
   status: 'active' | 'paused'
-  /** Who receives it. */
   audience: 'all' | 'new' | 'selected'
   customerIds: string[]
   usageCount: number
@@ -136,6 +250,9 @@ export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface StaffTask {
   id: string
+  /** null = HelaMart platform task. */
+  tenantId: string | null
+  branchId?: string
   title: string
   description: string
   assigneeId: string
@@ -153,6 +270,8 @@ export type AuditSeverity = 'info' | 'warning' | 'critical'
 export interface AuditEntry {
   id: string
   at: string
+  /** null = platform-level event. */
+  tenantId: string | null
   actorId: string | null
   actorName: string
   action: string
@@ -161,14 +280,13 @@ export interface AuditEntry {
   severity: AuditSeverity
 }
 
-export interface StoreSettings {
-  storeName: string
-  hotline: string
+/** HelaMart-wide policy (Super Admin). */
+export interface PlatformSettings {
+  platformName: string
   supportEmail: string
-  openingHours: string
-  deliveryFeeCents: number
-  orderCutoffTime: string
-  maintenanceMode: boolean
+  supportHotline: string
+  applicationsOpen: boolean
+  defaultCommissionPercent: number
   security: {
     sessionIdleMinutes: number
     sessionMaxHours: number
@@ -196,7 +314,7 @@ export interface AdminSessionInfo {
   current: boolean
 }
 
-export interface DashboardStats {
+export interface TenantDashboard {
   revenueTodayCents: number
   revenue30dCents: number
   orders30d: number
@@ -204,11 +322,28 @@ export interface DashboardStats {
   pendingOrders: number
   customers: number
   newCustomers30d: number
-  lowStock: { id: string; name: string; stock: number; reorderLevel: number }[]
+  branchesOpen: number
+  branchesTotal: number
+  lowStock: { id: string; name: string; branch: string; stock: number }[]
   revenueByDay: { date: string; cents: number; orders: number }[]
   ordersByStatus: { status: OrderStatus; count: number }[]
-  topProducts: { id: string; name: string; units: number; cents: number }[]
-  recentOrders: Pick<AdminOrder, 'id' | 'number' | 'createdAt' | 'customerName' | 'status' | 'breakdown'>[]
+  byBranch: { id: string; name: string; orders: number; cents: number }[]
+  topProducts: { id: string; name: string; units: number }[]
+  recentOrders: Pick<AdminOrder, 'id' | 'number' | 'createdAt' | 'customerName' | 'status' | 'breakdown' | 'branchId'>[]
+}
+
+export interface PlatformDashboard {
+  tenantsByStatus: { status: TenantStatus; count: number }[]
+  pendingApplications: { id: string; name: string; reference: string; district: string; createdAt: string }[]
+  branches: number
+  customers: number
+  newCustomers30d: number
+  gmv30dCents: number
+  commission30dCents: number
+  orders30d: number
+  gmvByDay: { date: string; cents: number; orders: number }[]
+  topTenants: { id: string; name: string; status: TenantStatus; branches: number; orders: number; cents: number }[]
+  customersByProvince: { province: string; count: number }[]
 }
 
 export interface TableColumn {

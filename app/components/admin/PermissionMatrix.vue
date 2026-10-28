@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import type { Permission } from '~/types/admin'
-import { PERMISSION_GROUPS } from '~/data/admin/permissions'
+import type { Permission, Scope } from '~/types/admin'
+import { groupsFor } from '~/data/admin/permissions'
 
 /**
- * Grouped permission checkboxes. Permissions the current admin doesn't hold
- * are disabled — you can never grant more than you have.
+ * Grouped permission checkboxes for one organisation type. Permissions the
+ * current admin doesn't hold are disabled — you can never grant more than you have.
  */
-const props = defineProps<{ modelValue: Permission[]; grantable: Set<Permission>; locked?: Permission[]; disabled?: boolean }>()
+const props = defineProps<{ modelValue: Permission[]; grantable: Set<Permission>; scope: Scope; locked?: Permission[]; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: Permission[]] }>()
+const groups = computed(() => groupsFor(props.scope))
 
 function toggle(p: Permission) {
   const set = new Set(props.modelValue)
@@ -25,7 +26,7 @@ function toggleGroup(ids: Permission[], on: boolean) {
 
 <template>
   <div class="space-y-3">
-    <fieldset v-for="g in PERMISSION_GROUPS" :key="g.id" class="rounded-xl bg-white p-3 ring-1 ring-line" :disabled="disabled">
+    <fieldset v-for="g in groups" :key="g.id" class="rounded-xl bg-white p-3 ring-1 ring-line" :disabled="disabled">
       <legend class="sr-only">{{ g.label }}</legend>
       <div class="mb-2 flex items-center justify-between">
         <p class="text-xs font-bold tracking-wide text-ink uppercase">{{ g.label }}</p>

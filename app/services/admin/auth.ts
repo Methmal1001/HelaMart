@@ -5,6 +5,7 @@ import { hash, hashPassword, latency, randomId } from '../mock/server'
 import { readAdminDb, writeAdminDb } from './db'
 import {
   ADMIN_POLICY,
+  assertTenantAccessible,
   audit,
   authenticate,
   issueSession,
@@ -49,6 +50,15 @@ export async function login(email: string, password: string): Promise<{ challeng
     audit(db, { staff }, 'auth.login_blocked', staff.name, 'Suspended account tried to sign in', 'warning')
     writeAdminDb(db)
     throw new ApiError(403, 'This account is suspended. Contact a Super Admin.', 'SUSPENDED')
+  }
+  if (staff.tenantId) {
+    try {
+      assertTenantAccessible(db.tenants.find((t) => t.id === staff.tenantId))
+    } catch (e) {
+      audit(db, { staff }, 'auth.login_blocked', staff.name, (e as ApiError).message, 'warning')
+      writeAdminDb(db)
+      throw e
+    }
   }
   delete db.loginAttempts[key]
   const challenge = { id: randomId(12), staffId: staff.id, expiresAt: Date.now() + ADMIN_POLICY.challengeTtlMs, attempts: 0 }
@@ -143,6 +153,15 @@ export async function refresh(refreshToken: string): Promise<AdminLoginResult> {
   }
   const staff = db.staff.find((x) => x.id === s.staffId)
   if (!staff || staff.status !== 'active') throw new ApiError(401, 'This account is no longer active.', 'ACCOUNT_INACTIVE')
+  if (staff.tenantId) {
+    try {
+      assertTenantAccessible(db.tenants.find((t) => t.id === staff.tenantId))
+    } catch (e) {
+      s.revoked = true
+      writeAdminDb(db)
+      throw new ApiError(401, (e as ApiError).message, (e as ApiError).code)
+    }
+  }
   s.revoked = true
   // Same session id continues with a fresh token pair (keeps expiry + step-up state).
   db.sessions = db.sessions.filter((x) => x !== s)

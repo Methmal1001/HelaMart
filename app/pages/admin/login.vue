@@ -114,9 +114,13 @@ function restart() {
 }
 
 const TEST = [
-  { role: 'Super Admin', email: 'superadmin@helamart.test', password: SEED_PASSWORDS.superAdmin },
-  { role: 'Admin', email: 'admin@helamart.test', password: SEED_PASSWORDS.admin },
-  { role: 'Store Manager', email: 'manager@helamart.test', password: SEED_PASSWORDS.staff },
+  { role: 'Super Admin — HelaMart platform', email: 'superadmin@helamart.test', password: SEED_PASSWORDS.superAdmin },
+  { role: 'Chain Admin — Lanka Fresh Mart', email: 'admin@lankafresh.test', password: SEED_PASSWORDS.chainAdmin },
+  { role: 'Branch Manager — Divulapitiya', email: 'divulapitiya@lankafresh.test', password: SEED_PASSWORDS.staff },
+  { role: 'Cashier — Divulapitiya', email: 'cashier.div@lankafresh.test', password: SEED_PASSWORDS.staff },
+  { role: 'Chain Admin — Ceylon Daily Super', email: 'admin@ceylondaily.test', password: SEED_PASSWORDS.chainAdmin },
+  { role: 'Chain Admin — Ruhuna Mega Mart (restricted)', email: 'admin@ruhunamega.test', password: SEED_PASSWORDS.chainAdmin },
+  { role: 'Chain Admin — QuickBuy (banned)', email: 'admin@quickbuy.test', password: SEED_PASSWORDS.chainAdmin },
 ]
 </script>
 

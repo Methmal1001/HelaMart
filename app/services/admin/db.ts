@@ -4,20 +4,23 @@ import type {
   AdminOrder,
   AdminProduct,
   AuditEntry,
+  Branch,
   Customer,
+  PlatformSettings,
   Role,
   StaffTask,
   StaffUser,
-  StoreSettings,
+  Tenant,
 } from '~/types/admin'
 import { buildSeed } from '~/data/admin/seed'
 import { hash, hashPassword, readDb as readStoreDb } from '../mock/server'
 
 /**
- * MOCK ADMIN DATABASE (browser localStorage). Stands in for the real
- * back-office database; every read/write goes through the admin API layer.
+ * MOCK PLATFORM DATABASE (browser localStorage). Every record that belongs
+ * to a supermarket carries `tenantId` (and `branchId` where relevant); the API
+ * layer filters on these so one chain can never see another chain's data.
  */
-const KEY = 'helamart:admin-db:v1'
+const KEY = 'helamart:platform-db:v2'
 
 export interface AdminSessionRecord {
   id: string
@@ -25,9 +28,7 @@ export interface AdminSessionRecord {
   refreshHash: string
   createdAt: number
   lastSeenAt: number
-  /** Absolute end of the session regardless of activity. */
   expiresAt: number
-  /** Re-authenticated (password confirmed) until this time — required for sensitive actions. */
   stepUpUntil: number
   revoked: boolean
   replacedBy?: string
@@ -40,12 +41,13 @@ export interface MfaChallenge {
   staffId: string
   expiresAt: number
   attempts: number
-  /** Set when the password must be changed before a session is issued. */
   passwordChange?: boolean
   verified?: boolean
 }
 
 export interface AdminDb {
+  tenants: Tenant[]
+  branches: Branch[]
   roles: Role[]
   staff: StaffUser[]
   sessions: AdminSessionRecord[]
@@ -57,9 +59,10 @@ export interface AdminDb {
   offers: AdminOffer[]
   tasks: StaffTask[]
   audit: AuditEntry[]
-  settings: StoreSettings
+  settings: PlatformSettings
   loginAttempts: Record<string, { count: number; until: number }>
-  /** Storefront order ids already imported. */
+  /** Public application submissions per browser (rate limiting). */
+  applicationLog: number[]
   importedOrderIds: string[]
 }
 
@@ -67,34 +70,21 @@ let cache: AdminDb | null = null
 
 function seed(): AdminDb {
   const s = buildSeed({ hashPassword, now: Date.now() })
-  return { ...s, sessions: [], challenges: [], loginAttempts: {}, importedOrderIds: [] }
+  return { ...s, sessions: [], challenges: [], loginAttempts: {}, applicationLog: [], importedOrderIds: [] }
 }
 
-/** Bring in customers who registered and orders placed through the live storefront. */
+/** Bring in shoppers who registered and orders placed through the live storefront. */
 function syncStorefront(db: AdminDb) {
   const store = readStoreDb()
-  for (const u of store.extraUsers) {
-    if (!db.customers.some((c) => c.id === u.id || c.email === u.email)) {
-      db.customers.push({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        provider: u.provider,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        city: '—',
-        ordersCount: 0,
-        totalSpentCents: 0,
-      })
-    }
-  }
   for (const o of store.orders) {
     if (db.importedOrderIds.includes(o.id)) continue
     db.importedOrderIds.push(o.id)
+    const branch = db.branches.find((b) => b.id === o.branchId) ?? db.branches.find((b) => b.id === 'br_lfm_div')!
     db.orders.unshift({
       id: o.id,
       number: o.number,
+      tenantId: branch.tenantId,
+      branchId: branch.id,
       createdAt: o.createdAt,
       customerId: o.userId,
       customerName: o.customerName,
@@ -108,9 +98,18 @@ function syncStorefront(db: AdminDb) {
       source: 'storefront',
     })
   }
-  // Keep customer order stats derived from orders.
+  for (const u of store.extraUsers) {
+    if (!db.customers.some((c) => c.id === u.id || c.email === u.email)) {
+      db.customers.push({
+        id: u.id, name: u.name, email: u.email, phone: u.phone, provider: u.provider, status: 'active',
+        createdAt: new Date().toISOString(), district: '—', city: '—', tenantIds: [], blockedByTenants: [], ordersCount: 0, totalSpentCents: 0,
+      })
+    }
+  }
+  // Derived stats + chain membership from orders.
   for (const c of db.customers) {
     const mine = db.orders.filter((o) => o.customerId === c.id && o.status !== 'cancelled')
+    for (const o of mine) if (!c.tenantIds.includes(o.tenantId)) c.tenantIds.push(o.tenantId)
     c.ordersCount = mine.length
     c.totalSpentCents = mine.filter((o) => o.status !== 'refunded').reduce((s, o) => s + o.breakdown.totalCents, 0)
     c.lastOrderAt = mine.map((o) => o.createdAt).sort().at(-1)
@@ -125,7 +124,7 @@ export function readAdminDb(): AdminDb {
     db = raw ? (JSON.parse(raw) as AdminDb) : seed()
     if (!raw) localStorage.setItem(KEY, JSON.stringify(db))
   } catch {
-    db = cache ?? seed() // storage blocked: fall back to memory
+    db = cache ?? seed()
   }
   syncStorefront(db)
   cache = db
@@ -136,7 +135,8 @@ export function writeAdminDb(db: AdminDb) {
   const now = Date.now()
   db.sessions = db.sessions.filter((s) => s.expiresAt > now && (!s.revoked || now - s.lastSeenAt < 864e5))
   db.challenges = db.challenges.filter((c) => c.expiresAt > now)
-  db.audit = db.audit.slice(-2000)
+  db.audit = db.audit.slice(-3000)
+  db.applicationLog = db.applicationLog.filter((t) => now - t < 3600e3)
   cache = db
   try {
     localStorage.setItem(KEY, JSON.stringify(db))
@@ -145,7 +145,6 @@ export function writeAdminDb(db: AdminDb) {
   }
 }
 
-/** Testing helper: wipe the admin sample data back to its seeded state. */
 export function resetAdminDb() {
   cache = seed()
   writeAdminDb(cache)

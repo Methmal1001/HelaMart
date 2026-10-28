@@ -1,25 +1,26 @@
 <script setup lang="ts">
-import type { AdminOffer, Customer, TableColumn } from '~/types/admin'
+import type { AdminOffer, TableColumn } from '~/types/admin'
 import type { CategoryId, OfferRule } from '~/types'
 import { categories, getCategory } from '~/data/categories'
 import { products, getProduct } from '~/data/products'
-import { deleteOffer, listCustomers, listOffers, saveOffer, setOfferStatus, type OfferInput } from '~/services/admin/api'
+import { branchDirectory, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: 'promotions.view' })
+definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'promotions.view' })
 useHead({ title: 'Promotions' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const { confirm } = useAdminConfirm()
 const offers = ref<AdminOffer[]>([])
-const customers = ref<Customer[]>([])
+const customers = ref<ChainCustomer[]>([])
+const branches = ref<{ id: string; name: string }[]>([])
 const loading = ref(true)
-const canManage = computed(() => auth.can('promotions.manage'))
+const canManage = computed(() => auth.can('promotions.manage') && !auth.readOnly.value)
 
 onMounted(async () => {
   try {
-    offers.value = await auth.call(listOffers)
-    if (auth.can('customers.view')) customers.value = await auth.call(listCustomers)
+    ;[offers.value, branches.value] = await Promise.all([auth.call(listOffers), auth.call(branchDirectory)])
+    if (auth.can('customers.view')) customers.value = await auth.call(listChainCustomers)
   } catch (e) {
     notify.error(e)
   } finally {
@@ -38,11 +39,13 @@ function describe(rule: OfferRule) {
 }
 const expired = (o: AdminOffer) => Date.parse(o.expiresAt) < Date.now()
 const audienceText = (o: AdminOffer) => (o.audience === 'all' ? 'All customers' : o.audience === 'new' ? 'New customers' : `${o.customerIds.length} selected`)
+const branchText = (o: AdminOffer) => (o.branchIds.length ? o.branchIds.map((id) => branches.value.find((b) => b.id === id)?.name ?? id).join(', ') : 'All branches')
 
 const columns: TableColumn[] = [
   { key: 'code', label: 'Offer', sortable: true, value: (o: AdminOffer) => `${o.code} ${o.title}` },
   { key: 'rule', label: 'Rule', value: (o: AdminOffer) => describe(o.rule) },
   { key: 'audience', label: 'Audience', value: (o: AdminOffer) => audienceText(o) },
+  { key: 'branches', label: 'Branches', value: (o: AdminOffer) => branchText(o) },
   { key: 'usageCount', label: 'Used', sortable: true, align: 'right' },
   { key: 'expiresAt', label: 'Expires', sortable: true },
   { key: 'status', label: 'Status', value: (o: AdminOffer) => (expired(o) ? 'expired' : o.status) },
@@ -54,7 +57,7 @@ type Kind = OfferRule['kind']
 const editing = ref<AdminOffer | 'new' | null>(null)
 const f = reactive({
   code: '', title: '', description: '', kind: 'percent-category' as Kind, percent: 10, categoryId: 'beverages' as CategoryId, productId: products[0]!.id,
-  maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: '', audience: 'all' as AdminOffer['audience'], customerIds: [] as string[],
+  maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: '', audience: 'all' as AdminOffer['audience'], customerIds: [] as string[], branchIds: [] as string[],
 })
 const error = ref('')
 
@@ -63,12 +66,12 @@ function open(o: AdminOffer | 'new') {
   error.value = ''
   const nextYear = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)
   if (o === 'new') {
-    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [] })
+    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
     return
   }
   const r = o.rule
   Object.assign(f, {
-    code: o.code, title: o.title, description: o.description, kind: r.kind, expires: o.expiresAt.slice(0, 10), audience: o.audience, customerIds: [...o.customerIds],
+    code: o.code, title: o.title, description: o.description, kind: r.kind, expires: o.expiresAt.slice(0, 10), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
     percent: 'percent' in r ? r.percent : 10,
     categoryId: 'categoryId' in r && r.categoryId ? r.categoryId : 'beverages',
     productId: r.kind === 'percent-product' ? r.productId : products[0]!.id,
@@ -93,7 +96,7 @@ function buildRule(): OfferRule {
 
 async function save() {
   error.value = ''
-  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: `${f.expires}T23:59:59+05:30`, audience: f.audience, customerIds: f.customerIds }
+  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: `${f.expires}T23:59:59+05:30`, audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds }
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
     const o = await auth.call((t) => saveOffer(t, input, id))
@@ -140,6 +143,7 @@ async function remove(o: AdminOffer) {
       </template>
       <template #cell-rule="{ row }"><span class="text-xs text-muted">{{ describe(row.rule) }}</span></template>
       <template #cell-audience="{ row }"><span class="text-xs text-muted">{{ audienceText(row) }}</span></template>
+      <template #cell-branches="{ row }"><span class="text-xs text-muted">{{ branchText(row) }}</span></template>
       <template #cell-expiresAt="{ row }"><span class="text-xs text-muted">{{ row.expiresAt.slice(0, 10) }}</span></template>
       <template #cell-status="{ row }"><AdminBadge :value="expired(row) ? 'expired' : row.status" /></template>
       <template #cell-actions="{ row }">
@@ -181,6 +185,13 @@ async function remove(o: AdminOffer) {
           <label v-if="f.kind === 'fixed-off'"><span class="field-label">Discount (Rs.)</span><input v-model="f.amountRs" class="field" inputmode="decimal"></label>
           <label><span class="field-label">Minimum spend (Rs.)</span><input v-model="f.minRs" class="field" inputmode="decimal"></label>
         </template>
+        <fieldset v-if="branches.length > 1 || !auth.isChainLevel.value" class="sm:col-span-2">
+          <legend class="field-label">Runs at</legend>
+          <div class="flex flex-wrap gap-3 text-sm">
+            <label v-if="auth.isChainLevel.value" class="flex items-center gap-2"><input type="checkbox" class="accent-hela-green" :checked="!f.branchIds.length" @change="f.branchIds = []"> All branches</label>
+            <label v-for="b in branches" :key="b.id" class="flex items-center gap-2"><input v-model="f.branchIds" type="checkbox" :value="b.id" class="accent-hela-green"> {{ b.name }}</label>
+          </div>
+        </fieldset>
         <fieldset class="sm:col-span-2">
           <legend class="field-label">Who gets it</legend>
           <div class="flex flex-wrap gap-3 text-sm">
