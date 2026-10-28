@@ -1,0 +1,110 @@
+<script setup lang="ts">
+import { AVATAR_OPTIONS } from '~/composables/useAvatar'
+
+const { avatar, select } = useAvatar()
+const xp = useStoreExperience()
+const { show } = useToasts()
+const panel = ref<HTMLElement | null>(null)
+
+const ready = computed(() => xp.phase.value === 'welcome')
+
+function choose(kind: (typeof AVATAR_OPTIONS)[number]['kind']) {
+  select(kind)
+  show(`${kind === 'male' ? 'Male' : 'Female'} avatar selected`)
+}
+
+function enter() {
+  if (!avatar.value || !ready.value) return
+  xp.enter()
+}
+
+/** Keep the 3D composition centred in the space the panel leaves free. */
+function updateOffset() {
+  const el = panel.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const w = window.innerWidth
+  const h = window.innerHeight
+  if (w >= 1024) xp.setWelcomeOffset((r.right + 8) / (2 * w), 0)
+  else xp.setWelcomeOffset(0, Math.min(0.32, (h - r.top) / (2 * h)) * 0.9)
+}
+
+let observer: ResizeObserver | null = null
+onMounted(() => {
+  observer = new ResizeObserver(updateOffset)
+  if (panel.value) observer.observe(panel.value)
+  window.addEventListener('resize', updateOffset)
+  updateOffset()
+})
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  window.removeEventListener('resize', updateOffset)
+})
+watch(() => xp.phase.value, (p) => p === 'welcome' && nextTick(updateOffset))
+
+const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
+</script>
+
+<template>
+  <aside
+    class="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex p-3 sm:p-4 lg:inset-y-0 lg:right-auto lg:left-0 lg:w-[31rem] lg:items-center lg:p-6 xl:left-6"
+    aria-labelledby="welcome-title"
+  >
+    <div
+      ref="panel"
+      class="pointer-events-auto max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-3xl bg-warm-white/97 p-5 shadow-float ring-1 ring-black/5 sm:p-6 lg:p-8"
+    >
+      <BrandLogo tagline class="mb-8 hidden lg:flex" />
+
+      <p class="eyebrow">Virtual supermarket · Sri Lanka</p>
+      <h1 id="welcome-title" class="mt-2 text-2xl leading-[1.05] font-extrabold tracking-[-0.045em] text-hela-green sm:text-3xl lg:text-[2.6rem]">
+        Step into your <span class="text-hela-gold-600">everyday</span> store.
+      </h1>
+      <p class="mt-3 hidden text-[0.95rem] leading-relaxed text-muted lg:block">
+        Walk the aisles of HelaMart just like you would in person. Choose your shopper, take a cart and step through the doors.
+      </p>
+
+      <ol class="mt-5 hidden flex-wrap gap-2 lg:flex" aria-label="Your shopping journey">
+        <li v-for="(s, i) in steps" :key="s" class="chip bg-white py-1.5 text-[#456052] ring-1 ring-line">
+          <b class="grid size-5 place-items-center rounded-full bg-hela-green-50 text-[0.65rem] text-hela-green">{{ i + 1 }}</b>
+          {{ s }}
+        </li>
+      </ol>
+
+      <div class="mt-5 lg:mt-7">
+        <h2 class="text-base font-bold text-ink">Who is shopping today?</h2>
+        <p class="mt-1 text-xs leading-relaxed text-muted sm:text-[0.8rem]">
+          Pick a character for your visit — it’s only a visual preference, not information about you.
+        </p>
+        <div class="mt-3 grid grid-cols-2 gap-3" role="group" aria-label="Choose an avatar">
+          <AvatarCard
+            v-for="o in AVATAR_OPTIONS"
+            :key="o.kind"
+            :kind="o.kind"
+            :label="o.label"
+            :description="o.description"
+            :selected="avatar === o.kind"
+            :portrait="xp.portraits.value[o.kind]"
+            @select="choose(o.kind)"
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="btn-primary mt-4 h-13 w-full text-[0.95rem]"
+        :disabled="!avatar || !ready"
+        @click="enter"
+      >
+        <AppIcon name="door" :size="19" />
+        {{ !ready ? 'Preparing the store…' : avatar ? 'Enter HelaMart' : 'Choose an avatar to enter' }}
+        <AppIcon v-if="avatar && ready" name="arrow-right" :size="18" />
+      </button>
+
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted">
+        <span>No sign-up needed. You can change avatar anytime.</span>
+        <NuxtLink to="/browse" class="font-semibold text-hela-green underline-offset-4 hover:underline">Shop without 3D</NuxtLink>
+      </div>
+    </div>
+  </aside>
+</template>

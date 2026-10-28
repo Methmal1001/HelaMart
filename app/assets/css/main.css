@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ theme */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Brand — do not change. */
+  --color-hela-green: #174d38;
+  --color-hela-gold: #e1c987;
+
+  /* Supporting palette. */
+  --color-hela-green-900: #0f3526;
+  --color-hela-green-700: #1d5b42;
+  --color-hela-green-50: #eef4ef;
+  --color-hela-gold-600: #a58236;
+  --color-hela-gold-100: #f6eed6;
+  --color-cream: #f7f5ef;
+  --color-warm-white: #fbfaf6;
+  --color-ink: #17352a;
+  --color-muted: #5f6f66;
+  --color-line: #e2e6df;
+
+  --shadow-card: 0 1px 2px rgb(23 53 42 / 0.06), 0 8px 24px -6px rgb(23 53 42 / 0.12);
+  --shadow-float: 0 2px 6px rgb(23 53 42 / 0.08), 0 18px 48px -12px rgb(23 53 42 / 0.28);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ------------------------------------------------------------------ base */
+@layer base {
+  html,
+  body {
+    background: var(--color-cream);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  /* Clear, consistent keyboard focus on every interactive element. */
+  :focus-visible {
+    outline: 3px solid var(--color-hela-gold);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+}
+
+/* ------------------------------------------------------------------ components */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition duration-200 select-none disabled:cursor-not-allowed disabled:opacity-45;
+}
+@utility btn-primary {
+  @apply btn bg-hela-green text-white shadow-[0_8px_18px_-6px_rgb(23_77_56/0.55)] hover:bg-hela-green-900 active:translate-y-px;
+}
+@utility btn-gold {
+  @apply btn bg-hela-gold text-hela-green-900 hover:bg-[#d9bd6f] active:translate-y-px;
+}
+@utility btn-ghost {
+  @apply btn bg-white text-ink ring-1 ring-line hover:bg-hela-green-50 hover:ring-[#cfd9d1];
+}
+@utility btn-icon {
+  @apply inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-ink ring-1 ring-line transition hover:bg-hela-green-50;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+}
+@utility hud-surface {
+  @apply bg-white/92 shadow-card ring-1 ring-black/5 backdrop-blur-sm;
+}
+@utility eyebrow {
+  @apply text-[0.7rem] font-bold tracking-[0.18em] text-[#53735f] uppercase;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
