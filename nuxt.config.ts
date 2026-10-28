@@ -43,6 +43,47 @@ export default defineNuxtConfig({
       // Google OAuth Web client ID. Empty → simulated Google sign-in for testing.
       // Set via env: NUXT_PUBLIC_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
       googleClientId: '',
+      // Prototype helper that shows the 2FA code on the admin sign-in screen.
+      // MUST be false in production: NUXT_PUBLIC_ADMIN_DEMO_MODE=false
+      adminDemoMode: true,
+    },
+  },
+
+  routeRules: {
+    // Baseline security headers for every page.
+    '/**': {
+      headers: {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+        'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      },
+    },
+    // Back office: client-rendered only, never cached or indexed.
+    '/admin/**': {
+      ssr: false,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Robots-Tag': 'noindex, nofollow',
+        'X-Frame-Options': 'DENY',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+      },
+    },
+    '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } },
+  },
+
+  // A strict Content-Security-Policy in production builds (dev needs inline/eval for HMR).
+  $production: {
+    routeRules: {
+      '/admin/**': {
+        headers: {
+          'Content-Security-Policy':
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+          'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
+        },
+      },
     },
   },
 

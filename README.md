@@ -61,6 +61,34 @@ function maps to one endpoint (`/auth/login`, `/auth/google`, `/auth/refresh`, `
 HttpOnly cookie set by the server, and prices/offers must be re-validated server-side (the mock
 already re-prices orders with `priceCart`).
 
+## Admin panel (`/admin`)
+
+Back office with its own sign-in (password → 6-digit two-factor code → forced password change for
+new/reset accounts). Sample data is seeded in this browser and can be reset from Settings.
+
+| Account | Email | Password |
+|---|---|---|
+| **Super Admin** | `superadmin@helamart.test` | `Super@HelaMart2026` |
+| Admin | `admin@helamart.test` | `Admin@HelaMart2026` |
+| Store Manager / Inventory Clerk / Support | `manager@` · `stock@` · `support@helamart.test` | `Staff@HelaMart2026` |
+
+In prototype mode the 2FA screen shows the current code (stands in for an authenticator app);
+set `NUXT_PUBLIC_ADMIN_DEMO_MODE=false` to hide it.
+
+Modules: Dashboard · Orders (incl. live storefront orders) · Products & stock · Categories ·
+Customers · Promotions · Tasks · Staff · Roles & permissions · Audit log · Settings · My account.
+
+Security model: 20 granular permissions grouped into roles; Super Admin (everything) and Admin
+(everything except security/store settings) are built in; custom roles get a seniority level —
+staff can only manage people/roles below them and can never grant permissions they don't hold;
+at least one Super Admin must remain. Every page is guarded by route middleware and every API call
+re-checks the session and permission. Sensitive actions (staff, roles, refunds, blocking customers,
+settings) require the password again (valid 5 min). Sessions: 10-minute access tokens, rotating
+refresh tokens with reuse detection, inactivity sign-out with a warning, absolute session limit,
+browser-session-only cookie scoped to `/admin`, cross-tab sign-out. Lockout after repeated failed
+sign-ins, a full audit log (exportable to CSV), and `noindex` / `no-store` / anti-framing headers
+(+ a strict CSP in production builds).
+
 ## Controls
 
 Desktop: **WASD / arrows** walk · **Q/E, ←/→** turn · **Shift** faster · **drag** to look ·

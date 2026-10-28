@@ -6,12 +6,13 @@ import { isQualityLevel } from '~/composables/useStoreExperience'
  * Restores the cart, avatar and quality preference from localStorage after
  * hydration (avoids SSR/client markup mismatches), then keeps them saved.
  */
-export default defineNuxtPlugin((nuxtApp) => {
+export default defineNuxtPlugin(() => {
   const { lines } = useCart()
   const { avatar } = useAvatar()
   const { quality } = useStoreExperience()
 
-  nuxtApp.hook('app:mounted', () => {
+  // After hydration has fully finished (incl. async layouts) so restored state never causes mismatches.
+  onNuxtReady(() => {
     const savedCart = readStorage(STORAGE_KEYS.cart, isCartLines)
     if (savedCart && !lines.value.length) lines.value = savedCart
     const savedAvatar = readStorage(STORAGE_KEYS.avatar, isAvatarKind)

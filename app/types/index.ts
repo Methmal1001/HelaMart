@@ -155,6 +155,17 @@ export type IconName =
   | 'cash'
   | 'receipt'
   | 'printer'
+  | 'shield'
+  | 'users'
+  | 'grid'
+  | 'clipboard'
+  | 'history'
+  | 'package'
+  | 'edit'
+  | 'refresh'
+  | 'key'
+  | 'copy'
+  | 'menu'
 
 // ------------------------------------------------------------------ auth
 
