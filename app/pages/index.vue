@@ -33,6 +33,13 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
+    <!-- Account / login is available before entering too. -->
+    <Transition leave-active-class="pointer-events-none transition duration-500" leave-to-class="opacity-0">
+      <div v-if="phase === 'welcome'" class="absolute top-3 right-3 z-20 sm:top-4 sm:right-4">
+        <AccountButton />
+      </div>
+    </Transition>
+
     <Transition
       enter-active-class="transition duration-500 ease-[cubic-bezier(.2,.8,.2,1)]"
       leave-active-class="pointer-events-none transition duration-500 ease-in"

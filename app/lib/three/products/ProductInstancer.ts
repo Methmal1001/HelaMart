@@ -234,6 +234,11 @@ export class ProductInstancer {
     }
   }
 
+  /** Shared unit geometry for a package shape (reused for products shown in the cart). */
+  geometryFor(shape: ProductShape): ShapeGeometry {
+    return this.geometries[shape]
+  }
+
   productIdFor(mesh: THREE.Object3D, instanceId: number): string | null {
     const ids = mesh.userData.productIds as string[] | undefined
     return ids?.[instanceId] ?? null

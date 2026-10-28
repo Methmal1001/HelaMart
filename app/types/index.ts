@@ -144,3 +144,149 @@ export type IconName =
   | 'alert'
   | 'user'
   | 'eye'
+  | 'eye-off'
+  | 'logout'
+  | 'tag'
+  | 'gift'
+  | 'lock'
+  | 'truck'
+  | 'store'
+  | 'card'
+  | 'cash'
+  | 'receipt'
+  | 'printer'
+
+// ------------------------------------------------------------------ auth
+
+export type AuthProvider = 'password' | 'google'
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  provider: AuthProvider
+  phone?: string
+  /** Hex colour used for the initials avatar when there is no picture. */
+  avatarColor?: string
+  pictureUrl?: string
+}
+
+/** Tokens issued by the auth API (mock now, real backend later). */
+export interface AuthTokens {
+  /** Short-lived JWT sent with API calls. */
+  accessToken: string
+  /** Long-lived opaque token used only to obtain a new access token (rotated on every use). */
+  refreshToken: string
+  accessExpiresAt: number
+  refreshExpiresAt: number
+  /** "Keep me signed in" — persistent cookie instead of a browser-session cookie. */
+  remember: boolean
+}
+
+export interface AuthResult {
+  user: User
+  tokens: AuthTokens
+}
+
+// ------------------------------------------------------------------ offers & pricing
+
+export type OfferRule =
+  /** % off every product in a category. */
+  | { kind: 'percent-category'; categoryId: CategoryId; percent: number; maxDiscountCents?: number }
+  /** % off one specific product. */
+  | { kind: 'percent-product'; productId: string; percent: number }
+  /** Buy N, get M free (per product line). */
+  | { kind: 'bxgy'; categoryId?: CategoryId; productIds?: string[]; buy: number; get: number }
+  /** Fixed amount off the order above a minimum spend. */
+  | { kind: 'fixed-off'; amountCents: number; minSpendCents: number }
+  /** Delivery fee waived above a minimum spend. */
+  | { kind: 'free-delivery'; minSpendCents: number }
+
+export interface Offer {
+  id: string
+  code: string
+  title: string
+  description: string
+  rule: OfferRule
+  /** ISO date-time. */
+  expiresAt: string
+}
+
+export interface PricedLine {
+  productId: string
+  quantity: number
+  unitPriceCents: number
+  lineTotalCents: number
+  discountCents: number
+  finalCents: number
+  /** Offer applied to this line, if any. */
+  offerId?: string
+}
+
+export interface AppliedOffer {
+  offer: Offer
+  discountCents: number
+  scope: 'items' | 'order' | 'delivery'
+}
+
+export interface UnmetOffer {
+  offer: Offer
+  hint: string
+}
+
+export interface PriceBreakdown {
+  lines: PricedLine[]
+  itemCount: number
+  subtotalCents: number
+  itemDiscountCents: number
+  orderDiscountCents: number
+  deliveryFeeCents: number
+  deliveryDiscountCents: number
+  totalDiscountCents: number
+  /** Value of the collected items after item + order discounts (excludes delivery). */
+  itemsTotalCents: number
+  totalCents: number
+  applied: AppliedOffer[]
+  unmet: UnmetOffer[]
+}
+
+// ------------------------------------------------------------------ checkout & orders
+
+export type FulfilmentMethod = 'delivery' | 'pickup'
+export type PaymentMethod = 'cod' | 'card'
+
+export interface DeliveryDetails {
+  method: FulfilmentMethod
+  fullName: string
+  phone: string
+  address: string
+  city: string
+  slot: string
+  notes: string
+}
+
+export interface CardDetails {
+  name: string
+  number: string
+  expiry: string
+  cvc: string
+}
+
+export interface OrderLine extends PricedLine {
+  name: string
+  size: string
+}
+
+export interface Order {
+  id: string
+  number: string
+  createdAt: string
+  userId: string
+  customerName: string
+  customerEmail: string
+  lines: OrderLine[]
+  breakdown: PriceBreakdown
+  delivery: DeliveryDetails
+  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' }
+  status: 'confirmed'
+}

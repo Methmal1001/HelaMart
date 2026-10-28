@@ -64,7 +64,7 @@ const enterFrom = computed(() =>
   <Teleport to="body">
     <Transition
       enter-active-class="transition-opacity duration-200"
-      leave-active-class="transition-opacity duration-200"
+      leave-active-class="pointer-events-none transition-opacity duration-200"
       enter-from-class="opacity-0"
       leave-to-class="opacity-0"
     >
@@ -72,7 +72,7 @@ const enterFrom = computed(() =>
     </Transition>
     <Transition
       enter-active-class="transition-transform duration-300 ease-[cubic-bezier(.2,.8,.2,1)]"
-      leave-active-class="transition-transform duration-200 ease-in"
+      leave-active-class="pointer-events-none transition-transform duration-200 ease-in"
       :enter-from-class="enterFrom"
       :leave-to-class="enterFrom"
     >

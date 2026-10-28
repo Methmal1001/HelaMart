@@ -54,6 +54,7 @@ onMounted(async () => {
     xp.attach(engine)
     xp.viewMode.value = 'third'
     await engine.init()
+    syncCart()
   } catch (err) {
     console.error('[HelaMart] 3D store failed to start', err)
     xp.phase.value = 'error'
@@ -72,6 +73,37 @@ onBeforeUnmount(() => {
 
 watch(avatar, (kind) => kind && engine?.selectAvatar(kind))
 watch(ui.overlayOpen, (open) => engine?.setInputEnabled(!open))
+
+// Collected items ride in the 3D cart, with the running total shown above it.
+const { lines, itemCount } = useCart()
+const bill = useBill()
+function syncCart() {
+  const b = bill.value
+  engine?.setCartContents(lines.value, {
+    count: b.itemCount,
+    total: formatLKR(b.itemsTotalCents),
+    savings: b.itemDiscountCents + b.orderDiscountCents ? formatLKR(b.itemDiscountCents + b.orderDiscountCents) : undefined,
+  })
+}
+watch(bill, syncCart, { deep: true })
+
+// Pushing the cart into the checkout area opens the billing process automatically.
+const { startCheckout } = useCheckout()
+const { show } = useToasts()
+let checkoutArmed = true
+watch(
+  () => xp.player.value?.sectionId,
+  (id) => {
+    if (id !== 'checkout') {
+      checkoutArmed = true
+      return
+    }
+    if (!checkoutArmed || xp.phase.value !== 'inside' || !itemCount.value || ui.overlayOpen.value) return
+    checkoutArmed = false
+    show('You’ve reached the checkout counters — let’s bill your items.')
+    void startCheckout('Log in to pay for the items in your cart.')
+  },
+)
 
 // Locate a product requested from elsewhere (e.g. the catalogue page).
 watch(

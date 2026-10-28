@@ -3,7 +3,9 @@ import { getProduct } from '~/data/products'
 
 const xp = useStoreExperience()
 const ui = useStoreUi()
-const { itemCount, subtotalCents, lastAdded } = useCart()
+const { itemCount, lastAdded } = useCart()
+const bill = useBill()
+const { startCheckout } = useCheckout()
 
 const isTouch = ref(false)
 const showHint = ref(true)
@@ -66,7 +68,20 @@ async function locate(id: string) {
         </span>
       </div>
 
+      <!-- Nudge toward the checkout counters once something is in the cart. -->
+      <div
+        v-if="itemCount && section?.id !== 'checkout'"
+        class="pointer-events-auto absolute top-[7.4rem] left-1/2 hidden -translate-x-1/2 items-center gap-2 rounded-full bg-hela-green/92 py-1.5 pr-1.5 pl-4 text-xs font-semibold whitespace-nowrap text-white shadow-card sm:top-[4.1rem] sm:flex"
+      >
+        <AppIcon name="receipt" :size="14" class="text-hela-gold" />
+        Push your cart to the checkout counters to pay
+        <button type="button" class="rounded-full bg-hela-gold px-3 py-1 font-bold text-hela-green-900 hover:bg-[#d9bd6f]" @click="startCheckout()">
+          Checkout now
+        </button>
+      </div>
+
       <div class="pointer-events-auto flex items-center gap-2">
+        <AccountButton compact />
         <button type="button" class="btn-icon hud-surface sm:w-auto sm:gap-2 sm:px-3.5" aria-label="Browse aisles list" @click="ui.openPanel('browse')">
           <AppIcon name="list" :size="19" />
           <span class="hidden text-sm font-semibold sm:inline">Browse</span>
@@ -82,7 +97,7 @@ async function locate(id: string) {
           @click="ui.openPanel('cart')"
         >
           <AppIcon name="cart" :size="19" />
-          <span class="hidden tabular-nums sm:inline">{{ formatLKR(subtotalCents) }}</span>
+          <span class="hidden tabular-nums sm:inline">{{ formatLKR(bill.itemsTotalCents) }}</span>
           <span
             v-if="itemCount"
             class="absolute -top-1.5 -right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-hela-gold px-1 text-[0.68rem] font-extrabold text-hela-green-900 ring-2 ring-white"

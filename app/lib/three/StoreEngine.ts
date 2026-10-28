@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import type { AvatarKind, ExperiencePhase, QualityLevel } from '~/types'
+import type { AvatarKind, CartLine, ExperiencePhase, QualityLevel } from '~/types'
 import { getSection, sectionAt, STORE } from '~/data/storeLayout'
 import { StaticBatch } from './batch'
 import { CollisionWorld } from './colliders'
@@ -11,6 +11,7 @@ import { buildFixtures } from './builders/fixtures'
 import { AutoDoors } from './builders/doors'
 import { Avatar } from './builders/avatar'
 import { createCart, disposeCartResources } from './builders/cart'
+import { CartContents } from './builders/cartContents'
 import { ProductInstancer, type ProductSlot } from './products/ProductInstancer'
 import { InputController } from './controls/InputController'
 import { QUALITY_PRESETS, type EngineCallbacks, type EngineOptions } from './types'
@@ -62,6 +63,7 @@ export class StoreEngine {
   private doors!: AutoDoors
   private avatars = {} as Record<AvatarKind, Avatar>
   private cart!: THREE.Group
+  private contents?: CartContents
   private input!: InputController
   private sun!: THREE.DirectionalLight
   private pmrem?: THREE.PMREMGenerator
@@ -267,6 +269,8 @@ export class StoreEngine {
     this.cart = createCart()
     this.cart.position.copy(CART_SPOT)
     this.scene.add(this.cart)
+    this.contents = new CartContents((shape) => this.products.geometryFor(shape))
+    this.contents.attachTo(this.cart)
     // A couple of spare carts lined up at the entrance.
     for (const dx of [0.8, 1.6]) {
       const spare = createCart()
@@ -420,6 +424,11 @@ export class StoreEngine {
     return true
   }
 
+  /** Show the collected products in the 3D cart and the running total above it. */
+  setCartContents(lines: CartLine[], label: { count: number; total: string; savings?: string }) {
+    this.contents?.update(lines, label)
+  }
+
   setMoveInput(x: number, y: number) {
     this.input?.setJoystick(x, y)
   }
@@ -488,6 +497,7 @@ export class StoreEngine {
     this.renderer?.setAnimationLoop(null)
     this.resizeObserver?.disconnect()
     this.input?.dispose()
+    this.contents?.dispose()
     this.products.dispose()
     this.scene.traverse((o) => {
       if (o.userData.shared) return
@@ -619,6 +629,7 @@ export class StoreEngine {
     if (this.phase === 'welcome') this.updateWelcome(dt)
     else if (this.phase === 'entering') this.updateEntering(dt)
     else if (this.phase === 'inside') this.updateInside(dt, now)
+    this.contents?.tick(dt)
 
     if (this.pin?.visible) {
       const until = this.pin.userData.until as number

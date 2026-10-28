@@ -3,6 +3,8 @@ useHead({ title: 'Your cart — HelaMart' })
 
 const { items, itemCount, clear } = useCart()
 const { show } = useToasts()
+const { startCheckout } = useCheckout()
+const { isAuthenticated } = useAuth()
 
 function clearCart() {
   clear()
@@ -46,12 +48,13 @@ function clearCart() {
         <aside class="rounded-3xl bg-white p-6 ring-1 ring-line lg:sticky lg:top-24" aria-labelledby="summary-h">
           <h2 id="summary-h" class="mb-4 text-base font-bold text-ink">Order summary</h2>
           <CartSummary />
-          <button type="button" class="btn-primary mt-6 h-12 w-full" disabled aria-describedby="checkout-note">
-            Proceed to checkout
+          <button type="button" class="btn-primary mt-6 h-12 w-full" @click="startCheckout()">
+            <AppIcon :name="isAuthenticated ? 'receipt' : 'lock'" :size="18" />
+            {{ isAuthenticated ? 'Proceed to checkout' : 'Log in to checkout' }}
           </button>
-          <p id="checkout-note" class="mt-3 flex gap-2 rounded-xl bg-hela-gold-100 p-3 text-xs leading-relaxed text-[#6d5622]">
-            <AppIcon name="info" :size="16" class="mt-px" />
-            Checkout, delivery slots and payment arrive in the next phase. Your cart is saved on this device until then.
+          <p class="mt-3 flex gap-2 rounded-xl bg-hela-gold-100 p-3 text-xs leading-relaxed text-[#6d5622]">
+            <AppIcon name="info" :size="16" class="mt-px shrink-0" />
+            Prototype checkout: orders and payments are simulated with test data — no real charges are made.
           </p>
         </aside>
       </div>

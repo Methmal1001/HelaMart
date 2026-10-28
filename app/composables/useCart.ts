@@ -1,9 +1,8 @@
 import type { CartLine, CartLineView } from '~/types'
 import { getProduct } from '~/data/products'
+import { DELIVERY_FEE_CENTS } from '~/utils/pricing'
 
 export const MAX_LINE_QUANTITY = 99
-/** Placeholder until delivery zones/pricing come from the backend. */
-export const DELIVERY_FEE_CENTS = 35000
 
 export function isCartLines(value: unknown): value is CartLine[] {
   return (

@@ -25,6 +25,42 @@ Other scripts: `npm run build` · `npm run preview` · `npm run typecheck`
 | `/browse` | Accessible, non-3D catalogue of every aisle (also the WebGL fallback) |
 | `/cart`   | Cart review with totals; checkout is a placeholder for Phase 2 |
 
+## Accounts, offers & checkout (test data)
+
+Browsing and collecting items work as a guest; **paying requires login**. Pushing the cart into
+the checkout area (or pressing *Checkout*) opens the billing flow, asking you to log in first.
+
+| Test login | Password | Offers |
+|---|---|---|
+| `nimal@helamart.test` | `Password@123` | 10% off Beverages (max Rs. 1,000) · Rs. 500 off over Rs. 5,000 · one expired offer |
+| `kavindi@helamart.test` | `Password@123` | Free delivery over Rs. 3,000 · Buy 2 get 1 free on Snacks · 15% off produce |
+| `amal@helamart.test` | `Password@123` | none |
+| Google: Shanika Fernando | — | Rs. 300 off over Rs. 2,000 · 20% off Ceylon tea |
+| Google: Ruwan Jayawardena / any other email | — | none |
+
+**Registering:** the login dialog has a *Create account* tab (name, email, optional Sri Lankan
+mobile, password with strength rules, terms). New accounts — and first-time Google sign-ins with
+any email — are stored in this browser's mock database and get a *Rs. 250 off over Rs. 1,500*
+welcome offer. Registering an email that already exists (or belongs to a Google account) is
+refused with a pointer to the right sign-in method.
+
+Test cards: `4242 4242 4242 4242` succeeds · `4000 0000 0000 0002` is declined (any future expiry/CVC).
+
+**Session handling:** 15-minute JWT access token + rotating refresh token (30 days with *Keep me
+signed in*, otherwise a browser-session cookie capped at 12 hours). Tokens refresh silently before
+expiry, rotation is serialised across tabs, reused refresh tokens revoke the session, five failed
+logins lock the account for a minute, and an ended session signs the user out.
+
+**Google sign-in:** without configuration a simulated account chooser is used. To use the real
+Google button set `NUXT_PUBLIC_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com`; the ID token is
+then sent to `authService.loginWithGoogle`, which the backend must verify with Google.
+
+**Replacing the mock backend:** `app/services/*Service.ts` are the only files that change — each
+function maps to one endpoint (`/auth/login`, `/auth/google`, `/auth/refresh`, `/auth/logout`,
+`/auth/me`, `/me/offers`, `/orders`). With a real backend, the refresh token should live in an
+HttpOnly cookie set by the server, and prices/offers must be re-validated server-side (the mock
+already re-prices orders with `priceCart`).
+
 ## Controls
 
 Desktop: **WASD / arrows** walk · **Q/E, ←/→** turn · **Shift** faster · **drag** to look ·

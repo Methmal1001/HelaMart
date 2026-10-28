@@ -2,6 +2,7 @@
 const { itemCount } = useCart()
 const { openPanel } = useStoreUi()
 const { hasEntered } = useStoreExperience()
+const bill = useBill()
 </script>
 
 <template>
@@ -11,7 +12,7 @@ const { hasEntered } = useStoreExperience()
         <BrandLogo size="sm" tagline />
       </NuxtLink>
       <nav class="flex items-center gap-2" aria-label="Main">
-        <NuxtLink to="/" class="btn-ghost hidden h-10 sm:inline-flex">
+        <NuxtLink to="/" class="btn-ghost hidden h-10 md:inline-flex">
           <AppIcon name="door" :size="17" />
           {{ hasEntered ? 'Back to 3D store' : 'Enter 3D store' }}
         </NuxtLink>
@@ -19,9 +20,10 @@ const { hasEntered } = useStoreExperience()
           <AppIcon name="list" :size="17" />
           <span class="hidden sm:inline">Aisles</span>
         </NuxtLink>
+        <AccountButton compact />
         <button type="button" class="btn-primary relative h-10" :aria-label="`Open cart, ${itemCount} items`" @click="openPanel('cart')">
           <AppIcon name="cart" :size="18" />
-          <span class="hidden sm:inline">Cart</span>
+          <span class="hidden tabular-nums sm:inline">{{ formatLKR(bill.itemsTotalCents) }}</span>
           <span
             v-if="itemCount"
             class="absolute -top-1.5 -right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-hela-gold px-1 text-[0.68rem] font-extrabold text-hela-green-900 ring-2 ring-white"

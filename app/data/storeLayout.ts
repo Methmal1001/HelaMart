@@ -69,7 +69,8 @@ const gondolaLen = Math.abs(GONDOLA.zEnd - GONDOLA.zStart)
 
 export const sections: StoreSection[] = [
   section('produce', 'produce', 'produce', { x: -11.5, z: -7.5, w: 15, d: 9 }, { x: -11.5, z: -2.8, yaw: 0 }),
-  section('checkout', 'checkout', undefined, { x: 11.5, z: -5, w: 13, d: 6 }, { x: 11.5, z: -9.5, yaw: Math.PI }),
+  // Arriving here with items opens the checkout automatically; the viewpoint is the mouth of lane 2.
+  section('checkout', 'checkout', undefined, { x: 11.5, z: -5, w: 13, d: 7 }, { x: 8.75, z: -7.9, yaw: Math.PI }),
   ...GONDOLA_X.map((x, i) =>
     section(
       `aisle-${i + 1}`,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 const { panel, closePanel } = useStoreUi()
 const { items, itemCount } = useCart()
+const { startCheckout } = useCheckout()
+const { isAuthenticated } = useAuth()
 
 const open = computed(() => panel.value === 'cart')
 
@@ -31,10 +33,14 @@ async function review() {
 
     <template v-if="items.length" #footer>
       <CartSummary />
-      <div class="mt-4 grid grid-cols-2 gap-2">
+      <button type="button" class="btn-primary mt-4 h-12 w-full" @click="startCheckout()">
+        <AppIcon :name="isAuthenticated ? 'receipt' : 'lock'" :size="18" />
+        {{ isAuthenticated ? 'Checkout' : 'Log in to checkout' }}
+      </button>
+      <div class="mt-2 grid grid-cols-2 gap-2">
         <button type="button" class="btn-ghost" @click="closePanel">Keep shopping</button>
-        <button type="button" class="btn-primary" @click="review">
-          Review cart
+        <button type="button" class="btn-ghost" @click="review">
+          Full cart
           <AppIcon name="arrow-right" :size="16" />
         </button>
       </div>
