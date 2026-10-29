@@ -1,5 +1,5 @@
 import type { CartLine, CartLineView } from '~/types'
-import { getProduct } from '~/data/products'
+import { catalogVersion, getProduct } from '~/data/products'
 import { DELIVERY_FEE_CENTS } from '~/utils/pricing'
 
 export const MAX_LINE_QUANTITY = 99
@@ -26,14 +26,15 @@ export function useCart() {
   const lines = useState<CartLine[]>('cart-lines', () => [])
   const lastAdded = useState<{ productId: string; at: number } | null>('cart-last-added', () => null)
 
-  const items = computed<CartLineView[]>(() =>
-    lines.value.flatMap((line) => {
+  const items = computed<CartLineView[]>(() => {
+    void catalogVersion.value // re-evaluate when the shopper switches supermarket
+    return lines.value.flatMap((line) => {
       const product = getProduct(line.productId)
       // Drop lines for products that no longer exist in the catalogue.
       if (!product) return []
       return [{ ...line, product, lineTotalCents: product.priceCents * line.quantity }]
-    }),
-  )
+    })
+  })
 
   const itemCount = computed(() => items.value.reduce((sum, l) => sum + l.quantity, 0))
   const subtotalCents = computed(() => items.value.reduce((sum, l) => sum + l.lineTotalCents, 0))
@@ -44,8 +45,10 @@ export function useCart() {
     return lines.value.find((l) => l.productId === productId)?.quantity ?? 0
   }
 
-  function add(productId: string, quantity = 1) {
-    if (!getProduct(productId) || quantity <= 0) return
+  /** Returns false when the product isn't sold here or is out of stock at the branch. */
+  function add(productId: string, quantity = 1): boolean {
+    const product = getProduct(productId)
+    if (!product || quantity <= 0 || product.stock === 0) return false
     const existing = lines.value.find((l) => l.productId === productId)
     if (existing) {
       existing.quantity = Math.min(MAX_LINE_QUANTITY, existing.quantity + quantity)
@@ -53,6 +56,7 @@ export function useCart() {
       lines.value.push({ productId, quantity: Math.min(MAX_LINE_QUANTITY, quantity) })
     }
     lastAdded.value = { productId, at: Date.now() }
+    return true
   }
 
   function setQuantity(productId: string, quantity: number) {

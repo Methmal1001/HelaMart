@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getProduct } from '~/data/products'
+import { catalogVersion, getProduct } from '~/data/products'
 import { getCategory } from '~/data/categories'
 
 const { selectedProductId, closeProduct, openPanel } = useStoreUi()
@@ -8,7 +8,12 @@ const { show } = useToasts()
 const { phase, goToProduct } = useStoreExperience()
 const route = useRoute()
 
-const product = computed(() => (selectedProductId.value ? getProduct(selectedProductId.value) ?? null : null))
+const product = computed(() => {
+  void catalogVersion.value
+  return selectedProductId.value ? getProduct(selectedProductId.value) ?? null : null
+})
+const outOfStock = computed(() => product.value?.stock === 0)
+const maxQty = computed(() => (product.value?.stock !== undefined ? Math.max(1, product.value.stock) : 99))
 const category = computed(() => (product.value ? getCategory(product.value.categoryId) : null))
 const quantity = ref(1)
 const added = ref(false)
@@ -21,9 +26,13 @@ watch(selectedProductId, () => {
 
 function addToCart() {
   if (!product.value) return
-  add(product.value.id, quantity.value)
+  const qty = Math.min(quantity.value, maxQty.value)
+  if (!add(product.value.id, qty)) {
+    show(`Sorry — ${product.value.name} is out of stock at this branch.`, 'error')
+    return
+  }
   added.value = true
-  show(`Added ${quantity.value} × ${product.value.name} to cart`, 'success')
+  show(`Added ${qty} × ${product.value.name} to cart`, 'success')
 }
 
 function viewCart() {
@@ -56,16 +65,21 @@ async function findInStore() {
 
       <p class="mt-4 text-3xl font-extrabold tracking-tight tabular-nums text-hela-green">{{ formatLKR(product.priceCents) }}</p>
       <p class="mt-2 text-sm leading-relaxed text-muted">{{ product.description }}</p>
+      <p v-if="outOfStock" class="mt-3 flex items-center gap-1.5 rounded-lg bg-[#FBEAEA] px-3 py-2 text-sm font-semibold text-[#8A2E2E]">
+        <AppIcon name="alert" :size="15" />Out of stock at this branch
+      </p>
+      <p v-else-if="product.stock !== undefined && product.stock <= 5" class="mt-3 text-sm font-semibold text-[#7A5600]">Only {{ product.stock }} left at this branch</p>
       <p class="mt-3 flex items-center gap-1.5 text-xs text-muted">
         <AppIcon name="info" :size="14" />
-        Sample product with an illustrative price.
+        {{ product.image ? 'Photo supplied by the supermarket.' : 'Sample product — photo coming soon.' }} Prices are illustrative.
       </p>
 
       <div class="mt-6 flex items-center gap-3">
         <QuantityStepper v-model="quantity" :label="product.name" />
-        <button type="button" class="btn-primary h-11 flex-1" data-autofocus @click="addToCart">
+        <button type="button" class="btn-primary h-11 flex-1" data-autofocus :disabled="outOfStock" @click="addToCart">
           <AppIcon :name="added ? 'check' : 'cart'" :size="18" />
-          {{ added ? 'Add again' : 'Add to cart' }} · {{ formatLKR(product.priceCents * quantity) }}
+          <template v-if="outOfStock">Out of stock</template>
+          <template v-else>{{ added ? 'Add again' : 'Add to cart' }} · {{ formatLKR(product.priceCents * quantity) }}</template>
         </button>
       </div>
 

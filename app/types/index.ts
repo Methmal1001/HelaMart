@@ -62,9 +62,14 @@ export interface Product {
   accent: string
   description: string
   badge?: 'Fresh' | 'Local' | 'New' | 'Popular'
-  /** Optional real image or model paths — used automatically once provided. */
+  /**
+   * Product photo: `media:<id>` (uploaded by the supermarket), an http(s) URL, or
+   * absent — then generated packaging artwork is shown instead.
+   */
   image?: string
   model?: string
+  /** Units available at the shopper's selected branch (undefined = not tracked). */
+  stock?: number
 }
 
 export interface CartLine {

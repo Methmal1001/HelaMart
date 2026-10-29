@@ -10,6 +10,8 @@ export default defineNuxtPlugin(() => {
   const { lines } = useCart()
   const { avatar } = useAvatar()
   const { quality } = useStoreExperience()
+  const stores = useStoreSelection()
+  const router = useRouter()
 
   // After hydration has fully finished (incl. async layouts) so restored state never causes mismatches.
   onNuxtReady(() => {
@@ -18,6 +20,8 @@ export default defineNuxtPlugin(() => {
     const savedAvatar = readStorage(STORAGE_KEYS.avatar, isAvatarKind)
     if (savedAvatar && !avatar.value) avatar.value = savedAvatar
     quality.value = readStorage(STORAGE_KEYS.quality, isQualityLevel) ?? suggestQuality()
+    // Storefront pages show the chosen supermarket's own catalogue (prices, photos, stock).
+    if (!stores.choice.value && !router.currentRoute.value.path.startsWith('/admin')) stores.refresh()
 
     watch(lines, (v) => writeStorage(STORAGE_KEYS.cart, v), { deep: true })
     watch(avatar, (v) => v && writeStorage(STORAGE_KEYS.avatar, v))

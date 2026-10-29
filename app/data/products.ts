@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type { CategoryId, Product, ProductShape } from '~/types'
 
 /**
@@ -137,7 +138,27 @@ export const products: Product[] = [
   ]),
 ]
 
-const byId = new Map(products.map((p) => [p.id, p]))
+/**
+ * The master sample catalogue (never modified). Supermarkets start from it;
+ * the admin seed must always read this, not the live registry below.
+ */
+export const masterProducts: readonly Product[] = products.map((p) => ({ ...p }))
+
+/**
+ * Live catalogue registry: the selected supermarket's own products, prices,
+ * photos and branch stock. `products` is updated in place so every consumer
+ * (cart, pricing, 3D shelves, aisle list) sees the same data.
+ */
+let byId = new Map(products.map((p) => [p.id, p]))
+
+/** Bumped whenever the active catalogue changes (reactive consumers depend on it). */
+export const catalogVersion = ref(0)
+
+export function setActiveCatalog(list: Product[]) {
+  products.splice(0, products.length, ...list)
+  byId = new Map(products.map((p) => [p.id, p]))
+  catalogVersion.value++
+}
 
 export function getProduct(id: string): Product | undefined {
   return byId.get(id)

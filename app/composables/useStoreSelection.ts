@@ -1,4 +1,6 @@
 import { listStores, type PublicStore } from '~/services/partnerService'
+import { getStoreCatalog } from '~/services/catalogService'
+import { getProduct, setActiveCatalog } from '~/data/products'
 
 export interface StoreChoice {
   storeId: string
@@ -17,11 +19,23 @@ function isChoice(v: unknown): v is StoreChoice {
 /**
  * Which verified supermarket + branch the shopper is buying from.
  * Only approved, active supermarkets are offered; a saved choice that has
- * since been restricted/banned/closed is dropped automatically.
+ * since been restricted/banned/closed is dropped automatically. Choosing a
+ * store loads its own catalogue (products, prices, photos, branch stock).
  */
 export function useStoreSelection() {
   const choice = useState<StoreChoice | null>('store-choice', () => null)
   const stores = useState<PublicStore[]>('store-list', () => [])
+  const { lines, remove } = useCart()
+  const { show } = useToasts()
+
+  /** Load the chosen branch's catalogue and drop cart items it doesn't sell. */
+  function applyCatalog(announce = false) {
+    if (!choice.value) return
+    setActiveCatalog(getStoreCatalog(choice.value.storeId, choice.value.branchId))
+    const missing = lines.value.filter((l) => !getProduct(l.productId))
+    for (const l of missing) remove(l.productId)
+    if (announce && missing.length) show(`${missing.length} item${missing.length === 1 ? '' : 's'} not sold at ${choice.value.storeName} ${missing.length === 1 ? 'was' : 'were'} removed from your cart.`)
+  }
 
   /** Client-only: refresh the list of verified stores and validate the saved choice. */
   function refresh() {
@@ -36,6 +50,7 @@ export function useStoreSelection() {
       choice.value = first && b ? { storeId: first.id, branchId: b.id, storeName: first.name, branchName: b.name, brandColor: first.brandColor } : null
     }
     if (choice.value) writeStorage(KEY, choice.value)
+    applyCatalog()
   }
 
   function select(storeId: string, branchId: string) {
@@ -44,6 +59,7 @@ export function useStoreSelection() {
     if (!store || !branch || branch.status !== 'open') return
     choice.value = { storeId, branchId, storeName: store.name, branchName: branch.name, brandColor: store.brandColor }
     writeStorage(KEY, choice.value)
+    applyCatalog(true)
   }
 
   return { choice, stores, refresh, select }

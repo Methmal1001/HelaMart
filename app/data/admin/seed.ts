@@ -15,10 +15,9 @@ import type {
   TenantStatus,
 } from '~/types/admin'
 import type { CartLine } from '~/types'
-import { products } from '~/data/products'
+import { masterProducts as products } from '~/data/products'
 import { categories } from '~/data/categories'
 import { mockAccounts } from '~/data/mockUsers'
-import { getProduct } from '~/data/products'
 import { DISTRICTS } from '~/data/sriLanka'
 import { priceCart } from '~/utils/pricing'
 import { BRANCH_MANAGER_PERMISSIONS, PLATFORM_PERMISSIONS, ROLE_IDS, TENANT_PERMISSIONS } from './permissions'
@@ -54,6 +53,8 @@ export interface SeedInput {
 
 export function buildSeed({ hashPassword, now }: SeedInput) {
   const r = rng(2026)
+  const masterById = new Map(products.map((p) => [p.id, p]))
+  const getProduct = (id: string) => masterById.get(id)
   const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length)]!
 
   // ------------------------------------------------------------------ supermarkets

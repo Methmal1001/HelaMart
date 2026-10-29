@@ -45,7 +45,20 @@ export interface MfaChallenge {
   verified?: boolean
 }
 
+/** Uploaded product photo (blob lives in the media store, metadata here). */
+export interface MediaRecord {
+  id: string
+  tenantId: string
+  uploadedBy: string
+  bytes: number
+  type: string
+  width: number
+  height: number
+  createdAt: string
+}
+
 export interface AdminDb {
+  media: MediaRecord[]
   tenants: Tenant[]
   branches: Branch[]
   roles: Role[]
@@ -70,7 +83,7 @@ let cache: AdminDb | null = null
 
 function seed(): AdminDb {
   const s = buildSeed({ hashPassword, now: Date.now() })
-  return { ...s, sessions: [], challenges: [], loginAttempts: {}, applicationLog: [], importedOrderIds: [] }
+  return { ...s, media: [], sessions: [], challenges: [], loginAttempts: {}, applicationLog: [], importedOrderIds: [] }
 }
 
 /** Bring in shoppers who registered and orders placed through the live storefront. */
@@ -126,6 +139,7 @@ export function readAdminDb(): AdminDb {
   } catch {
     db = cache ?? seed()
   }
+  db.media ??= []
   syncStorefront(db)
   cache = db
   return db

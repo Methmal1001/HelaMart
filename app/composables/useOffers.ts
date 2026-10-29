@@ -1,6 +1,7 @@
 import type { FulfilmentMethod, Offer } from '~/types'
 import type { Ref } from 'vue'
 import { listMyOffers } from '~/services/offerService'
+import { catalogVersion } from '~/data/products'
 
 /** Promotions for the signed-in shopper (loaded by the auth plugin on login). */
 export function useOffers() {
@@ -33,7 +34,8 @@ export function useBill(fulfilment?: Ref<FulfilmentMethod>) {
   const { lines } = useCart()
   const { offers } = useOffers()
   const { isAuthenticated } = useAuth()
-  return computed(() =>
-    priceCart(lines.value, isAuthenticated.value ? offers.value : [], { fulfilment: fulfilment?.value ?? 'delivery' }),
-  )
+  return computed(() => {
+    void catalogVersion.value
+    return priceCart(lines.value, isAuthenticated.value ? offers.value : [], { fulfilment: fulfilment?.value ?? 'delivery' })
+  })
 }

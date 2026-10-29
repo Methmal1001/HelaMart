@@ -2,7 +2,9 @@
 import type { AdminProduct, TableColumn } from '~/types/admin'
 import type { CategoryId, ProductShape } from '~/types'
 import { categories, getCategory } from '~/data/categories'
-import { adjustStock, branchDirectory, createProduct, listProducts, setProductStatus, updateProduct, type ProductInput } from '~/services/admin/tenantApi'
+import { adjustStock, branchDirectory, createProduct, listProducts, setProductStatus, updateProduct, uploadProductImage, type ProductInput } from '~/services/admin/tenantApi'
+import { resolveImageUrl } from '~/services/mock/mediaStore'
+import { ImageRejected, prepareProductImage, type PreparedImage } from '~/utils/imageProcessing'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'products.view' })
 useHead({ title: 'Products & stock' })
@@ -68,9 +70,69 @@ const form = reactive({ name: '', brand: '', categoryId: 'staples' as CategoryId
 const formError = ref('')
 const saving = ref(false)
 
+// ---- product photo (shown on the 3D shelves and in the shop)
+const photo = reactive({
+  /** Saved `media:<id>`, or null for none. */
+  saved: null as string | null,
+  pending: null as PreparedImage | null,
+  file: null as File | null,
+  preview: null as string | null,
+  removeBackground: true,
+  busy: false,
+  error: '',
+})
+const photoInput = ref<HTMLInputElement | null>(null)
+
+function discardPending() {
+  if (photo.pending) URL.revokeObjectURL(photo.pending.url)
+  photo.pending = null
+}
+
+async function resetPhoto(image?: string) {
+  discardPending()
+  Object.assign(photo, { saved: image ?? null, file: null, preview: null, busy: false, error: '' })
+  if (image) {
+    const url = await resolveImageUrl(image)
+    if (photo.saved === image && !photo.pending) photo.preview = url
+  }
+}
+
+async function processPhoto() {
+  if (!photo.file) return
+  photo.busy = true
+  photo.error = ''
+  try {
+    const prepared = await prepareProductImage(photo.file, { removeBackground: photo.removeBackground })
+    discardPending()
+    photo.pending = prepared
+    photo.preview = prepared.url
+  } catch (e) {
+    photo.error = e instanceof ImageRejected ? e.message : 'That file could not be read as a photo.'
+  } finally {
+    photo.busy = false
+  }
+}
+
+function onPhotoChosen(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  photo.file = file
+  void processPhoto()
+}
+
+function removePhoto() {
+  discardPending()
+  Object.assign(photo, { saved: null, file: null, preview: null, error: '' })
+}
+
+watch(editing, (v) => !v && discardPending())
+
 function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
+  void resetPhoto(p === 'new' ? undefined : p.image)
   if (p === 'new') Object.assign(form, { name: '', brand: '', categoryId: 'staples', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
   else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), badge: p.badge ?? '' })
 }
@@ -84,6 +146,13 @@ async function save() {
   }
   saving.value = true
   try {
+    if (photo.busy) throw new Error('Wait for the photo to finish processing.')
+    if (photo.pending) {
+      const { blob, width, height } = photo.pending
+      photo.saved = await auth.call((t) => uploadProductImage(t, blob, { width, height }))
+      discardPending()
+    }
+    input.image = photo.saved
     if (editing.value === 'new') {
       const p = await auth.call((t) => createProduct(t, input))
       products.value = [p, ...products.value]
@@ -158,7 +227,7 @@ async function saveStock() {
       <template #cell-name="{ row }">
         <div class="flex items-center gap-3">
           <ProductThumb :product="row" class="size-10 shrink-0" rounded="rounded-lg" />
-          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}</span></span>
+          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span></span></span>
         </div>
       </template>
       <template #cell-categoryId="{ row }"><span class="text-muted">{{ getCategory(row.categoryId).shortName }}</span></template>
@@ -192,8 +261,34 @@ async function saveStock() {
         <label><span class="field-label">Badge</span><select v-model="form.badge" class="field"><option value="">None</option><option>Fresh</option><option>Local</option><option>New</option><option>Popular</option></select></label>
         <label><span class="field-label">Reorder level (per branch)</span><input v-model.number="form.reorderLevel" type="number" min="0" class="field"></label>
         <label class="sm:col-span-2"><span class="field-label">Description</span><textarea v-model="form.description" rows="2" maxlength="300" class="field h-auto py-2" /></label>
+        <fieldset class="sm:col-span-2" :aria-busy="photo.busy">
+          <legend class="field-label">Product photo (shown on the shop shelves)</legend>
+          <div class="flex flex-col gap-4 sm:flex-row">
+            <div class="relative grid size-36 shrink-0 place-items-center overflow-hidden rounded-xl ring-1 ring-line" style="background: repeating-conic-gradient(#eeeae0 0 25%, #fff 0 50%) 0 0 / 16px 16px">
+              <img v-if="photo.preview" :src="photo.preview" :alt="`Photo of ${form.name || 'the product'}`" class="absolute inset-0 size-full object-contain p-2" data-testid="photo-preview">
+              <span v-else class="px-3 text-center text-xs text-muted">No photo yet — shoppers see generated packaging art</span>
+            </div>
+            <div class="min-w-0 flex-1 space-y-2 text-sm">
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn-ghost h-9 ring-1 ring-line" :disabled="photo.busy" @click="photoInput?.click()">
+                  <AppIcon name="plus" :size="14" />{{ photo.preview ? 'Replace photo' : 'Upload photo' }}
+                </button>
+                <button v-if="photo.preview" type="button" class="btn-ghost h-9 text-[#8A2E2E]" :disabled="photo.busy" @click="removePhoto">Remove</button>
+                <input ref="photoInput" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" aria-label="Product photo file" data-testid="photo-input" @change="onPhotoChosen">
+              </div>
+              <label class="flex items-center gap-2 text-xs">
+                <input v-model="photo.removeBackground" type="checkbox" class="size-4 accent-hela-green" @change="processPhoto">
+                Remove plain background (white or light studio backdrop)
+              </label>
+              <p v-if="photo.busy" class="text-xs text-muted">Processing photo…</p>
+              <p v-else-if="photo.error" class="text-xs text-[#8A2E2E]" role="alert">{{ photo.error }}</p>
+              <p v-else-if="photo.pending" class="text-xs text-hela-green">Ready ({{ photo.pending.width }}×{{ photo.pending.height }}{{ photo.pending.backgroundRemoved ? ', background removed' : '' }}) — uploaded when you save.</p>
+              <p class="text-xs leading-relaxed text-muted">Use a real front-of-pack photo: JPG, PNG or WebP, at least 200 px, up to 8 MB. Shoot straight on against a plain background; it is cropped and resized automatically.</p>
+            </div>
+          </div>
+        </fieldset>
         <fieldset class="grid grid-cols-3 gap-3 sm:col-span-2">
-          <legend class="field-label">3D package (used on the shelves)</legend>
+          <legend class="field-label">Package shape &amp; colours (used for art when there is no photo, and in freezers / bins)</legend>
           <label><span class="sr-only">Shape</span><select v-model="form.shape" class="field" aria-label="Package shape"><option v-for="s in SHAPES" :key="s" :value="s">{{ s }}</option></select></label>
           <label class="flex items-center gap-2 text-xs">Colour <input v-model="form.color" type="color" class="h-9 w-12 rounded border-0"></label>
           <label class="flex items-center gap-2 text-xs">Label <input v-model="form.accent" type="color" class="h-9 w-12 rounded border-0"></label>

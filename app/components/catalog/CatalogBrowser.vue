@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CategoryId } from '~/types'
 import { categories } from '~/data/categories'
-import { products } from '~/data/products'
+import { catalogVersion, products } from '~/data/products'
 import { sectionForCategory } from '~/data/storeLayout'
 
 /**
@@ -19,6 +19,7 @@ const query = ref('')
 const active = ref<CategoryId | 'all'>('all')
 
 const filtered = computed(() => {
+  void catalogVersion.value // follow the selected supermarket's catalogue
   const q = query.value.trim().toLowerCase()
   return products.filter(
     (p) =>
@@ -34,8 +35,8 @@ const grouped = computed(() =>
 )
 
 function quickAdd(id: string, name: string) {
-  add(id, 1)
-  show(`Added ${name} to cart`, 'success')
+  if (add(id, 1)) show(`Added ${name} to cart`, 'success')
+  else show(`Sorry — ${name} is out of stock at this branch.`, 'error')
 }
 
 function aisleLabel(categoryId: CategoryId) {
@@ -105,6 +106,8 @@ function aisleLabel(categoryId: CategoryId) {
                 {{ p.name }}
               </button>
               <p class="truncate text-xs text-muted">{{ p.brand }} · {{ p.size }}</p>
+              <p v-if="p.stock === 0" class="text-xs font-semibold text-[#8A2E2E]">Out of stock at this branch</p>
+              <p v-else-if="p.stock !== undefined && p.stock <= 5" class="text-xs font-semibold text-[#7A5600]">Only {{ p.stock }} left</p>
               <div class="mt-auto flex items-center justify-between gap-2 pt-2">
                 <span class="text-sm font-extrabold tabular-nums text-hela-green">{{ formatLKR(p.priceCents) }}</span>
                 <div class="flex items-center gap-1.5">
@@ -120,8 +123,9 @@ function aisleLabel(categoryId: CategoryId) {
                   </button>
                   <button
                     type="button"
-                    class="flex h-9 items-center gap-1 rounded-lg bg-hela-green px-3 text-xs font-bold text-white transition hover:bg-hela-green-900"
+                    class="flex h-9 items-center gap-1 rounded-lg bg-hela-green px-3 text-xs font-bold text-white transition hover:bg-hela-green-900 disabled:cursor-not-allowed disabled:opacity-40"
                     :aria-label="`Add ${p.name} to cart`"
+                    :disabled="p.stock === 0"
                     @click="quickAdd(p.id, p.name)"
                   >
                     <AppIcon name="plus" :size="14" />

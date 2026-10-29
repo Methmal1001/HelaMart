@@ -167,7 +167,7 @@ export class StoreEngine {
     await nextTick()
 
     this.progress(0.7, 'Arranging products')
-    this.products.build(this.slots, preset.depthRows)
+    await this.products.build(this.slots, preset.depthRows, this.renderer.capabilities.getMaxAnisotropy())
     this.scene.add(this.products.group)
     await nextTick()
 
@@ -472,6 +472,13 @@ export class StoreEngine {
     this.welcomeOffset = { x, y }
   }
 
+  /** Restock the shelves, e.g. after the shopper switches supermarket/branch or photos change. */
+  async rebuildProducts() {
+    if (this.disposed || !this.renderer) return
+    this.products.setHighlight(null)
+    await this.products.build(this.slots, QUALITY_PRESETS[this.quality].depthRows, this.renderer.capabilities.getMaxAnisotropy())
+  }
+
   setQuality(q: QualityLevel) {
     if (q === this.quality) return
     this.quality = q
@@ -482,7 +489,7 @@ export class StoreEngine {
     this.sun.shadow.mapSize.set(preset.shadowMapSize, preset.shadowMapSize)
     this.sun.shadow.map?.dispose()
     this.sun.shadow.map = null
-    this.products.build(this.slots, preset.depthRows)
+    void this.rebuildProducts()
     this.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material
       if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true))

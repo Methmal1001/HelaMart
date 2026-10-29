@@ -95,6 +95,24 @@ seniority levels (you can only manage people/roles below you and only grant perm
 password step-up for sensitive actions, 10-minute rotating sessions with inactivity sign-out,
 lockouts, forced password change for temporary passwords, full audit trail per supermarket and
 platform-wide, security headers / no-index / no-store on `/admin`, strict CSP in production.
+
+### Product photos on the shelves
+
+The 3D shelves show each product as a picture (faced up in rows, with a yellow price tag on the
+shelf edge), using the chosen supermarket's own catalogue, prices and branch stock. Out-of-stock
+items leave the shelf.
+
+- **Real photos:** in *Products & stock → Edit/Add product → Product photo*, a chain admin (or anyone
+  with `products.manage`) uploads a JPG/PNG/WebP front-of-pack photo (≥ 200 px, ≤ 8 MB). It is
+  checked by file signature, has its plain studio background removed (optional), is cropped and
+  resized, and is stored for that supermarket only. It then appears on the shelves, in the catalogue,
+  in the cart and in the product sheet.
+- **No photo yet:** generated packaging artwork is shown instead, and the admin table flags the
+  product with **No photo**. The sample products ship without photos, because real brand packshots
+  are copyrighted. Photos must come from each supermarket.
+- In this prototype, photos are kept in the browser's IndexedDB (`helamart-media`). A real backend
+  would store them in object storage / a CDN.
+
 ## Controls
 
 Desktop: **WASD / arrows** walk · **Q/E, ←/→** turn · **Shift** faster · **drag** to look ·

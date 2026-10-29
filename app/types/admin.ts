@@ -216,7 +216,7 @@ export interface AdminOrder {
   source: 'storefront' | 'sample'
 }
 
-export interface AdminProduct extends Product {
+export interface AdminProduct extends Omit<Product, 'stock'> {
   tenantId: string
   /** Stock held at each branch. */
   stock: Record<string, number>

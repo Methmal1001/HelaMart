@@ -1,12 +1,16 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
 import type { CategoryId, OfferRule, ProductShape } from '~/types'
 import { ApiError } from '../apiError'
-import { randomId } from '../mock/server'
+import { latency, randomId } from '../mock/server'
+import { putMedia } from '../mock/mediaStore'
+import { sniffImageType } from '~/utils/imageProcessing'
+import { readAdminDb, writeAdminDb } from './db'
 import {
   allowedBranches,
   allowedBranchIds,
   assertBranchAccess,
   audit,
+  authenticate,
   isChainLevel,
   ownedOrNotFound,
   requirePermission,
@@ -227,9 +231,17 @@ export interface ProductInput {
   accent: string
   badge?: AdminProduct['badge']
   reorderLevel: number
+  /** `media:<id>` from uploadProductImage, or null to remove the photo. */
+  image?: string | null
 }
 
-function validateProduct(input: ProductInput) {
+function validateProduct(input: ProductInput, ctx?: AdminContext) {
+  if (input.image) {
+    // Only this supermarket's own uploads may be attached (no hot-linking other tenants' media).
+    const id = /^media:([a-f0-9]{8,64})$/.exec(input.image)?.[1]
+    const rec = id && ctx?.db.media.find((m) => m.id === id)
+    if (!rec || rec.tenantId !== ctx?.tenant?.id) throw new ApiError(422, 'That photo isn’t available. Upload it again.')
+  }
   if (sanitize(input.name, 80).length < 2) throw new ApiError(422, 'Enter a product name.')
   if (!Number.isInteger(input.priceCents) || input.priceCents <= 0 || input.priceCents > 100_000_000) throw new ApiError(422, 'Enter a valid price.')
   if (!/^#[0-9a-f]{6}$/i.test(input.color) || !/^#[0-9a-f]{6}$/i.test(input.accent)) throw new ApiError(422, 'Pick valid package colours.')
@@ -240,9 +252,10 @@ export function createProduct(token: string, input: ProductInput): Promise<Admin
   return run(token, (ctx) => {
     requirePermission(ctx, 'products.manage')
     const t = requireWritable(ctx)
-    validateProduct(input)
+    validateProduct(input, ctx)
     const product: AdminProduct = {
       ...input,
+      image: input.image || undefined,
       id: `${sanitize(input.name, 40).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomId(2)}`,
       tenantId: t.id,
       name: sanitize(input.name, 80),
@@ -262,11 +275,12 @@ export function updateProduct(token: string, id: string, input: ProductInput): P
   return run(token, (ctx) => {
     requirePermission(ctx, 'products.manage')
     requireWritable(ctx)
-    validateProduct(input)
+    validateProduct(input, ctx)
     const p = ownedOrNotFound(ctx, ctx.db.products.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Product')
     const changes: string[] = []
     if (p.priceCents !== input.priceCents) changes.push(`price ${money(p.priceCents)} → ${money(input.priceCents)}`)
-    Object.assign(p, { ...input, name: sanitize(input.name, 80), brand: sanitize(input.brand, 60), description: sanitize(input.description, 300), updatedAt: nowIso() })
+    if ((p.image ?? null) !== (input.image ?? null)) changes.push(input.image ? 'new product photo' : 'photo removed')
+    Object.assign(p, { ...input, image: input.image || undefined, name: sanitize(input.name, 80), brand: sanitize(input.brand, 60), description: sanitize(input.description, 300), updatedAt: nowIso() })
     audit(ctx.db, ctx, 'product.update', p.name, changes.join('; ') || 'Details updated')
     return p
   })
@@ -300,6 +314,28 @@ export function adjustStock(token: string, id: string, branchId: string, delta: 
     audit(ctx.db, ctx, 'inventory.adjust', p.name, `${branch?.name}: ${before} → ${p.stock[branchId]} (${delta > 0 ? '+' : ''}${delta}) · ${sanitize(reason, 120)}`)
     return { ...p, stock: Object.fromEntries(Object.entries(p.stock).filter(([b]) => allowedBranchIds(ctx).has(b))) }
   })
+}
+
+/**
+ * POST /media/product-images — store a processed product photo.
+ * The file signature is re-checked server-side; only WebP/PNG/JPEG under 2 MB are accepted.
+ */
+export async function uploadProductImage(token: string, blob: Blob, size: { width: number; height: number }): Promise<string> {
+  await latency(250, 600)
+  const ctx = authenticate(token)
+  requirePermission(ctx, 'products.manage')
+  const t = requireWritable(ctx)
+  if (blob.size > 2 * 1024 * 1024) throw new ApiError(413, 'The processed photo is too large (max 2 MB).')
+  const kind = await sniffImageType(blob)
+  if (!kind) throw new ApiError(415, 'Only JPG, PNG or WebP photos are accepted.')
+  if (size.width < 100 || size.height < 100) throw new ApiError(422, 'The photo is too small.')
+  const id = randomId(12)
+  await putMedia(id, blob)
+  const db = readAdminDb()
+  db.media.push({ id, tenantId: t.id, uploadedBy: ctx.staff.id, bytes: blob.size, type: `image/${kind}`, width: size.width, height: size.height, createdAt: nowIso() })
+  audit(db, ctx, 'media.upload', 'Product photo', `${Math.round(blob.size / 1024)} KB · ${size.width}×${size.height}`)
+  writeAdminDb(db)
+  return `media:${id}`
 }
 
 // ================================================================== categories
