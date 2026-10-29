@@ -152,6 +152,17 @@ export interface BrandingRequest {
   reviewNote?: string
 }
 
+/** A branch's delivery area: drawn on a map plus the named cities / villages it serves. */
+export interface DeliveryCoverage {
+  /** Polygon corners as [lat, lng]. */
+  polygon: [number, number][]
+  /** Cities and villages inside the area (matched against the shopper's town). */
+  places: string[]
+  areaKm2: number
+  updatedAt: string
+  updatedBy: string
+}
+
 export type BranchStatus = 'open' | 'temporarily_closed' | 'closed'
 
 export interface Branch {
@@ -170,6 +181,11 @@ export interface Branch {
   /** Map pin (resolved from the town when the branch is saved). */
   lat?: number
   lng?: number
+  /**
+   * Home-delivery area, set by the supermarket on a map. Shoppers outside it
+   * can't choose this branch, and branches without one aren't shown at all.
+   */
+  coverage?: DeliveryCoverage
   createdAt: string
 }
 

@@ -13,8 +13,23 @@ function choose(kind: (typeof AVATAR_OPTIONS)[number]['kind']) {
   show(`${kind === 'male' ? 'Male' : 'Female'} avatar selected`)
 }
 
+const { area, openFinder } = useShoppingArea()
+const { choice, choiceServesArea } = useStoreSelection()
+
+/** Before entering: the shopper's area must be known and the chosen supermarket must deliver there. */
+const blocker = computed<null | 'area' | 'coverage' | 'store'>(() => {
+  if (!area.value) return 'area'
+  if (!choice.value) return 'store'
+  return choiceServesArea.value ? null : 'coverage'
+})
+
 function enter() {
   if (!avatar.value || !ready.value) return
+  if (blocker.value === 'area') return openFinder('Choose your area first — we’ll check which supermarkets deliver to you.')
+  if (blocker.value) {
+    show(`${choice.value?.storeName ?? 'This supermarket'} doesn’t deliver to ${area.value!.label}. Choose one that does.`, 'error')
+    return openFinder(`${choice.value?.storeName ?? 'Your supermarket'} doesn’t deliver to ${area.value!.label} — pick one that does.`)
+  }
   xp.enter()
 }
 
@@ -101,10 +116,13 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         @click="enter"
       >
         <AppIcon name="door" :size="19" />
-        {{ !ready ? 'Preparing the store…' : avatar ? 'Enter HelaMart' : 'Choose an avatar to enter' }}
+        {{ !ready ? 'Preparing the store…' : !avatar ? 'Choose an avatar to enter' : blocker === 'area' ? 'Choose your area to enter' : blocker ? 'Pick a store that delivers here' : 'Enter HelaMart' }}
         <AppIcon v-if="avatar && ready" name="arrow-right" :size="18" />
       </button>
 
+      <p v-if="avatar && ready && blocker === 'coverage'" class="mt-2 flex items-start gap-1.5 text-xs font-semibold text-[#8A2E2E]" role="alert" data-testid="enter-blocked">
+        <AppIcon name="alert" :size="14" class="mt-px shrink-0" />{{ choice?.storeName }} doesn’t deliver to {{ area?.label }}. Choose another supermarket or change your area.
+      </p>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted">
         <span>No sign-up needed. You can change avatar anytime.</span>
         <NuxtLink to="/browse" class="font-semibold text-hela-green underline-offset-4 hover:underline">Shop without 3D</NuxtLink>

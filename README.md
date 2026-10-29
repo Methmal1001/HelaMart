@@ -109,6 +109,22 @@ and whether the branch delivers to them (each branch's delivery radius).
   them to any device. New accounts give their town at sign-up. At first sign-in, the area already
   chosen (or the town of the chosen branch) is saved automatically. Change it any time.
 - Changing the area switches to the nearest supermarket in it if the current one is outside.
+
+**Delivery areas (strict):** each branch's home-delivery area is set by the supermarket in
+*Branches → Delivery area*. The admin draws the area on a map (click to add corners, drag to move,
+right-click to delete, or start from a circle) and lists the **cities and villages** inside it
+(suggested from the drawn shape; villages can be typed in). Rules enforced by the API: at least 3
+corners, no crossing edges, ≤ 2,500 km², branch inside the area, at least one place.
+
+- A branch without a delivery area is **hidden from shoppers**. New branches open the editor straight away.
+- A supermarket is "available" to a shopper only if a branch's area contains the shopper's area,
+  or lists their town. Others are shown greyed out ("not delivering to …").
+- **Before entering the 3D store**, the shopper must have an area and the chosen supermarket must
+  deliver there. Otherwise *Enter* is replaced by a prompt to pick one that does.
+- At checkout, home delivery is limited to the branch's listed places. The order API rejects
+  delivery outside the area (store pickup is still allowed).
+- Maps: set `NUXT_PUBLIC_GOOGLE_MAPS_API_KEY` to draw on **Google Maps** (restrict the key to your
+  domains). Without a key, the editor uses **OpenStreetMap** (Leaflet) with the same controls.
 - Branches are pinned from their town when a chain admin saves them (offline Sri Lanka gazetteer in
   `app/data/places.ts`). The sample data has 11 verified chains across the island.
 

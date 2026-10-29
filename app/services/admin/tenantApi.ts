@@ -5,6 +5,8 @@ import { latency, randomId } from '../mock/server'
 import { putMedia } from '../mock/mediaStore'
 import { sniffImageType } from '~/utils/imageProcessing'
 import { locateBranch } from '~/data/places'
+import { cleanPlaces, coverageProblems } from '~/lib/coverage'
+import { maxReachKm, polygonAreaKm2 } from '~/lib/geo'
 import { readAdminDb, writeAdminDb, type MediaRecord } from './db'
 import {
   allowedBranches,
@@ -146,6 +148,30 @@ export function saveBranch(token: string, input: BranchInput, id?: string): Prom
     ctx.db.branches.push(b)
     for (const p of inTenant(ctx, ctx.db.products)) p.stock[b.id] = 0
     audit(ctx.db, ctx, 'branch.create', b.name, `${b.city}, ${b.district}`, 'warning')
+    return b
+  })
+}
+
+/**
+ * PUT /branches/:id/coverage — the branch's home-delivery area (map polygon +
+ * named cities/villages). Required before shoppers can see the branch.
+ */
+export function saveBranchCoverage(token: string, branchId: string, input: { polygon: [number, number][]; places: string[] }): Promise<Branch> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'branches.manage')
+    requireWritable(ctx)
+    const b = ownedOrNotFound(ctx, ctx.db.branches.find((x) => x.id === branchId), 'Branch')
+    assertBranchAccess(ctx, b.id)
+    const polygon = (Array.isArray(input.polygon) ? input.polygon : []).map((p) => [Math.round(Number(p?.[0]) * 1e5) / 1e5, Math.round(Number(p?.[1]) * 1e5) / 1e5] as [number, number])
+    const places = cleanPlaces(Array.isArray(input.places) ? input.places : [])
+    const pin = locateBranch(b)
+    const problems = coverageProblems(polygon, places, pin)
+    if (problems.length) throw new ApiError(422, problems[0]!)
+    const areaKm2 = Math.round(polygonAreaKm2(polygon) * 10) / 10
+    b.coverage = { polygon, places, areaKm2, updatedAt: nowIso(), updatedBy: ctx.staff.name }
+    // Keep the legacy radius in step (used for display only).
+    b.deliveryRadiusKm = Math.min(50, Math.round(maxReachKm(pin.lat, pin.lng, polygon)))
+    audit(ctx.db, ctx, 'branch.coverage', b.name, `${areaKm2} km² · ${places.length} places: ${places.slice(0, 6).join(', ')}${places.length > 6 ? '…' : ''}`, 'warning')
     return b
   })
 }

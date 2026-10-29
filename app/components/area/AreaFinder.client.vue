@@ -30,8 +30,10 @@ const POPULAR = ['Colombo', 'Gampaha', 'Negombo', 'Kandy', 'Galle', 'Kurunegala'
   .filter((p): p is Place => !!p)
 const suggestions = computed(() => searchPlaces(query.value, 7))
 const ranked = computed(() => (draft.value ? rankStores(selection.stores.value, draft.value) : []))
-const inArea = computed(() => ranked.value.filter((r) => r.inArea))
-const nearestOutside = computed(() => ranked.value.filter((r) => !r.inArea).slice(0, 3))
+/** Supermarkets whose delivery area covers the chosen area. */
+const available = computed(() => ranked.value.filter((r) => r.available))
+/** Close by, but they don't deliver here. */
+const notDelivering = computed(() => ranked.value.filter((r) => !r.available && r.nearby).slice(0, 4))
 const pins = computed<MapPin[]>(() =>
   selection.stores.value.flatMap((s) =>
     s.branches.filter((b) => b.status === 'open').map((b) => ({ storeId: s.id, branchId: b.id, lat: b.lat, lng: b.lng, color: s.branding.primaryColor, label: `${s.name} · ${b.name}` })),
@@ -98,7 +100,9 @@ async function shopHere(storeId: string, branchId: string) {
 function focusStore(storeId: string) {
   focusedStore.value = focusedStore.value === storeId ? null : storeId
   const r = ranked.value.find((x) => x.store.id === storeId)
-  if (r && focusedStore.value) map?.focus(r.nearest.lat, r.nearest.lng, 10)
+  const b = r?.serving ?? r?.nearest
+  if (b && focusedStore.value) map?.focus(b.lat, b.lng, 14)
+  syncHighlight()
 }
 
 // ---- map lifecycle (only while open)
@@ -126,7 +130,13 @@ async function mountMap() {
 }
 
 function syncHighlight() {
-  map?.setHighlighted(draft.value ? new Set(inArea.value.flatMap((r) => r.branches.filter((b) => b.distanceKm <= draft.value!.radiusKm).map((b) => b.id))) : null)
+  if (!map) return
+  map.setHighlighted(draft.value ? new Set(available.value.flatMap((r) => r.branches.filter((b) => b.delivers).map((b) => b.id))) : null)
+  // Draw delivery areas: the focused supermarket's, otherwise those that deliver here.
+  const shown = focusedStore.value
+    ? ranked.value.filter((r) => r.store.id === focusedStore.value).flatMap((r) => r.branches.filter((b) => b.status === 'open').map((b) => ({ polygon: b.coverage.polygon, color: r.store.branding.primaryColor, strong: b.delivers })))
+    : available.value.flatMap((r) => r.branches.filter((b) => b.delivers).map((b) => ({ polygon: b.coverage.polygon, color: r.store.branding.primaryColor, strong: true })))
+  map.setCoverage(draft.value || focusedStore.value ? shown : [])
 }
 
 watch(
@@ -246,38 +256,41 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
             </fieldset>
 
             <p class="mt-4 text-sm font-bold text-ink" data-testid="area-count">
-              {{ inArea.length ? `${inArea.length} supermarket${inArea.length === 1 ? '' : 's'} within ${draft.radiusKm} km` : `No supermarkets within ${draft.radiusKm} km yet` }}
+              {{ available.length ? `${available.length} supermarket${available.length === 1 ? '' : 's'} deliver${available.length === 1 ? 's' : ''} to ${draft.label}` : `No supermarket delivers to ${draft.label} yet` }}
             </p>
             <ul class="mt-2 space-y-2">
-              <li v-for="r in inArea" :key="r.store.id" class="rounded-2xl bg-white ring-1 transition" :class="focusedStore === r.store.id ? 'ring-2 ring-hela-green' : 'ring-line'" :data-testid="`area-store-${r.store.id}`">
+              <li v-for="r in available" :key="r.store.id" class="rounded-2xl bg-white ring-1 transition" :class="focusedStore === r.store.id ? 'ring-2 ring-hela-green' : 'ring-line'" :data-testid="`area-store-${r.store.id}`">
                 <button type="button" class="flex w-full items-center gap-3 p-3 text-left" :aria-expanded="focusedStore === r.store.id" @click="focusStore(r.store.id)">
                   <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" />
                   <span class="min-w-0 flex-1">
                     <span class="block truncate font-bold text-ink">{{ r.store.name }}</span>
-                    <span class="block truncate text-xs text-muted">{{ r.nearest.name }} · {{ formatKm(r.nearest.distanceKm) }}</span>
+                    <span class="block truncate text-xs text-muted">{{ r.serving!.name }} · {{ formatKm(r.serving!.distanceKm) }}</span>
                   </span>
-                  <span v-if="r.nearest.delivers" class="chip shrink-0 bg-hela-green-50 text-[0.65rem] text-hela-green"><AppIcon name="truck" :size="11" />Delivers</span>
+                  <span class="chip shrink-0 bg-hela-green-50 text-[0.65rem] text-hela-green"><AppIcon name="truck" :size="11" />Delivers</span>
                 </button>
                 <div v-if="focusedStore === r.store.id" class="space-y-1.5 border-t border-line px-3 pt-2 pb-3">
                   <p v-if="r.store.branding.slogan" class="text-xs text-muted italic">“{{ r.store.branding.slogan }}”</p>
-                  <div v-for="b in r.branches.filter((x) => x.status === 'open' && x.distanceKm <= draft!.radiusKm * 1.5)" :key="b.id" class="flex items-center justify-between gap-2 rounded-xl bg-cream px-3 py-2 text-sm">
+                  <div v-for="b in r.branches.filter((x) => x.delivers)" :key="b.id" class="flex items-center justify-between gap-2 rounded-xl bg-cream px-3 py-2 text-sm">
                     <span class="min-w-0">
                       <span class="block truncate font-semibold text-ink">{{ b.name }}</span>
-                      <span class="block text-xs text-muted">{{ formatKm(b.distanceKm) }} · {{ b.delivers ? 'Home delivery to your area' : 'Pickup (outside delivery area)' }}</span>
+                      <span class="block text-xs text-muted">{{ formatKm(b.distanceKm) }} · delivers to {{ draft!.label }}</span>
                     </span>
                     <button type="button" class="btn-primary h-9 shrink-0 px-3 text-xs" :data-testid="`shop-${b.id}`" @click="shopHere(r.store.id, b.id)">Shop here</button>
                   </div>
+                  <p class="text-[0.7rem] text-muted">Shaded on the map: this supermarket’s delivery areas.</p>
                 </div>
               </li>
             </ul>
 
-            <div v-if="nearestOutside.length" class="mt-4">
-              <p class="text-xs font-bold tracking-wide text-muted uppercase">{{ inArea.length ? 'Further away' : 'Nearest supermarkets' }}</p>
+            <div v-if="notDelivering.length" class="mt-4" data-testid="not-delivering">
+              <p class="text-xs font-bold tracking-wide text-muted uppercase">Nearby, but not delivering to {{ draft.label }}</p>
               <ul class="mt-2 space-y-1.5">
-                <li v-for="r in nearestOutside" :key="r.store.id" class="flex items-center gap-3 rounded-xl bg-white/70 p-2.5 text-sm ring-1 ring-line">
-                  <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" size="size-8" />
-                  <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-ink">{{ r.store.name }}</span><span class="block text-xs text-muted">{{ r.nearest.name }} · {{ formatKm(r.nearest.distanceKm) }}</span></span>
-                  <button type="button" class="text-xs font-bold text-hela-green hover:underline" @click="shopHere(r.store.id, r.nearest.id)">Shop here</button>
+                <li v-for="r in notDelivering" :key="r.store.id" class="rounded-xl bg-white/60 ring-1 ring-line">
+                  <button type="button" class="flex w-full items-center gap-3 p-2.5 text-left text-sm" @click="focusStore(r.store.id)">
+                    <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" size="size-8" class="opacity-70" />
+                    <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-ink/80">{{ r.store.name }}</span><span class="block text-xs text-muted">{{ r.nearest.name }} · {{ formatKm(r.nearest.distanceKm) }} · not available in your area</span></span>
+                    <AppIcon name="eye" :size="15" class="shrink-0 text-muted" />
+                  </button>
                 </li>
               </ul>
             </div>

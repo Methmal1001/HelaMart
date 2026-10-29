@@ -134,6 +134,8 @@ export interface PublicBranch {
   lat: number
   lng: number
   deliveryRadiusKm: number
+  /** Where this branch delivers (map area + named places). */
+  coverage: { polygon: [number, number][]; places: string[] }
 }
 
 /** Only approved, active supermarkets are visible to shoppers. Restricted or banned ones disappear. */
@@ -147,8 +149,9 @@ export function listStores(): PublicStore[] {
       brandColor: t.brandColor,
       branding: liveBranding(t),
       branches: db.branches
-        .filter((b) => b.tenantId === t.id && b.status !== 'closed')
-        .map((b) => ({ id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours, ...pick(locateBranch(b)), deliveryRadiusKm: b.deliveryRadiusKm })),
+        // Strict: a branch is only offered once its delivery area has been set.
+        .filter((b) => b.tenantId === t.id && b.status !== 'closed' && (b.coverage?.polygon.length ?? 0) >= 3)
+        .map((b) => ({ id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours, ...pick(locateBranch(b)), deliveryRadiusKm: b.deliveryRadiusKm, coverage: { polygon: b.coverage!.polygon, places: b.coverage!.places } })),
     }))
     .filter((s) => s.branches.length)
 }

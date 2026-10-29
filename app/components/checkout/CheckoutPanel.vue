@@ -11,7 +11,15 @@ const { user, authorized, isAuthenticated } = useAuth()
 const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
-const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
+const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
+const { area } = useShoppingArea()
+/** Home delivery only goes to the cities / villages in the chosen branch's delivery area. */
+const branch = computed(() => currentStore.value?.branches.find((b) => b.id === storeChoice.value?.branchId))
+const CITIES = computed(() => [...(branch.value?.coverage.places ?? [])].sort((a, b) => a.localeCompare(b)))
+function pickCity() {
+  if (CITIES.value.includes(delivery.city)) return
+  delivery.city = area.value && CITIES.value.includes(area.value.label) ? area.value.label : (CITIES.value[0] ?? '')
+}
 
 const open = computed(() => panel.value === 'checkout')
 const step = ref<Step>('review')
@@ -21,7 +29,6 @@ const placing = ref(false)
 const error = ref('')
 const order = ref<Order | null>(null)
 
-const CITIES = ['Colombo', 'Dehiwala-Mount Lavinia', 'Sri Jayawardenepura Kotte', 'Moratuwa', 'Negombo', 'Kandy', 'Galle', 'Kurunegala', 'Matara', 'Jaffna']
 
 const slots = computed(() => {
   const day = new Intl.DateTimeFormat('en-LK', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -32,7 +39,8 @@ const slots = computed(() => {
     : [`Today (${day.format(today)}), after 2 hours`, `Tomorrow (${day.format(tomorrow)}), 9:00 AM–9:00 PM`]
 })
 
-const delivery = reactive<DeliveryDetails>({ method: 'delivery', fullName: '', phone: '', address: '', city: 'Colombo', slot: '', notes: '' })
+const delivery = reactive<DeliveryDetails>({ method: 'delivery', fullName: '', phone: '', address: '', city: '', slot: '', notes: '' })
+watch(CITIES, pickCity)
 const paymentMethod = ref<PaymentMethod>('cod')
 const card = reactive<CardDetails>({ name: '', number: '', expiry: '', cvc: '' })
 const errors = reactive<Record<string, string>>({})
@@ -50,6 +58,7 @@ watch(open, (v) => {
   refreshStores()
   if (!delivery.fullName) delivery.fullName = user.value?.name ?? ''
   if (!delivery.phone) delivery.phone = user.value?.phone ?? ''
+  pickCity()
 })
 watch(fulfilment, (m) => {
   delivery.method = m
@@ -71,7 +80,7 @@ function validateDelivery() {
   if (!/^(\+94|0)?7\d{8}$/.test(delivery.phone.replace(/[\s-]/g, ''))) errors.phone = 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.'
   if (fulfilment.value === 'delivery') {
     if (delivery.address.trim().length < 5) errors.address = 'Enter your delivery address.'
-    if (!delivery.city) errors.city = 'Choose a city.'
+    if (!delivery.city || !CITIES.value.includes(delivery.city)) errors.city = `${storeChoice.value?.branchName ?? 'This branch'} doesn’t deliver there. Choose a city in its delivery area, or store pickup.`
   }
   if (!delivery.slot) errors.slot = 'Choose a time slot.'
   return !Object.keys(errors).length
@@ -232,10 +241,12 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
             <span v-if="errors.address" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.address }}</span>
           </label>
           <label class="block">
-            <span class="mb-1.5 block text-sm font-semibold text-ink">City</span>
-            <select v-model="delivery.city" :class="inputCls">
+            <span class="mb-1.5 block text-sm font-semibold text-ink">City / village</span>
+            <select v-model="delivery.city" :class="inputCls" :aria-invalid="!!errors.city" data-testid="delivery-city">
               <option v-for="c in CITIES" :key="c" :value="c">{{ c }}</option>
             </select>
+            <span v-if="errors.city" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.city }}</span>
+            <span v-else class="mt-1 block text-xs text-muted">{{ storeChoice?.branchName }} delivers to {{ CITIES.length }} {{ CITIES.length === 1 ? 'place' : 'places' }}. Not listed? Choose store pickup or another supermarket.</span>
           </label>
         </template>
         <fieldset>

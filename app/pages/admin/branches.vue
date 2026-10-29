@@ -45,12 +45,20 @@ async function save() {
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
     const b = await auth.call((t) => saveBranch(t, { ...f, deliveryRadiusKm: Number(f.deliveryRadiusKm) }, id))
-    notify.ok(id ? `${b.name} updated` : `${b.name} branch opened`)
+    notify.ok(id ? `${b.name} updated` : `${b.name} branch opened — now set its delivery area`)
     editing.value = null
     await load()
+    // A new branch is hidden from shoppers until its delivery area is set.
+    if (!id) coverageFor.value = b
   } catch (e) {
     error.value = (e as Error).message
   }
+}
+
+const coverageFor = ref<Branch | null>(null)
+async function onCoverageSaved() {
+  coverageFor.value = null
+  await load()
 }
 
 async function changeStatus(b: Branch, status: Branch['status']) {
@@ -91,16 +99,23 @@ async function changeStatus(b: Branch, status: Branch['status']) {
           <dt class="text-muted">Team</dt><dd>{{ b.staffCount }} staff</dd>
           <dt class="text-muted">Address</dt><dd class="text-ink">{{ b.address }}</dd>
           <dt class="text-muted">Hours</dt><dd>{{ b.openingHours }}</dd>
-          <dt class="text-muted">Delivery</dt><dd>Within {{ b.deliveryRadiusKm }} km</dd>
+          <dt class="text-muted">Delivers to</dt>
+          <dd v-if="b.coverage" class="text-ink" :title="b.coverage.places.join(', ')">{{ b.coverage.places.length }} places · {{ b.coverage.areaKm2 }} km²<span class="block truncate text-xs text-muted">{{ b.coverage.places.slice(0, 4).join(', ') }}{{ b.coverage.places.length > 4 ? '…' : '' }}</span></dd>
+          <dd v-else class="font-semibold text-[#8A2E2E]" data-testid="coverage-missing">Not set — hidden from shoppers</dd>
         </dl>
         <div v-if="auth.can('branches.manage') && !auth.readOnly.value" class="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
           <button v-if="canManage" type="button" class="btn-ghost h-8 px-3 text-xs" @click="open(b)"><AppIcon name="edit" :size="14" />Edit</button>
+          <button type="button" class="btn-ghost h-8 px-3 text-xs" :class="b.coverage ? '' : 'bg-[#FBEAEA] text-[#8A2E2E]'" :data-testid="`coverage-${b.id}`" @click="coverageFor = b"><AppIcon name="map" :size="14" />Delivery area</button>
           <button v-if="b.status !== 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'open')">Re-open</button>
           <button v-if="b.status === 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'temporarily_closed')">Close temporarily</button>
           <button v-if="b.status !== 'closed' && canManage" type="button" class="btn-ghost h-8 px-3 text-xs text-[#8A2E2E]" @click="changeStatus(b, 'closed')">Close</button>
         </div>
       </article>
     </div>
+
+    <AdminModal :open="!!coverageFor" :title="`Delivery area — ${coverageFor?.name ?? ''}`" description="Draw where this branch delivers and list the cities and villages inside it. Shoppers outside this area can’t choose the branch." size="xl" @close="coverageFor = null">
+      <CoverageEditor v-if="coverageFor" :key="coverageFor.id" :branch="coverageFor" @saved="onCoverageSaved" @cancel="coverageFor = null" />
+    </AdminModal>
 
     <AdminModal :open="!!editing" :title="editing === 'new' ? 'Open a new branch' : `Edit ${f.name}`" size="lg" @close="editing = null">
       <form id="branch-form" class="grid gap-3 sm:grid-cols-2" @submit.prevent="save">
@@ -115,7 +130,6 @@ async function changeStatus(b: Branch, status: Branch['status']) {
         <label><span class="field-label">Phone</span><input v-model="f.phone" class="field" maxlength="30"></label>
         <label class="sm:col-span-2"><span class="field-label">Address</span><input v-model="f.address" class="field" maxlength="200"></label>
         <label><span class="field-label">Opening hours</span><input v-model="f.openingHours" class="field" maxlength="80"></label>
-        <label><span class="field-label">Delivery radius (km)</span><input v-model.number="f.deliveryRadiusKm" type="number" min="0" max="50" class="field"></label>
         <label class="sm:col-span-2"><span class="field-label">Branch head</span>
           <select v-model="f.managerId" class="field">
             <option value="">Not appointed yet</option>

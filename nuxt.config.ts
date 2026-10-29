@@ -43,6 +43,9 @@ export default defineNuxtConfig({
       // Google OAuth Web client ID. Empty → simulated Google sign-in for testing.
       // Set via env: NUXT_PUBLIC_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
       googleClientId: '',
+      // Google Maps JavaScript API key for drawing delivery areas. Empty → OpenStreetMap is used.
+      // Set via env: NUXT_PUBLIC_GOOGLE_MAPS_API_KEY=xxxx (restrict it to your domains in Google Cloud).
+      googleMapsApiKey: '',
       // Prototype helper that shows the 2FA code on the admin sign-in screen.
       // MUST be false in production: NUXT_PUBLIC_ADMIN_DEMO_MODE=false
       adminDemoMode: true,
@@ -80,7 +83,7 @@ export default defineNuxtConfig({
       '/admin/**': {
         headers: {
           'Content-Security-Policy':
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.googleapis.com https://*.gstatic.com https://*.google.com; connect-src 'self' https://maps.googleapis.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
           'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
         },
       },

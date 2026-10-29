@@ -21,6 +21,9 @@ import { categories } from '~/data/categories'
 import { mockAccounts } from '~/data/mockUsers'
 import { DISTRICTS } from '~/data/sriLanka'
 import { priceCart } from '~/utils/pricing'
+import { locateBranch } from '~/data/places'
+import { circlePolygon, polygonAreaKm2 } from '~/lib/geo'
+import { townsInside } from '~/lib/coverage'
 import { BRANCH_MANAGER_PERMISSIONS, PLATFORM_PERMISSIONS, ROLE_IDS, TENANT_PERMISSIONS } from './permissions'
 
 /**
@@ -313,6 +316,21 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     staffMember('stf_uvs_owner', 'Lalith Herath', 'admin@uvavalley.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_uvs', [], P.chainAdmin, { createdBy: 'stf_super' }),
   ]
   for (const b of branches) b.managerId = staff.find((s) => s.roleId === ROLE_IDS.branchManager && s.branchIds.includes(b.id))?.id
+
+  // Every sample branch gets a pin and a drawn delivery area (slightly irregular, like a real hand-drawn one).
+  for (const b of branches) {
+    const pin = locateBranch(b)
+    b.lat = pin.lat
+    b.lng = pin.lng
+    const polygon = circlePolygon(pin.lat, pin.lng, b.deliveryRadiusKm, 14, 0.14)
+    b.coverage = {
+      polygon,
+      places: [...new Set([b.city, ...townsInside(polygon)])],
+      areaKm2: Math.round(polygonAreaKm2(polygon)),
+      updatedAt: b.createdAt,
+      updatedBy: 'Sample data',
+    }
+  }
 
   // ------------------------------------------------------------------ catalogue per supermarket
   const operating = tenants.filter((t) => branchesOf(t.id).length)

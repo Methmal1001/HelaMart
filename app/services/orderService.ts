@@ -5,6 +5,8 @@ import { ApiError } from './apiError'
 import { offersForUser } from './offerService'
 import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
 import { readAdminDb } from './admin/db'
+import { findPlace } from '~/data/places'
+import { coversLocation } from '~/lib/coverage'
 
 export interface PlaceOrderRequest {
   /** Verified supermarket + branch the shopper is buying from. */
@@ -43,6 +45,12 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
   const branch = platform.branches.find((b) => b.id === req.branchId && b.tenantId === req.storeId)
   if (!store || store.status !== 'active') throw new ApiError(409, 'This supermarket isn’t taking orders on HelaMart right now. Please choose another store.', 'STORE_UNAVAILABLE')
   if (!branch || branch.status !== 'open') throw new ApiError(409, `${branch?.name ?? 'This'} branch is closed at the moment. Please choose another branch.`, 'BRANCH_CLOSED')
+  // Home delivery only inside the branch's own delivery area (set by the supermarket).
+  if (req.delivery.method === 'delivery') {
+    const town = findPlace(req.delivery.city)
+    const target = { lat: town?.lat ?? Number.NaN, lng: town?.lng ?? Number.NaN, label: req.delivery.city }
+    if (!coversLocation(branch.coverage, target)) throw new ApiError(422, `${store.name} ${branch.name} doesn’t deliver to ${req.delivery.city || 'that address'}. Choose a place in its delivery area, or store pickup.`, 'OUTSIDE_DELIVERY_AREA')
+  }
   const customer = platform.customers.find((c) => c.id === userId)
   if (customer?.status === 'blocked') throw new ApiError(403, 'Your HelaMart account is suspended. Contact HelaMart support.', 'ACCOUNT_SUSPENDED')
   if (customer?.blockedByTenants.includes(store.id)) throw new ApiError(403, `${store.name} has blocked orders from this account. Contact the store for help.`, 'BLOCKED_BY_STORE')
