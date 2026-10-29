@@ -41,7 +41,7 @@ export default defineNuxtPlugin(() => {
           return
         }
         if (!onStorefront()) return
-        if (!stores.stores.value.length) stores.refresh()
+        if (!stores.stores.value.length) await stores.refresh()
         const loc = shopping.area.value ?? fromChosenBranch()
         if (loc) {
           await shopping.setArea(loc)

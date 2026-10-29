@@ -12,6 +12,7 @@ const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
 const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
+const { load: loadOffers } = useOffers()
 
 const open = computed(() => panel.value === 'checkout')
 const step = ref<Step>('review')
@@ -128,6 +129,9 @@ async function pay() {
   try {
     order.value = await authorized((token) => placeOrder(token, request, user.value!))
     clear()
+    // Branch stock and first-order offers changed on the server.
+    void refreshStores()
+    void loadOffers()
     step.value = 'done'
     show(`Order ${order.value.number} confirmed. Thank you!`, 'success', 4000)
   } catch (e) {

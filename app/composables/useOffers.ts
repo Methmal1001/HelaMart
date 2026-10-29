@@ -2,11 +2,13 @@ import type { FulfilmentMethod, Offer } from '~/types'
 import type { Ref } from 'vue'
 import { listMyOffers } from '~/services/offerService'
 import { catalogVersion } from '~/data/products'
+import type { StoreChoice } from './useStoreSelection'
 
-/** Promotions for the signed-in shopper (loaded by the auth plugin on login). */
+/** Promotions for the signed-in shopper at the chosen branch (loaded by the auth plugin on login and store change). */
 export function useOffers() {
   const offers = useState<Offer[]>('offers', () => [])
   const loading = useState<boolean>('offers-loading', () => false)
+  const store = useState<StoreChoice | null>('store-choice', () => null)
   const { authorized, isAuthenticated } = useAuth()
 
   const activeOffers = computed(() => offers.value.filter((o) => isOfferActive(o)))
@@ -18,7 +20,7 @@ export function useOffers() {
     }
     loading.value = true
     try {
-      offers.value = await authorized(listMyOffers)
+      offers.value = await authorized((token) => listMyOffers(token, store.value))
     } catch {
       offers.value = []
     } finally {

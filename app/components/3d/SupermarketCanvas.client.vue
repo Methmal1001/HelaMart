@@ -57,7 +57,8 @@ onMounted(async () => {
     xp.attach(engine)
     xp.viewMode.value = 'third'
     // Stock the shelves with the chosen supermarket's latest catalogue (prices, photos, stock).
-    refreshStores()
+    await refreshStores()
+    if (cancelled) return
     engine.setBranding(brandingFor(currentStore.value))
     await engine.init()
     syncCart()
