@@ -59,7 +59,8 @@ export default defineNuxtConfig({
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'strict-origin-when-cross-origin',
-        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+        // Geolocation is allowed for our own pages only ("Use my current location" in the area finder).
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), payment=()',
         'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
       },
     },
@@ -71,7 +72,9 @@ export default defineNuxtConfig({
         'X-Robots-Tag': 'noindex, nofollow',
         'X-Frame-Options': 'DENY',
         'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'no-referrer',
+        // Origin only (never the admin path). Map providers need it: OpenStreetMap blocks tile
+        // requests without a referrer, and Google Maps keys are restricted by referrer.
+        'Referrer-Policy': 'strict-origin',
       },
     },
     '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } },

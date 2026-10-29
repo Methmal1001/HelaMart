@@ -52,6 +52,7 @@ function loadGoogle(key: string): Promise<any> {
       const s = document.createElement('script')
       s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=${cb}`
       s.async = true
+      s.referrerPolicy = 'strict-origin'
       s.onerror = () => reject(new Error('Google Maps failed to load'))
       document.head.appendChild(s)
     })
@@ -111,7 +112,8 @@ async function createLeaflet(el: HTMLElement, opts: CoverageMapOptions): Promise
   const L = (await import('leaflet')).default
   await import('leaflet/dist/leaflet.css')
   const map = L.map(el, { zoomControl: true, doubleClickZoom: false }).setView([opts.center.lat, opts.center.lng], 12)
-  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map)
+  // OpenStreetMap's tile policy requires a referrer; send the site origin only.
+  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors', referrerPolicy: 'strict-origin' }).addTo(map)
   // If imagery can't load (offline / blocked), say so — drawing still works, and town dots show where places are.
   let tileErrors = 0
   let tileOk = false
