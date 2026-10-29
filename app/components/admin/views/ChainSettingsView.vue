@@ -4,7 +4,7 @@ import { getChainSettings, updateChainSettings, type ChainSettings } from '~/ser
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const info = ref<Awaited<ReturnType<typeof getChainSettings>> | null>(null)
-const f = reactive({ name: '', hotline: '', supportEmail: '', defaultHours: '', deliveryRs: '', minOrderRs: '', brandColor: '#174D38' })
+const f = reactive({ name: '', hotline: '', supportEmail: '', defaultHours: '', deliveryRs: '', minOrderRs: '' })
 const error = ref('')
 const saving = ref(false)
 
@@ -21,7 +21,7 @@ async function save() {
   error.value = ''
   saving.value = true
   const next: ChainSettings = {
-    name: f.name, hotline: f.hotline, supportEmail: f.supportEmail, defaultHours: f.defaultHours, brandColor: f.brandColor,
+    name: f.name, hotline: f.hotline, supportEmail: f.supportEmail, defaultHours: f.defaultHours,
     deliveryFeeCents: Math.round(Number.parseFloat(f.deliveryRs) * 100), minOrderCents: Math.round(Number.parseFloat(f.minOrderRs) * 100),
   }
   try {
@@ -47,7 +47,6 @@ async function save() {
           <label class="block"><span class="field-label">Customer hotline</span><input v-model="f.hotline" class="field" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Support email</span><input v-model="f.supportEmail" type="email" class="field" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Default opening hours</span><input v-model="f.defaultHours" class="field" :disabled="auth.readOnly.value"></label>
-          <label class="flex items-center gap-3"><span class="field-label mb-0">Brand colour</span><input v-model="f.brandColor" type="color" class="h-9 w-14 rounded border-0" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Delivery fee (Rs.)</span><input v-model="f.deliveryRs" class="field" inputmode="decimal" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Minimum order (Rs.)</span><input v-model="f.minOrderRs" class="field" inputmode="decimal" :disabled="auth.readOnly.value"></label>
         </div>
@@ -62,6 +61,9 @@ async function save() {
         <p v-if="info.statusReason" class="rounded-lg bg-[#FFF4D6] p-2.5 text-xs text-[#7A5600]">{{ info.statusReason }}</p>
         <p><span class="text-muted">Partner reference</span> <b>{{ info.reference }}</b></p>
         <p><span class="text-muted">Plan</span> <b class="capitalize">{{ info.plan }}</b> · <span class="text-muted">commission</span> <b>{{ info.commissionPercent }}%</b></p>
+        <NuxtLink to="/admin/branding" class="mt-2 flex items-center gap-2 rounded-lg bg-hela-green-50 p-3 text-xs font-semibold text-hela-green hover:underline">
+          <AppIcon name="sparkle" :size="15" />Logo, banners, theme colour and slogan → Store branding (approved by HelaMart before going live)
+        </NuxtLink>
         <p class="pt-2 text-xs text-muted">Plan, commission and account status are managed by HelaMart. Contact partner support to change them.</p>
       </section>
     </form>

@@ -6,7 +6,8 @@ const ui = useStoreUi()
 const { itemCount, lastAdded } = useCart()
 const bill = useBill()
 const { startCheckout } = useCheckout()
-const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
+const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
+const { area, openFinder } = useShoppingArea()
 onMounted(() => !storeChoice.value && refreshStores())
 
 const isTouch = ref(false)
@@ -52,11 +53,21 @@ async function locate(id: string) {
       <div class="hud-surface pointer-events-auto flex items-center gap-3 rounded-2xl py-2 pr-4 pl-2">
         <BrandLogo size="sm" />
         <span class="hidden h-7 w-px bg-line md:block" aria-hidden="true" />
+        <StoreBadge v-if="storeChoice" :name="storeChoice.storeName" :branding="currentStore?.branding" :color="storeChoice.brandColor" size="size-8" class="hidden md:grid" />
         <span v-if="storeChoice" class="hidden min-w-0 leading-tight md:block">
           <span class="block text-[0.65rem] font-semibold tracking-wide text-muted uppercase">Shopping at</span>
           <span class="block max-w-52 truncate text-xs font-bold text-ink">{{ storeChoice.storeName }} · {{ storeChoice.branchName }}</span>
         </span>
         <span v-else class="hidden text-xs font-semibold text-hela-gold-600 md:block">Everything for Every Home.</span>
+        <button
+          type="button"
+          class="ml-1 flex items-center gap-1 rounded-full bg-hela-green-50 px-2.5 py-1 text-xs font-bold text-hela-green transition hover:bg-hela-green hover:text-white"
+          :aria-label="area ? `Your area: ${area.label}. Change area` : 'Find supermarkets near you'"
+          data-testid="hud-area"
+          @click="openFinder()"
+        >
+          <AppIcon name="pin" :size="13" /><span class="max-w-24 truncate">{{ area?.label ?? 'Set area' }}</span>
+        </button>
       </div>
 
       <div
@@ -123,6 +134,9 @@ async function locate(id: string) {
         <div class="rounded-2xl bg-hela-green px-6 py-4 text-center text-white shadow-float">
           <p class="text-xs font-bold tracking-[0.2em] text-hela-gold uppercase">Ayubowan!</p>
           <p class="mt-1 text-lg font-extrabold tracking-tight">Welcome to HelaMart</p>
+          <p v-if="currentStore" class="mx-auto mt-1.5 max-w-sm text-sm text-white/90">
+            You’re shopping at <b class="text-hela-gold">{{ currentStore.name }}</b>{{ currentStore.branding.welcomeMessage ? ` — ${currentStore.branding.welcomeMessage}` : currentStore.branding.slogan ? ` — ${currentStore.branding.slogan}` : '' }}
+          </p>
           <p class="mt-0.5 text-xs text-white/75">{{ isTouch ? 'Use the joystick to walk and tap a product to shop.' : 'Use WASD to walk, drag to look, and click any product.' }}</p>
         </div>
       </div>

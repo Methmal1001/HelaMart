@@ -185,6 +185,20 @@ export interface User {
   /** Hex colour used for the initials avatar when there is no picture. */
   avatarColor?: string
   pictureUrl?: string
+  /** Shopping area saved on the account (used to list nearby supermarkets). */
+  preferredLocation?: ShopperLocation
+}
+
+/** Where a shopper wants to shop near. */
+export interface ShopperLocation {
+  /** Town name, e.g. "Negombo". */
+  label: string
+  district: string
+  lat: number
+  lng: number
+  /** How far the shopper is willing to look for supermarkets. */
+  radiusKm: number
+  source: 'town' | 'gps' | 'map'
 }
 
 /** Tokens issued by the auth API (mock now, real backend later). */

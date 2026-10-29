@@ -75,7 +75,7 @@ function gondola(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4, L
   const tagMat = m.color('#FFFFFF', 0.6)
   const b = ctx.batch
 
-  b.box(m.color('#2F3A35', 0.6), L, 0.12, D, 0, 0.06, 0, frame)
+  b.box(m.brand('rackBase'), L, 0.12, D, 0, 0.06, 0, frame)
   b.box(backMat, L, H, 0.05, 0, H / 2, 0, frame)
   const modules = Math.round(L / GONDOLA.moduleLength)
   for (let i = 0; i <= modules; i++) {
@@ -85,6 +85,8 @@ function gondola(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4, L
   // End caps in section colour.
   for (const s of [-1, 1]) b.box(lipMat, 0.05, H + 0.25, D + 0.04, (s * (L + 0.05)) / 2, (H + 0.25) / 2, 0, frame)
   b.box(lipMat, L + 0.1, 0.22, 0.08, 0, H + 0.14, 0, frame)
+  // Supermarket theme band along the top of the rack.
+  b.box(m.brand('primary'), L + 0.1, 0.07, 0.1, 0, H + 0.285, 0, frame)
 
   const levels = [0.13, 0.52, 0.91, 1.3, 1.69]
   for (const side of [1, -1]) {
@@ -261,7 +263,7 @@ function bakeryWall(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4
   // Striped awning in brand colours.
   const stripes = 18
   for (let i = 0; i < stripes; i++) {
-    const mat = i % 2 ? m.color('#E1C987', 0.7) : m.color('#174D38', 0.7)
+    const mat = i % 2 ? m.brand('accent') : m.brand('primary')
     b.box(mat, L / stripes, 0.04, 0.7, -L / 2 + (L / stripes) * (i + 0.5), 2.45, D / 2 - 0.1, mul(frame.clone(), tr(0, 0, 0)), 0)
   }
   const levels = [0.25, 0.68, 1.11, 1.54]
@@ -313,8 +315,8 @@ function bakeryTable(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix
 function checkout(ctx: FixtureContext, frame: THREE.Matrix4, L: number, D: number, lane: number) {
   const m = ctx.materials
   const b = ctx.batch
-  const green = m.color('#174D38', 0.55)
-  const gold = m.color('#E1C987', 0.4, 0.3)
+  const green = m.brand('primary')
+  const gold = m.brand('accent')
   const steel = m.color('#C4CACC', 0.3, 0.7)
   const belt = m.color('#26292B', 0.9)
 
@@ -350,7 +352,7 @@ function checkout(ctx: FixtureContext, frame: THREE.Matrix4, L: number, D: numbe
   b.box(steel, 0.05, 2.2, 0.05, poleX, 1.1, -D * 0.3, frame)
   const tex = smallLabelTexture(`Lane ${lane}`)
   const face = new THREE.MeshStandardMaterial({ map: tex, emissive: '#ffffff', emissiveIntensity: 0.3, emissiveMap: tex })
-  const side = m.color('#174D38', 0.5)
+  const side = m.brand('primary')
   const label = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.06), [side, side, side, side, face, face])
   label.applyMatrix4(mul(frame.clone(), tr(poleX, 2.3, -D * 0.3), rotY(Math.PI / 2)))
   ctx.group.add(label)

@@ -7,6 +7,9 @@ export const BRAND = {
   warmWhite: '#FBFAF6',
 }
 
+export type BrandSlot = 'primary' | 'accent' | 'rackBase'
+export const BRAND_DEFAULTS: Record<BrandSlot, string> = { primary: '#174D38', accent: '#E1C987', rackBase: '#2F3A35' }
+
 /**
  * Central material cache. Reusing materials keeps shader programs and draw-call
  * batching efficient, and gives one place to dispose everything.
@@ -39,6 +42,15 @@ export class MaterialLibrary {
       emissiveIntensity: intensity,
       roughness: 0.4,
     })
+  }
+
+  /**
+   * Supermarket theme materials: racks, checkout and wall trims share these,
+   * so a store switch recolours everything instantly (see BrandingLayer).
+   * Defaults are HelaMart's own colours.
+   */
+  brand(slot: BrandSlot) {
+    return this.standard(`brand:${slot}`, { color: BRAND_DEFAULTS[slot], roughness: slot === 'accent' ? 0.45 : 0.55, metalness: slot === 'accent' ? 0.2 : 0 })
   }
 
   glass(key = 'glass', opacity = 0.18, tint = '#cfe6e0') {

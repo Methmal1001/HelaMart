@@ -1,10 +1,14 @@
-import type { Tenant, TenantDocument } from '~/types/admin'
+import type { BrandingProfile, Tenant, TenantDocument } from '~/types/admin'
 import { DISTRICTS, isValidBrNumber, isValidNic } from '~/data/sriLanka'
 import { EMAIL_RE, isSriLankanMobile } from '~/utils/validation'
 import { ApiError } from './apiError'
 import { latency, randomId } from './mock/server'
 import { readAdminDb, writeAdminDb } from './admin/db'
 import { audit, sanitize } from './admin/security'
+import { liveBranding } from '~/lib/branding'
+import { locateBranch } from '~/data/places'
+
+const pick = (p: { lat: number; lng: number }) => ({ lat: p.lat, lng: p.lng })
 
 /**
  * Public partner endpoints (no sign-in):
@@ -115,7 +119,21 @@ export interface PublicStore {
   id: string
   name: string
   brandColor: string
-  branches: { id: string; name: string; city: string; district: string; status: 'open' | 'temporarily_closed'; hours: string }[]
+  /** HelaMart-approved branding, limited to the supermarket's current plan. */
+  branding: BrandingProfile
+  branches: PublicBranch[]
+}
+
+export interface PublicBranch {
+  id: string
+  name: string
+  city: string
+  district: string
+  status: 'open' | 'temporarily_closed'
+  hours: string
+  lat: number
+  lng: number
+  deliveryRadiusKm: number
 }
 
 /** Only approved, active supermarkets are visible to shoppers. Restricted or banned ones disappear. */
@@ -127,9 +145,10 @@ export function listStores(): PublicStore[] {
       id: t.id,
       name: t.name,
       brandColor: t.brandColor,
+      branding: liveBranding(t),
       branches: db.branches
         .filter((b) => b.tenantId === t.id && b.status !== 'closed')
-        .map((b) => ({ id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours })),
+        .map((b) => ({ id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours, ...pick(locateBranch(b)), deliveryRadiusKm: b.deliveryRadiusKm })),
     }))
     .filter((s) => s.branches.length)
 }

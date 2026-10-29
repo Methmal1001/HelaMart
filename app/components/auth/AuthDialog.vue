@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { TEST_GOOGLE_ACCOUNTS, TEST_LOGINS } from '~/data/mockUsers'
 import { ApiError } from '~/services/apiError'
+import { PLACES, findPlace } from '~/data/places'
+import { DEFAULT_RADIUS_KM } from '~/lib/area'
 
 type View = 'login' | 'register' | 'google'
 
@@ -18,7 +20,8 @@ const error = ref<{ text: string; code?: string } | null>(null)
 const other = reactive({ open: false, email: '', name: '' })
 const hasGoogleClient = !!useRuntimeConfig().public.googleClientId
 
-const reg = reactive({ name: '', phone: '', confirm: '', agree: false })
+const reg = reactive({ name: '', phone: '', town: '', confirm: '', agree: false })
+const { area } = useShoppingArea()
 const regErrors = reactive<Record<string, string>>({})
 const rules = computed(() => PASSWORD_RULES.map((r) => ({ ...r, ok: r.test(password.value) })))
 
@@ -27,7 +30,7 @@ watch(open, (v) => {
   view.value = 'login'
   error.value = null
   password.value = ''
-  Object.assign(reg, { name: '', phone: '', confirm: '', agree: false })
+  Object.assign(reg, { name: '', phone: '', town: area.value?.label ?? '', confirm: '', agree: false })
   Object.keys(regErrors).forEach((k) => delete regErrors[k])
   other.open = false
 })
@@ -72,13 +75,17 @@ async function submitRegister() {
   if (reg.name.trim().length < 3) regErrors.name = 'Enter your full name.'
   if (!EMAIL_RE.test(email.value.trim())) regErrors.email = 'Enter a valid email address.'
   if (reg.phone.trim() && !isSriLankanMobile(reg.phone)) regErrors.phone = 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.'
+  const town = findPlace(reg.town)
+  if (!town) regErrors.town = 'Choose your town from the list — we use it to show supermarkets near you.'
   if (!isStrongPassword(password.value)) regErrors.password = 'Your password doesn’t meet all the rules below.'
   if (reg.confirm !== password.value) regErrors.confirm = 'Passwords don’t match.'
   if (!reg.agree) regErrors.agree = 'Please accept the terms to continue.'
   if (Object.keys(regErrors).length) return
   busy.value = true
   try {
-    await register({ name: reg.name, email: email.value, phone: reg.phone, password: password.value }, remember.value)
+    // Keep a precise area the shopper already chose for this town; otherwise use the town centre.
+    const location = area.value && area.value.label === town!.name ? area.value : { label: town!.name, district: town!.district, lat: town!.lat, lng: town!.lng, radiusKm: DEFAULT_RADIUS_KM, source: 'town' as const }
+    await register({ name: reg.name, email: email.value, phone: reg.phone, password: password.value, location }, remember.value)
     done(true)
   } catch (e) {
     fail(e)
@@ -204,6 +211,12 @@ const inputCls =
           <span class="mb-1.5 block text-sm font-semibold text-ink">Mobile number <span class="font-normal text-muted">(optional)</span></span>
           <input v-model="reg.phone" type="tel" autocomplete="tel" :class="inputCls" placeholder="077 123 4567" :aria-invalid="!!regErrors.phone">
           <span v-if="regErrors.phone" class="mt-1 block text-xs text-[#8A2E2E]">{{ regErrors.phone }}</span>
+        </label>
+        <label class="block">
+          <span class="mb-1.5 block text-sm font-semibold text-ink">Your town <span class="font-normal text-muted">(to show supermarkets near you)</span></span>
+          <input v-model="reg.town" list="register-towns" autocomplete="address-level2" :class="inputCls" placeholder="e.g. Negombo" :aria-invalid="!!regErrors.town" data-testid="register-town">
+          <datalist id="register-towns"><option v-for="p in PLACES" :key="`${p.name}-${p.district}`" :value="p.name">{{ p.district }}</option></datalist>
+          <span v-if="regErrors.town" class="mt-1 block text-xs text-[#8A2E2E]">{{ regErrors.town }}</span>
         </label>
         <label class="block">
           <span class="mb-1.5 block text-sm font-semibold text-ink">Password</span>

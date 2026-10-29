@@ -1,4 +1,4 @@
-import type { Order, User } from '~/types'
+import type { Order, ShopperLocation, User } from '~/types'
 import { base64UrlEncode, decodeJwt } from '~/utils/jwt'
 import { ApiError } from '../apiError'
 
@@ -43,10 +43,12 @@ interface Db {
   /** email → salted password hash, for accounts registered with a password. */
   credentials: Record<string, { userId: string; passwordHash: string }>
   failedLogins: Record<string, { count: number; until: number }>
+  /** Per-customer preferences (e.g. saved shopping area), keyed by user id. */
+  preferences: Record<string, { location?: ShopperLocation }>
 }
 
 function emptyDb(): Db {
-  return { sessions: [], orders: [], extraUsers: [], credentials: {}, failedLogins: {} }
+  return { sessions: [], orders: [], extraUsers: [], credentials: {}, failedLogins: {}, preferences: {} }
 }
 
 /** Mock password hashing (a real backend uses bcrypt/argon2). */

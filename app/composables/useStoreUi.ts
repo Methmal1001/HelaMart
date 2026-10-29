@@ -8,7 +8,8 @@ export function useStoreUi() {
   const authDialogOpen = useState<boolean>('auth-dialog-open', () => false)
 
   /** True whenever an overlay needs keyboard focus (3D movement pauses). */
-  const overlayOpen = computed(() => panel.value !== null || selectedProductId.value !== null || authDialogOpen.value)
+  const areaFinder = useState<{ open: boolean }>('area-finder', () => ({ open: false }))
+  const overlayOpen = computed(() => panel.value !== null || selectedProductId.value !== null || authDialogOpen.value || areaFinder.value.open)
 
   function openPanel(next: Exclude<Panel, null>) {
     selectedProductId.value = null

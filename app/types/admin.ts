@@ -108,6 +108,48 @@ export interface Tenant {
   defaultHours: string
   deliveryFeeCents: number
   minOrderCents: number
+  /** Branding shoppers see inside the store — only ever set by a HelaMart-approved request. */
+  branding?: BrandingProfile
+}
+
+/**
+ * How a supermarket looks inside the HelaMart 3D store. HelaMart's own
+ * look (app chrome, logo, colours) never changes; this only themes the
+ * supermarket's space: racks, checkout area, banners and signs.
+ */
+export interface BrandingProfile {
+  // ---- Standard plan
+  /** `media:<id>` logo (transparent PNG/WebP works best). */
+  logo?: string
+  /** `media:<id>` main in-store banner (shown 3:1). */
+  banner?: string
+  primaryColor: string
+  slogan: string
+  // ---- Premium plan
+  accentColor?: string
+  /** Up to 3 extra promotional wall banners. */
+  promoBanners: string[]
+  /** Greeting shown to shoppers as they walk in. */
+  welcomeMessage?: string
+  /** Logo plates on every aisle end-cap. */
+  logoOnFixtures: boolean
+}
+
+export type BrandingRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
+
+export interface BrandingRequest {
+  id: string
+  tenantId: string
+  profile: BrandingProfile
+  /** Human-readable list of what changes compared with the live branding. */
+  changes: string[]
+  status: BrandingRequestStatus
+  submittedById: string
+  submittedBy: string
+  submittedAt: string
+  reviewedBy?: string
+  reviewedAt?: string
+  reviewNote?: string
 }
 
 export type BranchStatus = 'open' | 'temporarily_closed' | 'closed'
@@ -125,6 +167,9 @@ export interface Branch {
   status: BranchStatus
   deliveryRadiusKm: number
   managerId?: string
+  /** Map pin (resolved from the town when the branch is saved). */
+  lat?: number
+  lng?: number
   createdAt: string
 }
 

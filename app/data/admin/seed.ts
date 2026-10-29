@@ -1,4 +1,5 @@
 import type {
+  BrandingRequest,
   AdminCategory,
   AdminOffer,
   AdminOrder,
@@ -100,6 +101,10 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     tenant('tnt_lfm', 1, 'Lanka Fresh Mart', 'Lanka Fresh Mart (Pvt) Ltd', 'Gampaha', 'active', '#1F7A4D', {
       ownerName: 'Sunil Wickramaratne', email: 'owner@lankafresh.test', supportEmail: 'help@lankafresh.test', hqAddress: 'No. 45, Negombo Road, Divulapitiya',
       plan: 'premium', commissionPercent: 3, firstBranch: { name: 'Divulapitiya', city: 'Divulapitiya', district: 'Gampaha' }, expectedBranches: 6,
+      branding: {
+        primaryColor: '#1F7A4D', slogan: 'Fresh from Lanka, every day', accentColor: '#F2B33D', promoBanners: [],
+        welcomeMessage: 'Ayubowan! Fresh produce arrives every morning — enjoy your shopping.', logoOnFixtures: true,
+      },
     }),
     tenant('tnt_cds', 2, 'Ceylon Daily Super', 'Ceylon Daily Retail (Pvt) Ltd', 'Colombo', 'active', '#2F6E8F', {
       ownerName: 'Ishara Wijesinghe', email: 'owner@ceylondaily.test', supportEmail: 'care@ceylondaily.test', hqAddress: 'No. 120, Ward Place, Colombo 07',
@@ -128,6 +133,61 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
       statusReason: 'Business registration number could not be verified with the Registrar of Companies.', statusChangedBy: 'Chamara Bandara',
       firstBranch: { name: 'Badulla', city: 'Badulla', district: 'Badulla' },
     }),
+    // Verified chains around the island, so shoppers anywhere find stores near them.
+    tenant('tnt_wfm', 8, 'Western Family Mart', 'Western Family Mart (Pvt) Ltd', 'Gampaha', 'active', '#B03A48', {
+      ownerName: 'Dilan Rajapaksha', email: 'owner@westernfamily.test', supportEmail: 'help@westernfamily.test', hqAddress: 'No. 12, Bauddhaloka Mawatha, Gampaha', plan: 'standard',
+      firstBranch: { name: 'Gampaha Town', city: 'Gampaha', district: 'Gampaha' }, expectedBranches: 4,
+      createdAt: iso(now - 228 * DAY), approvedAt: iso(now - 208 * DAY), statusChangedAt: iso(now - 208 * DAY),
+      branding: { primaryColor: '#b03a48', slogan: 'Family prices, every day', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_hcf', 9, 'Hill Country Fresh', 'Hill Country Fresh (Pvt) Ltd', 'Kandy', 'active', '#3D6B35', {
+      ownerName: 'Nirosha Kumari', email: 'owner@hillcountry.test', supportEmail: 'help@hillcountry.test', hqAddress: 'No. 4, Colombo Road, Peradeniya', plan: 'premium',
+      firstBranch: { name: 'Peradeniya', city: 'Peradeniya', district: 'Kandy' }, expectedBranches: 4,
+      createdAt: iso(now - 219 * DAY), approvedAt: iso(now - 199 * DAY), statusChangedAt: iso(now - 199 * DAY),
+      branding: { primaryColor: '#3d6b35', slogan: 'Fresh from the hills', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_shm', 10, 'Southern Harvest Mart', 'Southern Harvest (Pvt) Ltd', 'Galle', 'active', '#C2571A', {
+      ownerName: 'Thushara Liyanage', email: 'owner@southernharvest.test', supportEmail: 'help@southernharvest.test', hqAddress: 'No. 33, Matara Road, Galle', plan: 'standard',
+      firstBranch: { name: 'Galle', city: 'Galle', district: 'Galle' }, expectedBranches: 4,
+      createdAt: iso(now - 210 * DAY), approvedAt: iso(now - 190 * DAY), statusChangedAt: iso(now - 190 * DAY),
+      branding: { primaryColor: '#c2571a', slogan: 'The taste of the south coast', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_rjs', 11, 'Rajarata Super', 'Rajarata Super Stores', 'Anuradhapura', 'active', '#7A4B9A', {
+      ownerName: 'Sampath Ekanayake', email: 'owner@rajarata.test', supportEmail: 'help@rajarata.test', hqAddress: 'No. 18, Maithripala Senanayake Mawatha, Anuradhapura', plan: 'standard',
+      firstBranch: { name: 'Anuradhapura', city: 'Anuradhapura', district: 'Anuradhapura' }, expectedBranches: 4,
+      createdAt: iso(now - 201 * DAY), approvedAt: iso(now - 181 * DAY), statusChangedAt: iso(now - 181 * DAY),
+      branding: { primaryColor: '#7a4b9a', slogan: 'Serving the heart of the island', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_ebs', 12, 'East Bay Super', 'East Bay Super (Pvt) Ltd', 'Trincomalee', 'active', '#1F7F8C', {
+      ownerName: 'Mohamed Rizwan', email: 'owner@eastbay.test', supportEmail: 'help@eastbay.test', hqAddress: 'No. 44, Main Street, Trincomalee', plan: 'standard',
+      firstBranch: { name: 'Trincomalee', city: 'Trincomalee', district: 'Trincomalee' }, expectedBranches: 3,
+      createdAt: iso(now - 192 * DAY), approvedAt: iso(now - 172 * DAY), statusChangedAt: iso(now - 172 * DAY),
+      branding: { primaryColor: '#1f7f8c', slogan: 'From the bay to your basket', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_yfm', 13, 'Yarl Fresh Mart', 'Yarl Fresh Traders', 'Jaffna', 'active', '#C9962B', {
+      ownerName: 'Kumaran Thevarajah', email: 'owner@yarlfresh.test', supportEmail: 'help@yarlfresh.test', hqAddress: 'No. 25, Hospital Road, Jaffna', plan: 'standard',
+      firstBranch: { name: 'Jaffna Town', city: 'Jaffna', district: 'Jaffna' }, expectedBranches: 4,
+      createdAt: iso(now - 183 * DAY), approvedAt: iso(now - 163 * DAY), statusChangedAt: iso(now - 163 * DAY),
+      branding: { primaryColor: '#c9962b', slogan: 'Jaffna’s own supermarket', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_cgr', 14, 'Coastline Grocers', 'Coastline Grocers (Pvt) Ltd', 'Kalutara', 'active', '#2E5E9E', {
+      ownerName: 'Shehan De Silva', email: 'owner@coastline.test', supportEmail: 'help@coastline.test', hqAddress: 'No. 15, Galle Road, Panadura', plan: 'premium',
+      firstBranch: { name: 'Panadura', city: 'Panadura', district: 'Kalutara' }, expectedBranches: 4,
+      createdAt: iso(now - 174 * DAY), approvedAt: iso(now - 154 * DAY), statusChangedAt: iso(now - 154 * DAY),
+      branding: { primaryColor: '#2e5e9e', slogan: 'Good food by the sea', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_sbf', 15, 'Sabara Fresh', 'Sabara Fresh Stores', 'Ratnapura', 'active', '#5E8B2A', {
+      ownerName: 'Chaminda Abeysekara', email: 'owner@sabarafresh.test', supportEmail: 'help@sabarafresh.test', hqAddress: 'No. 40, Main Street, Ratnapura', plan: 'standard',
+      firstBranch: { name: 'Ratnapura', city: 'Ratnapura', district: 'Ratnapura' }, expectedBranches: 4,
+      createdAt: iso(now - 165 * DAY), approvedAt: iso(now - 145 * DAY), statusChangedAt: iso(now - 145 * DAY),
+      branding: { primaryColor: '#5e8b2a', slogan: 'Gem of a grocery', promoBanners: [], logoOnFixtures: false },
+    }),
+    tenant('tnt_uvs', 16, 'Uva Valley Stores', 'Uva Valley Stores', 'Badulla', 'active', '#9C4F2E', {
+      ownerName: 'Lalith Herath', email: 'owner@uvavalley.test', supportEmail: 'help@uvavalley.test', hqAddress: 'No. 27, Lower Street, Badulla', plan: 'standard',
+      firstBranch: { name: 'Badulla', city: 'Badulla', district: 'Badulla' }, expectedBranches: 3,
+      createdAt: iso(now - 156 * DAY), approvedAt: iso(now - 136 * DAY), statusChangedAt: iso(now - 136 * DAY),
+      branding: { primaryColor: '#9c4f2e', slogan: 'Hill-country fresh, valley prices', promoBanners: [], logoOnFixtures: false },
+    }),
   ]
 
   // ------------------------------------------------------------------ branches
@@ -137,6 +197,14 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     openingHours: 'Daily 7:00 AM – 10:00 PM',
     deliveryRadiusKm: 8,
     createdAt: iso(now - Math.floor(60 + r() * 100) * DAY),
+  })
+  // Deterministic (no random draws), so adding chains doesn't reshuffle the rest of the sample data.
+  const fixedBranch = (id: string, tenantId: string, name: string, code: string, district: string, city: string, address: string, ageDays: number): Branch => ({
+    id, tenantId, name, code, district, city, address, status: 'open',
+    phone: `+94 ${String(20 + (ageDays % 70)).padStart(2, '0')} ${220 + ageDays * 7} ${3100 + ageDays * 37}`,
+    openingHours: 'Daily 7:30 AM – 9:30 PM',
+    deliveryRadiusKm: ageDays % 2 ? 10 : 6,
+    createdAt: iso(now - ageDays * DAY),
   })
   const branches: Branch[] = [
     branch('br_lfm_div', 'tnt_lfm', 'Divulapitiya', 'LFM-DIV', 'Gampaha', 'Divulapitiya', 'No. 45, Negombo Road, Divulapitiya'),
@@ -149,6 +217,40 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     branch('br_rmm_mat', 'tnt_rmm', 'Matara Town', 'RMM-MAT', 'Matara', 'Matara', 'No. 8, Anagarika Dharmapala Mawatha, Matara'),
     branch('br_rmm_ham', 'tnt_rmm', 'Hambantota', 'RMM-HAM', 'Hambantota', 'Hambantota', 'No. 31, Tissa Road, Hambantota'),
     branch('br_qbd_kur', 'tnt_qbd', 'Kurunegala', 'QBD-KUR', 'Kurunegala', 'Kurunegala', 'No. 3, Puttalam Road, Kurunegala', 'closed'),
+    fixedBranch('br_wfm_gam', 'tnt_wfm', 'Gampaha Town', 'WFM-GAM', 'Gampaha', 'Gampaha', 'No. 12, Bauddhaloka Mawatha, Gampaha', 40),
+    fixedBranch('br_wfm_jae', 'tnt_wfm', 'Ja-Ela', 'WFM-JAE', 'Gampaha', 'Ja-Ela', 'No. 88, Negombo Road, Ja-Ela', 43),
+    fixedBranch('br_wfm_kdw', 'tnt_wfm', 'Kadawatha', 'WFM-KDW', 'Gampaha', 'Kadawatha', 'No. 301, Kandy Road, Kadawatha', 46),
+    fixedBranch('br_wfm_wat', 'tnt_wfm', 'Wattala', 'WFM-WAT', 'Gampaha', 'Wattala', 'No. 56, Negombo Road, Wattala', 49),
+    fixedBranch('br_hcf_per', 'tnt_hcf', 'Peradeniya', 'HCF-PER', 'Kandy', 'Peradeniya', 'No. 4, Colombo Road, Peradeniya', 47),
+    fixedBranch('br_hcf_nue', 'tnt_hcf', 'Nuwara Eliya', 'HCF-NUE', 'Nuwara Eliya', 'Nuwara Eliya', 'No. 21, Lawson Street, Nuwara Eliya', 50),
+    fixedBranch('br_hcf_gmp', 'tnt_hcf', 'Gampola', 'HCF-GMP', 'Kandy', 'Gampola', 'No. 9, Nuwara Eliya Road, Gampola', 53),
+    fixedBranch('br_hcf_mtl', 'tnt_hcf', 'Matale', 'HCF-MTL', 'Matale', 'Matale', 'No. 140, Main Street, Matale', 56),
+    fixedBranch('br_shm_gal', 'tnt_shm', 'Galle', 'SHM-GAL', 'Galle', 'Galle', 'No. 33, Matara Road, Galle', 54),
+    fixedBranch('br_shm_hik', 'tnt_shm', 'Hikkaduwa', 'SHM-HIK', 'Galle', 'Hikkaduwa', 'No. 210, Galle Road, Hikkaduwa', 57),
+    fixedBranch('br_shm_amb', 'tnt_shm', 'Ambalangoda', 'SHM-AMB', 'Galle', 'Ambalangoda', 'No. 7, Main Street, Ambalangoda', 60),
+    fixedBranch('br_shm_mat', 'tnt_shm', 'Matara', 'SHM-MAT', 'Matara', 'Matara', 'No. 52, Anagarika Dharmapala Mawatha, Matara', 63),
+    fixedBranch('br_rjs_anu', 'tnt_rjs', 'Anuradhapura', 'RS-ANU', 'Anuradhapura', 'Anuradhapura', 'No. 18, Maithripala Senanayake Mawatha, Anuradhapura', 61),
+    fixedBranch('br_rjs_pol', 'tnt_rjs', 'Polonnaruwa', 'RS-POL', 'Polonnaruwa', 'Polonnaruwa', 'No. 5, Batticaloa Road, Polonnaruwa', 64),
+    fixedBranch('br_rjs_kek', 'tnt_rjs', 'Kekirawa', 'RS-KEK', 'Anuradhapura', 'Kekirawa', 'No. 61, Dambulla Road, Kekirawa', 67),
+    fixedBranch('br_rjs_dam', 'tnt_rjs', 'Dambulla', 'RS-DAM', 'Matale', 'Dambulla', 'No. 3, Kandy Road, Dambulla', 70),
+    fixedBranch('br_ebs_tri', 'tnt_ebs', 'Trincomalee', 'EBS-TRI', 'Trincomalee', 'Trincomalee', 'No. 44, Main Street, Trincomalee', 68),
+    fixedBranch('br_ebs_bat', 'tnt_ebs', 'Batticaloa', 'EBS-BAT', 'Batticaloa', 'Batticaloa', 'No. 12, Trinco Road, Batticaloa', 71),
+    fixedBranch('br_ebs_kal', 'tnt_ebs', 'Kalmunai', 'EBS-KAL', 'Ampara', 'Kalmunai', 'No. 90, Main Street, Kalmunai', 74),
+    fixedBranch('br_yfm_jaf', 'tnt_yfm', 'Jaffna Town', 'YFM-JAF', 'Jaffna', 'Jaffna', 'No. 25, Hospital Road, Jaffna', 75),
+    fixedBranch('br_yfm_cha', 'tnt_yfm', 'Chavakachcheri', 'YFM-CHA', 'Jaffna', 'Chavakachcheri', 'No. 8, Kandy Road, Chavakachcheri', 78),
+    fixedBranch('br_yfm_vav', 'tnt_yfm', 'Vavuniya', 'YFM-VAV', 'Vavuniya', 'Vavuniya', 'No. 66, Station Road, Vavuniya', 81),
+    fixedBranch('br_yfm_kil', 'tnt_yfm', 'Kilinochchi', 'YFM-KIL', 'Kilinochchi', 'Kilinochchi', 'No. 2, A9 Road, Kilinochchi', 84),
+    fixedBranch('br_cgr_pan', 'tnt_cgr', 'Panadura', 'CG-PAN', 'Kalutara', 'Panadura', 'No. 15, Galle Road, Panadura', 82),
+    fixedBranch('br_cgr_klt', 'tnt_cgr', 'Kalutara', 'CG-KLT', 'Kalutara', 'Kalutara', 'No. 101, Main Street, Kalutara', 85),
+    fixedBranch('br_cgr_mor', 'tnt_cgr', 'Moratuwa', 'CG-MOR', 'Colombo', 'Moratuwa', 'No. 230, Galle Road, Moratuwa', 88),
+    fixedBranch('br_cgr_hor', 'tnt_cgr', 'Horana', 'CG-HOR', 'Kalutara', 'Horana', 'No. 19, Ratnapura Road, Horana', 91),
+    fixedBranch('br_sbf_rat', 'tnt_sbf', 'Ratnapura', 'SF-RAT', 'Ratnapura', 'Ratnapura', 'No. 40, Main Street, Ratnapura', 89),
+    fixedBranch('br_sbf_keg', 'tnt_sbf', 'Kegalle', 'SF-KEG', 'Kegalle', 'Kegalle', 'No. 11, Kandy Road, Kegalle', 92),
+    fixedBranch('br_sbf_bal', 'tnt_sbf', 'Balangoda', 'SF-BAL', 'Ratnapura', 'Balangoda', 'No. 6, Bandarawela Road, Balangoda', 95),
+    fixedBranch('br_sbf_avi', 'tnt_sbf', 'Avissawella', 'SF-AVI', 'Colombo', 'Avissawella', 'No. 72, Ratnapura Road, Avissawella', 98),
+    fixedBranch('br_uvs_bad', 'tnt_uvs', 'Badulla', 'UVS-BAD', 'Badulla', 'Badulla', 'No. 27, Lower Street, Badulla', 96),
+    fixedBranch('br_uvs_bdw', 'tnt_uvs', 'Bandarawela', 'UVS-BDW', 'Badulla', 'Bandarawela', 'No. 14, Welimada Road, Bandarawela', 99),
+    fixedBranch('br_uvs_mon', 'tnt_uvs', 'Monaragala', 'UVS-MON', 'Monaragala', 'Monaragala', 'No. 5, Wellawaya Road, Monaragala', 102),
   ]
   const branchesOf = (tid: string) => branches.filter((b) => b.tenantId === tid)
 
@@ -200,6 +302,15 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
 
     staffMember('stf_rmm_owner', 'Mahesh Gunawardena', 'admin@ruhunamega.test', 'Proprietor', ROLE_IDS.chainAdmin, 'tnt_rmm', [], P.chainAdmin, { createdBy: 'stf_super' }),
     staffMember('stf_qbd_owner', 'Roshan Fernando', 'admin@quickbuy.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_qbd', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_wfm_owner', 'Dilan Rajapaksha', 'admin@westernfamily.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_wfm', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_hcf_owner', 'Nirosha Kumari', 'admin@hillcountry.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_hcf', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_shm_owner', 'Thushara Liyanage', 'admin@southernharvest.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_shm', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_rjs_owner', 'Sampath Ekanayake', 'admin@rajarata.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_rjs', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_ebs_owner', 'Mohamed Rizwan', 'admin@eastbay.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_ebs', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_yfm_owner', 'Kumaran Thevarajah', 'admin@yarlfresh.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_yfm', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_cgr_owner', 'Shehan De Silva', 'admin@coastline.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_cgr', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_sbf_owner', 'Chaminda Abeysekara', 'admin@sabarafresh.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_sbf', [], P.chainAdmin, { createdBy: 'stf_super' }),
+    staffMember('stf_uvs_owner', 'Lalith Herath', 'admin@uvavalley.test', 'Owner', ROLE_IDS.chainAdmin, 'tnt_uvs', [], P.chainAdmin, { createdBy: 'stf_super' }),
   ]
   for (const b of branches) b.managerId = staff.find((s) => s.roleId === ROLE_IDS.branchManager && s.branchIds.includes(b.id))?.id
 
@@ -358,5 +469,19 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     security: { sessionIdleMinutes: 15, sessionMaxHours: 8, maxLoginAttempts: 5, lockoutMinutes: 5, passwordMinLength: 12, passwordExpiryDays: 90, require2fa: true },
   }
 
-  return { tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings }
+  // ------------------------------------------------------------------ branding approvals
+  const brandingRequests: BrandingRequest[] = [
+    {
+      id: 'brq_cds_1',
+      tenantId: 'tnt_cds',
+      profile: { primaryColor: '#1E5F8C', slogan: 'Your daily needs, done right', promoBanners: [], logoOnFixtures: false },
+      changes: ['Theme colour #2F6E8F → #1E5F8C', 'Slogan “Your daily needs, done right”'],
+      status: 'pending',
+      submittedById: 'stf_cds_owner',
+      submittedBy: 'Ishara Wijesinghe',
+      submittedAt: iso(now - 5 * 3600e3),
+    },
+  ]
+
+  return { tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings, brandingRequests }
 }
