@@ -30,7 +30,7 @@ export const GONDOLA = {
   moduleLength: 1.2,
 }
 
-const GONDOLA_X = [-11.25, -6.75, -2.25, 2.25, 6.75, 11.25]
+export const GONDOLA_X = [-11.25, -6.75, -2.25, 2.25, 6.75, 11.25]
 const GONDOLA_CATEGORIES: CategoryId[] = ['staples', 'snacks', 'beverages', 'cleaning', 'personal-care', 'household']
 
 export interface FixturePlan {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Branch, StaffView } from '~/types/admin'
 import { DISTRICTS } from '~/data/sriLanka'
+import { PLACES, findPlace } from '~/data/places'
 import { listBranches, saveBranch, setBranchStatus, type BranchInput } from '~/services/admin/tenantApi'
 import { listTeam } from '~/services/admin/common'
 
@@ -26,6 +27,13 @@ onMounted(load)
 
 const editing = ref<Branch | 'new' | null>(null)
 const f = reactive<BranchInput>({ name: '', district: 'Gampaha', city: '', address: '', phone: '', openingHours: 'Daily 7:00 AM – 10:00 PM', deliveryRadiusKm: 8, managerId: '' })
+// Branches are placed on the shoppers' area map from their town.
+const townOptions = computed(() => PLACES.filter((p) => p.district === f.district))
+const pinHint = computed(() => {
+  const town = findPlace(f.city, f.district)
+  if (town) return { exact: true, text: town.district === f.district ? `Shown on the shoppers’ map at ${town.name}` : `${town.name} is in ${town.district} — check the district` }
+  return { exact: false, text: f.city ? `Town not found — shown at the centre of ${f.district} district` : `Pick a town so shoppers nearby can find this branch` }
+})
 const error = ref('')
 function open(b: Branch | 'new') {
   editing.value = b
@@ -97,7 +105,12 @@ async function changeStatus(b: Branch, status: Branch['status']) {
     <AdminModal :open="!!editing" :title="editing === 'new' ? 'Open a new branch' : `Edit ${f.name}`" size="lg" @close="editing = null">
       <form id="branch-form" class="grid gap-3 sm:grid-cols-2" @submit.prevent="save">
         <label><span class="field-label">Branch name</span><input v-model="f.name" class="field" maxlength="60" placeholder="e.g. Divulapitiya" data-autofocus></label>
-        <label><span class="field-label">Town / city</span><input v-model="f.city" class="field" maxlength="60"></label>
+        <label>
+          <span class="field-label">Town / city</span>
+          <input v-model="f.city" class="field" maxlength="60" list="branch-towns" autocomplete="off">
+          <datalist id="branch-towns"><option v-for="p in townOptions" :key="p.name" :value="p.name">{{ p.district }}</option></datalist>
+          <span class="mt-1 flex items-center gap-1 text-xs" :class="pinHint.exact ? 'text-hela-green' : 'text-[#7A5600]'"><AppIcon name="pin" :size="12" />{{ pinHint.text }}</span>
+        </label>
         <label><span class="field-label">District</span><select v-model="f.district" class="field"><option v-for="d in DISTRICTS" :key="d" :value="d">{{ d }}</option></select></label>
         <label><span class="field-label">Phone</span><input v-model="f.phone" class="field" maxlength="30"></label>
         <label class="sm:col-span-2"><span class="field-label">Address</span><input v-model="f.address" class="field" maxlength="200"></label>

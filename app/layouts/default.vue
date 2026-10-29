@@ -7,5 +7,6 @@
     <CheckoutPanel />
     <AccountPanel />
     <AuthDialog />
+    <AreaFinder />
   </div>
 </template>

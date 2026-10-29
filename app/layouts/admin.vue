@@ -20,6 +20,7 @@ const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin/supermarkets', label: 'Supermarkets', icon: 'store', perm: 'tenants.view' },
       { to: '/admin/supermarket-admins', label: 'Supermarket admins', icon: 'shield', perm: 'tenants.view' },
+      { to: '/admin/branding-approvals', label: 'Branding approvals', icon: 'sparkle', perm: 'tenants.view' },
       { to: '/admin/customers', label: 'Customers (all Sri Lanka)', icon: 'users', perm: 'customers.all.view' },
     ],
   },
@@ -64,6 +65,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
     label: 'Records',
     items: [
       { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'audit.view' },
+      { to: '/admin/branding', label: 'Store branding', icon: 'sparkle', perm: 'settings.manage' },
       { to: '/admin/settings', label: 'Supermarket settings', icon: 'settings', perm: 'settings.manage' },
     ],
   },

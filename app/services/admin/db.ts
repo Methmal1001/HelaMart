@@ -5,6 +5,7 @@ import type {
   AdminProduct,
   AuditEntry,
   Branch,
+  BrandingRequest,
   Customer,
   PlatformSettings,
   Role,
@@ -55,10 +56,13 @@ export interface MediaRecord {
   width: number
   height: number
   createdAt: string
+  /** What the image is for (logos/banners can only be used as such). */
+  purpose?: 'product' | 'logo' | 'banner'
 }
 
 export interface AdminDb {
   media: MediaRecord[]
+  brandingRequests: BrandingRequest[]
   tenants: Tenant[]
   branches: Branch[]
   roles: Role[]
@@ -140,6 +144,7 @@ export function readAdminDb(): AdminDb {
     db = cache ?? seed()
   }
   db.media ??= []
+  db.brandingRequests ??= []
   syncStorefront(db)
   cache = db
   return db

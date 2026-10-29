@@ -172,7 +172,7 @@ export function buildInterior(ctx: ShellContext) {
   ctx.group.add(floor)
 
   const plaster = m.color('#F4EFE3', 0.85)
-  const dado = m.color('#174D38', 0.6)
+  const dado = m.brand('primary')
   // Side and back walls (+ roof slab above the ceiling).
   b.box(plaster, T, WALL_H, depth, minX - T / 2, WALL_H / 2, minZ / 2)
   b.box(plaster, T, WALL_H, depth, maxX + T / 2, WALL_H / 2, minZ / 2)
@@ -180,7 +180,7 @@ export function buildInterior(ctx: ShellContext) {
   b.box(dado, 0.02, 1.1, depth, minX + 0.01, 0.55, minZ / 2)
   b.box(dado, 0.02, 1.1, depth, maxX - 0.01, 0.55, minZ / 2)
   b.box(dado, width, 1.1, 0.02, 0, 0.55, minZ + 0.01)
-  b.box(m.color('#E1C987', 0.5, 0.3), width, 0.06, 0.03, 0, 1.13, minZ + 0.02)
+  b.box(m.brand('accent'), width, 0.06, 0.03, 0, 1.13, minZ + 0.02)
 
   const ceiling = new THREE.Mesh(
     new THREE.PlaneGeometry(width, depth),

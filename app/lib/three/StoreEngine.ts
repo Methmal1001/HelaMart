@@ -5,6 +5,7 @@ import { getSection, sectionAt, STORE } from '~/data/storeLayout'
 import { StaticBatch } from './batch'
 import { CollisionWorld } from './colliders'
 import { MaterialLibrary } from './materials'
+import { BrandingLayer, type StoreBranding } from './branding'
 import { skyTexture } from './textures'
 import { buildExterior, buildInterior } from './builders/shell'
 import { buildFixtures } from './builders/fixtures'
@@ -61,6 +62,8 @@ export class StoreEngine {
   private products = new ProductInstancer()
   private slots: ProductSlot[] = []
   private doors!: AutoDoors
+  private branding: BrandingLayer | null = null
+  private brandingWanted: StoreBranding | null = null
   private avatars = {} as Record<AvatarKind, Avatar>
   private cart!: THREE.Group
   private contents?: CartContents
@@ -169,6 +172,9 @@ export class StoreEngine {
     this.progress(0.7, 'Arranging products')
     await this.products.build(this.slots, preset.depthRows, this.renderer.capabilities.getMaxAnisotropy())
     this.scene.add(this.products.group)
+    this.branding = new BrandingLayer(this.materials, this.renderer.capabilities.getMaxAnisotropy())
+    this.scene.add(this.branding.group)
+    await this.branding.apply(this.brandingWanted)
     await nextTick()
 
     this.progress(0.85, 'Opening the doors')
@@ -472,6 +478,12 @@ export class StoreEngine {
     this.welcomeOffset = { x, y }
   }
 
+  /** Theme the store for the chosen supermarket (approved branding only). */
+  setBranding(b: StoreBranding | null) {
+    this.brandingWanted = b
+    if (!this.disposed) void this.branding?.apply(b)
+  }
+
   /** Restock the shelves, e.g. after the shopper switches supermarket/branch or photos change. */
   async rebuildProducts() {
     if (this.disposed || !this.renderer) return
@@ -501,6 +513,7 @@ export class StoreEngine {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.branding?.dispose()
     this.renderer?.setAnimationLoop(null)
     this.resizeObserver?.disconnect()
     this.input?.dispose()

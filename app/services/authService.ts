@@ -1,9 +1,11 @@
-import type { AuthResult, AuthTokens, User } from '~/types'
+import type { AuthResult, AuthTokens, ShopperLocation, User } from '~/types'
 import { mockAccounts } from '~/data/mockUsers'
 import { decodeJwt } from '~/utils/jwt'
 import { ApiError } from './apiError'
 import { readAdminDb } from './admin/db'
 import { EMAIL_RE, isSriLankanMobile, isStrongPassword } from '~/utils/validation'
+import { DISTRICTS } from '~/data/sriLanka'
+import { inSriLanka } from '~/data/places'
 import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccessToken, verifyAccessToken, writeDb } from './mock/server'
 
 /**
@@ -19,7 +21,40 @@ function assertNotSuspended(user: User) {
 }
 
 function findUserById(id: string): User | undefined {
-  return mockAccounts.find((a) => a.user.id === id)?.user ?? readDb().extraUsers.find((u) => u.id === id)
+  const user = mockAccounts.find((a) => a.user.id === id)?.user ?? readDb().extraUsers.find((u) => u.id === id)
+  return user && withPreferences(user)
+}
+
+/** The account as returned to the client, including saved preferences. */
+function withPreferences(user: User): User {
+  const location = readDb().preferences[user.id]?.location
+  return location ? { ...user, preferredLocation: location } : { ...user }
+}
+
+/** Validates a shopping area sent by the client (never trust coordinates or labels as-is). */
+function cleanLocation(loc: ShopperLocation | undefined | null): ShopperLocation {
+  if (!loc || typeof loc !== 'object') throw new ApiError(422, 'Choose your shopping area.', 'BAD_LOCATION')
+  const lat = Number(loc.lat)
+  const lng = Number(loc.lng)
+  if (!inSriLanka(lat, lng)) throw new ApiError(422, 'Choose a location in Sri Lanka.', 'BAD_LOCATION')
+  if (!(DISTRICTS as readonly string[]).includes(loc.district)) throw new ApiError(422, 'Choose a valid district.', 'BAD_LOCATION')
+  const label = String(loc.label ?? '').replace(/[<>]/g, '').trim().slice(0, 60)
+  if (!label) throw new ApiError(422, 'Choose your town.', 'BAD_LOCATION')
+  const radiusKm = Math.min(50, Math.max(2, Math.round(Number(loc.radiusKm) || 25)))
+  const source = loc.source === 'gps' || loc.source === 'map' ? loc.source : 'town'
+  return { label, district: loc.district, lat: Math.round(lat * 1e4) / 1e4, lng: Math.round(lng * 1e4) / 1e4, radiusKm, source }
+}
+
+/** PUT /me/location — save (or change) the customer's shopping area. */
+export async function savePreferredLocation(accessToken: string, location: ShopperLocation): Promise<User> {
+  await latency(150, 350)
+  const user = findUserById(verifyAccessToken(accessToken))
+  if (!user) throw new ApiError(401, 'Account not found.')
+  const clean = cleanLocation(location)
+  const db = readDb()
+  db.preferences[user.id] = { ...db.preferences[user.id], location: clean }
+  writeDb(db)
+  return { ...user, preferredLocation: clean }
 }
 
 function issueSession(user: User, remember: boolean, familyId = randomId(8), absoluteExpiry?: number): AuthTokens {
@@ -69,7 +104,7 @@ export async function login(email: string, password: string, remember: boolean):
   delete db.failedLogins[key]
   writeDb(db)
   assertNotSuspended(user)
-  return { user, tokens: issueSession(user, remember) }
+  return { user: withPreferences(user), tokens: issueSession(user, remember) }
 }
 
 export interface RegisterInput {
@@ -77,6 +112,8 @@ export interface RegisterInput {
   email: string
   phone: string
   password: string
+  /** Shopping area chosen at sign-up. */
+  location?: ShopperLocation
 }
 
 /** POST /auth/register — creates a customer account and signs it in. */
@@ -88,6 +125,7 @@ export async function register(input: RegisterInput, remember: boolean): Promise
   if (!EMAIL_RE.test(email)) throw new ApiError(422, 'Enter a valid email address.', 'BAD_EMAIL')
   if (input.phone && !isSriLankanMobile(input.phone)) throw new ApiError(422, 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.', 'BAD_PHONE')
   if (!isStrongPassword(input.password)) throw new ApiError(422, 'Choose a stronger password.', 'WEAK_PASSWORD')
+  const location = input.location ? cleanLocation(input.location) : undefined
 
   const db = readDb()
   const existing = mockAccounts.find((a) => a.user.email === email)?.user ?? db.extraUsers.find((u) => u.email === email)
@@ -112,8 +150,9 @@ export async function register(input: RegisterInput, remember: boolean): Promise
   }
   db.extraUsers.push(user)
   db.credentials[email] = { userId: user.id, passwordHash: hashPassword(email, input.password) }
+  if (location) db.preferences[user.id] = { location }
   writeDb(db)
-  return { user, tokens: issueSession(user, remember) }
+  return { user: withPreferences(user), tokens: issueSession(user, remember) }
 }
 
 /**
@@ -160,7 +199,7 @@ export async function loginWithGoogle(
     }
   }
   assertNotSuspended(user)
-  return { user, tokens: issueSession(user, remember) }
+  return { user: withPreferences(user), tokens: issueSession(user, remember) }
 }
 
 /**

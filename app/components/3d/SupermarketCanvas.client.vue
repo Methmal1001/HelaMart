@@ -11,7 +11,8 @@ const container = ref<HTMLElement | null>(null)
 const xp = useStoreExperience()
 const { avatar, select } = useAvatar()
 const ui = useStoreUi()
-const { refresh: refreshStores } = useStoreSelection()
+const { refresh: refreshStores, currentStore } = useStoreSelection()
+const brandingFor = (s: typeof currentStore.value) => (s ? { name: s.name, profile: s.branding } : null)
 let engine: StoreEngine | null = null
 let cancelled = false
 
@@ -57,6 +58,7 @@ onMounted(async () => {
     xp.viewMode.value = 'third'
     // Stock the shelves with the chosen supermarket's latest catalogue (prices, photos, stock).
     refreshStores()
+    engine.setBranding(brandingFor(currentStore.value))
     await engine.init()
     syncCart()
   } catch (err) {
@@ -76,6 +78,8 @@ onBeforeUnmount(() => {
 })
 
 watch(avatar, (kind) => kind && engine?.selectAvatar(kind))
+// The supermarket's approved theme: racks, checkout, banners and signs.
+watch(() => JSON.stringify(brandingFor(currentStore.value)), () => engine?.setBranding(brandingFor(currentStore.value)))
 // A different supermarket/branch (or updated photos and stock) restocks the shelves.
 watch(catalogVersion, () => {
   if (xp.phase.value !== 'loading') void engine?.rebuildProducts()

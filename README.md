@@ -96,6 +96,45 @@ password step-up for sensitive actions, 10-minute rotating sessions with inactiv
 lockouts, forced password change for temporary passwords, full audit trail per supermarket and
 platform-wide, security headers / no-index / no-store on `/admin`, strict CSP in production.
 
+### Finding supermarkets by area
+
+Shoppers see the HelaMart-verified supermarkets **near their area**, nearest first, with distances
+and whether the branch delivers to them (each branch's delivery radius).
+
+- **Guests:** *Find supermarkets near you* (store picker, account panel, or the 📍 chip inside the
+  store) opens a **3D map of Sri Lanka**. Every branch is a pin in its supermarket's colour. Search
+  a town, use the current location, or tap the island. Pick 5 / 10 / 25 / 50 km and the matching
+  supermarkets light up and are listed. The area is remembered in this browser.
+- **Signed-in customers:** the area is saved **on the account** (`PUT /me/location`) and follows
+  them to any device. New accounts give their town at sign-up. At first sign-in, the area already
+  chosen (or the town of the chosen branch) is saved automatically. Change it any time.
+- Changing the area switches to the nearest supermarket in it if the current one is outside.
+- Branches are pinned from their town when a chain admin saves them (offline Sri Lanka gazetteer in
+  `app/data/places.ts`). The sample data has 11 verified chains across the island.
+
+### Supermarket branding (approved by HelaMart)
+
+HelaMart's own look (app, logo, colours, storefront) never changes. Each supermarket can theme
+**its space inside the store**: rack bases and top bands, checkout counters and the board above them,
+wall trims and bakery awning, plus a welcome banner inside the entrance.
+
+1. A chain admin opens **Store branding** (`/admin/branding`), edits a draft with a live preview,
+   and clicks **Submit for approval** (password confirmation). Shoppers keep seeing the live
+   version meanwhile.
+2. HelaMart staff open **Branding approvals** (`/admin/branding-approvals`), compare *Live now* vs
+   *Requested*, and **Approve & publish** or **Reject** with a reason the supermarket sees.
+3. Once approved, it shows inside the 3D store, on the store picker and in the "Shopping at" chip.
+
+| | Standard plan | Premium plan |
+|---|---|---|
+| Logo, 1 main banner, main theme colour, slogan | ✓ | ✓ |
+| Accent colour, up to 3 promotional wall banners, welcome message, logo on every aisle end-cap | — | ✓ |
+
+Plan limits are enforced by the API, not just the form. If a supermarket is moved to Standard,
+its premium items stop showing automatically. Sample data includes Lanka Fresh Mart (Premium,
+branded) and a pending request from Ceylon Daily Super (Standard). Older browser data: use
+*Platform settings → reset sample data* as Super Admin to load them.
+
 ### Product photos on the shelves
 
 The 3D shelves show each product as a picture (faced up in rows, with a yellow price tag on the

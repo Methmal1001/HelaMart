@@ -120,3 +120,64 @@ export async function prepareProductImage(file: File, opts: { removeBackground: 
   if (!blob) throw new ImageRejected('Could not process this photo.')
   return { blob, url: URL.createObjectURL(blob), width: out.width, height: out.height, backgroundRemoved }
 }
+
+/**
+ * Supermarket branding images.
+ *  - logo:   up to 512 px, optional plain-background cut-out (keeps transparency)
+ *  - banner: centre-cropped to 3:1 and resized to 1500 × 500
+ */
+export async function prepareBrandImage(file: File, kind: 'logo' | 'banner', opts: { removeBackground?: boolean } = {}): Promise<PreparedImage> {
+  if (kind === 'logo') {
+    const img = await prepareProductImage(file, { removeBackground: !!opts.removeBackground })
+    if (Math.max(img.width, img.height) <= 512) return img
+    URL.revokeObjectURL(img.url)
+    const bmp = await createImageBitmap(img.blob)
+    const scale = 512 / Math.max(bmp.width, bmp.height)
+    return encodeCanvas(drawScaled(bmp, Math.round(bmp.width * scale), Math.round(bmp.height * scale)), img.backgroundRemoved)
+  }
+  if (file.size > MAX_UPLOAD_BYTES) throw new ImageRejected('Images must be 8 MB or smaller.')
+  if (!(await sniffImageType(file))) throw new ImageRejected('Upload a JPG, PNG or WebP image. Other file types (including SVG) are not accepted.')
+  let bmp: ImageBitmap
+  try {
+    bmp = await createImageBitmap(file)
+  } catch {
+    throw new ImageRejected('This image can’t be read. Try exporting it again as JPG or PNG.')
+  }
+  if (bmp.width < 600 || bmp.height < 200) {
+    bmp.close()
+    throw new ImageRejected('Banners must be at least 600 × 200 pixels (a wide 3:1 image works best).')
+  }
+  // Cover-crop to 3:1 around the centre.
+  const W = 1500
+  const H = 500
+  const srcRatio = bmp.width / bmp.height
+  const sw = srcRatio > 3 ? bmp.height * 3 : bmp.width
+  const sh = srcRatio > 3 ? bmp.height : bmp.width / 3
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, 0, 0, W, H)
+  bmp.close()
+  return encodeCanvas(c, false, 0.84)
+}
+
+function drawScaled(bmp: ImageBitmap, w: number, h: number) {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bmp, 0, 0, w, h)
+  bmp.close()
+  return c
+}
+
+async function encodeCanvas(c: HTMLCanvasElement, backgroundRemoved: boolean, quality = 0.88): Promise<PreparedImage> {
+  const encode = (type: string) => new Promise<Blob | null>((r) => c.toBlob(r, type, quality))
+  let blob = await encode('image/webp')
+  if (!blob || blob.type !== 'image/webp') blob = await encode('image/png')
+  if (!blob) throw new ImageRejected('Could not process this image.')
+  return { blob, url: URL.createObjectURL(blob), width: c.width, height: c.height, backgroundRemoved }
+}

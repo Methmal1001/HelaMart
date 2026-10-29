@@ -3,6 +3,12 @@ const { panel, closePanel } = useStoreUi()
 const { user, logout, sessionInfo, isAuthenticated } = useAuth()
 const { offers, loading } = useOffers()
 const { show } = useToasts()
+const { openFinder } = useShoppingArea()
+
+function changeArea() {
+  closePanel()
+  openFinder()
+}
 
 const open = computed(() => panel.value === 'account' && isAuthenticated.value)
 const info = ref<ReturnType<typeof sessionInfo>>(null)
@@ -30,6 +36,19 @@ async function signOut() {
             {{ user.provider === 'google' ? 'Signed in with Google' : 'Email & password' }}
           </span>
         </div>
+      </section>
+
+      <section aria-labelledby="area-h" class="rounded-xl bg-white p-4 ring-1 ring-line">
+        <h3 id="area-h" class="mb-1 flex items-center gap-2 text-sm font-bold text-ink">
+          <AppIcon name="pin" :size="16" class="text-hela-green" />
+          Your shopping area
+        </h3>
+        <p v-if="user.preferredLocation" class="text-sm text-ink" data-testid="account-area">
+          {{ user.preferredLocation.label }}, {{ user.preferredLocation.district }}
+          <span class="text-muted">· supermarkets within {{ user.preferredLocation.radiusKm }} km</span>
+        </p>
+        <p v-else class="text-sm text-muted">Not set yet.</p>
+        <button type="button" class="mt-2 text-sm font-bold text-hela-green hover:underline" @click="changeArea">{{ user.preferredLocation ? 'Change area' : 'Set your area' }}</button>
       </section>
 
       <section aria-labelledby="offers-h">

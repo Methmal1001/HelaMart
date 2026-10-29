@@ -4,7 +4,8 @@ import { ApiError } from '../apiError'
 import { latency, randomId } from '../mock/server'
 import { putMedia } from '../mock/mediaStore'
 import { sniffImageType } from '~/utils/imageProcessing'
-import { readAdminDb, writeAdminDb } from './db'
+import { locateBranch } from '~/data/places'
+import { readAdminDb, writeAdminDb, type MediaRecord } from './db'
 import {
   allowedBranches,
   allowedBranchIds,
@@ -127,7 +128,10 @@ export function saveBranch(token: string, input: BranchInput, id?: string): Prom
       const m = ctx.db.staff.find((s) => s.id === input.managerId && s.tenantId === t.id && s.status === 'active')
       if (!m) throw new ApiError(422, 'Choose an active staff member from your supermarket as branch head.')
     }
-    const fields = { name, district: input.district, city: sanitize(input.city, 60), address: sanitize(input.address, 200), phone: sanitize(input.phone, 30), openingHours: sanitize(input.openingHours, 80), deliveryRadiusKm: input.deliveryRadiusKm, managerId: input.managerId || undefined }
+    const city = sanitize(input.city, 60)
+    // Pin the branch on the map from its town (district centre when the town isn't known) so shoppers can find it by area.
+    const pin = locateBranch({ city, district: input.district })
+    const fields = { name, district: input.district, city, address: sanitize(input.address, 200), phone: sanitize(input.phone, 30), openingHours: sanitize(input.openingHours, 80), deliveryRadiusKm: input.deliveryRadiusKm, managerId: input.managerId || undefined, lat: pin.lat, lng: pin.lng }
     if (id) {
       const b = ownedOrNotFound(ctx, ctx.db.branches.find((x) => x.id === id), 'Branch')
       Object.assign(b, fields)
@@ -321,19 +325,31 @@ export function adjustStock(token: string, id: string, branchId: string, delta: 
  * The file signature is re-checked server-side; only WebP/PNG/JPEG under 2 MB are accepted.
  */
 export async function uploadProductImage(token: string, blob: Blob, size: { width: number; height: number }): Promise<string> {
+  return storeUpload(token, 'products.manage', blob, size, 'product')
+}
+
+/** Shared by product photos and branding images: auth, plan state, signature + size checks, then store. */
+export async function storeUpload(
+  token: string,
+  permission: 'products.manage' | 'settings.manage',
+  blob: Blob,
+  size: { width: number; height: number },
+  purpose: NonNullable<MediaRecord['purpose']>,
+): Promise<string> {
   await latency(250, 600)
   const ctx = authenticate(token)
-  requirePermission(ctx, 'products.manage')
+  requirePermission(ctx, permission)
   const t = requireWritable(ctx)
-  if (blob.size > 2 * 1024 * 1024) throw new ApiError(413, 'The processed photo is too large (max 2 MB).')
+  if (blob.size > 2 * 1024 * 1024) throw new ApiError(413, 'The processed image is too large (max 2 MB).')
   const kind = await sniffImageType(blob)
-  if (!kind) throw new ApiError(415, 'Only JPG, PNG or WebP photos are accepted.')
-  if (size.width < 100 || size.height < 100) throw new ApiError(422, 'The photo is too small.')
+  if (!kind) throw new ApiError(415, 'Only JPG, PNG or WebP images are accepted.')
+  if (size.width < 100 || size.height < 100) throw new ApiError(422, 'The image is too small.')
   const id = randomId(12)
   await putMedia(id, blob)
   const db = readAdminDb()
-  db.media.push({ id, tenantId: t.id, uploadedBy: ctx.staff.id, bytes: blob.size, type: `image/${kind}`, width: size.width, height: size.height, createdAt: nowIso() })
-  audit(db, ctx, 'media.upload', 'Product photo', `${Math.round(blob.size / 1024)} KB · ${size.width}×${size.height}`)
+  db.media.push({ id, tenantId: t.id, uploadedBy: ctx.staff.id, bytes: blob.size, type: `image/${kind}`, width: size.width, height: size.height, createdAt: nowIso(), purpose })
+  const label = { product: 'Product photo', logo: 'Store logo', banner: 'Store banner' }[purpose]
+  audit(db, ctx, 'media.upload', label, `${Math.round(blob.size / 1024)} KB · ${size.width}×${size.height}`)
   writeAdminDb(db)
   return `media:${id}`
 }
@@ -477,13 +493,14 @@ export function deleteOffer(token: string, id: string): Promise<void> {
 
 // ================================================================== chain settings
 
-export type ChainSettings = Pick<Tenant, 'name' | 'hotline' | 'supportEmail' | 'defaultHours' | 'deliveryFeeCents' | 'minOrderCents' | 'brandColor'>
+/** Brand colour, logo and banners are not here: they go through HelaMart approval (see brandingApi). */
+export type ChainSettings = Pick<Tenant, 'name' | 'hotline' | 'supportEmail' | 'defaultHours' | 'deliveryFeeCents' | 'minOrderCents'>
 
 export function getChainSettings(token: string): Promise<ChainSettings & { status: Tenant['status']; statusReason?: string; plan: Tenant['plan']; commissionPercent: number; reference: string }> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'settings.manage')
     const t = requireTenant(ctx)
-    return { name: t.name, hotline: t.hotline, supportEmail: t.supportEmail, defaultHours: t.defaultHours, deliveryFeeCents: t.deliveryFeeCents, minOrderCents: t.minOrderCents, brandColor: t.brandColor, status: t.status, statusReason: t.statusReason, plan: t.plan, commissionPercent: t.commissionPercent, reference: t.reference }
+    return { name: t.name, hotline: t.hotline, supportEmail: t.supportEmail, defaultHours: t.defaultHours, deliveryFeeCents: t.deliveryFeeCents, minOrderCents: t.minOrderCents, status: t.status, statusReason: t.statusReason, plan: t.plan, commissionPercent: t.commissionPercent, reference: t.reference }
   })
 }
 
@@ -495,8 +512,7 @@ export function updateChainSettings(token: string, next: ChainSettings): Promise
     if (sanitize(next.name, 60).length < 2) throw new ApiError(422, 'Enter the supermarket name.')
     if (!Number.isInteger(next.deliveryFeeCents) || next.deliveryFeeCents < 0) throw new ApiError(422, 'Enter a valid delivery fee.')
     if (!Number.isInteger(next.minOrderCents) || next.minOrderCents < 0) throw new ApiError(422, 'Enter a valid minimum order.')
-    if (!/^#[0-9a-f]{6}$/i.test(next.brandColor)) throw new ApiError(422, 'Pick a valid brand colour.')
-    Object.assign(t, { name: sanitize(next.name, 60), hotline: sanitize(next.hotline, 30), supportEmail: sanitize(next.supportEmail, 80), defaultHours: sanitize(next.defaultHours, 80), deliveryFeeCents: next.deliveryFeeCents, minOrderCents: next.minOrderCents, brandColor: next.brandColor })
+    Object.assign(t, { name: sanitize(next.name, 60), hotline: sanitize(next.hotline, 30), supportEmail: sanitize(next.supportEmail, 80), defaultHours: sanitize(next.defaultHours, 80), deliveryFeeCents: next.deliveryFeeCents, minOrderCents: next.minOrderCents })
     audit(ctx.db, ctx, 'settings.update', t.name, `Delivery ${money(t.deliveryFeeCents)} · minimum order ${money(t.minOrderCents)}`)
     return next
   })

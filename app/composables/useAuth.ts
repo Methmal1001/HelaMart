@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { AuthResult, AuthTokens, User } from '~/types'
+import type { AuthResult, AuthTokens, ShopperLocation, User } from '~/types'
 import * as authApi from '~/services/authService'
 import { isUnauthorized, ApiError } from '~/services/apiError'
 
@@ -192,10 +192,17 @@ export function useAuth() {
     }
   }
 
-  /** Expiry info for the account menu. */
+  /** Save the shopping area on the account (everywhere the shopper signs in). */
+  async function savePreferredLocation(location: ShopperLocation) {
+    const updated = await authorized((t) => authApi.savePreferredLocation(t, location))
+    if (user.value?.id === updated.id) user.value = updated
+    return updated
+  }
+
+    /** Expiry info for the account menu. */
   function sessionInfo() {
     return tokens ? { accessExpiresAt: tokens.accessExpiresAt, refreshExpiresAt: tokens.refreshExpiresAt, remember: tokens.remember } : null
   }
 
-  return { user, status, isAuthenticated, login, register, loginWithGoogle, logout, getAccessToken, authorized, sessionInfo }
+  return { user, status, isAuthenticated, login, register, loginWithGoogle, logout, getAccessToken, authorized, sessionInfo, savePreferredLocation }
 }
