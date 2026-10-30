@@ -15,6 +15,11 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+The storefront talks to the **HelaMart API** (`H:\HelaMart_API`, ASP.NET Core + SQL Server database
+`helamart`). Start it first with `dotnet run --launch-profile http`. It listens on `http://localhost:5206`
+and creates and seeds the database on first run. Point the frontend elsewhere with
+`NUXT_PUBLIC_API_BASE=https://…/api`.
+
 Other scripts: `npm run build` · `npm run preview` · `npm run typecheck`
 
 ## Pages
@@ -30,7 +35,10 @@ Other scripts: `npm run build` · `npm run preview` · `npm run typecheck`
 Browsing and collecting items work as a guest; **paying requires login**. Pushing the cart into
 the checkout area (or pressing *Checkout*) opens the billing flow, asking you to log in first.
 
-| Test login | Password | Offers |
+Offers belong to a supermarket. The personal ones below are at **Lanka Fresh Mart**; its
+Divulapitiya branch also runs *10% off produce* for everyone, and Ceylon Daily Super has *5% off staples*.
+
+| Test login | Password | Offers at Lanka Fresh Mart |
 |---|---|---|
 | `nimal@helamart.test` | `Password@123` | 10% off Beverages (max Rs. 1,000) · Rs. 500 off over Rs. 5,000 · one expired offer |
 | `kavindi@helamart.test` | `Password@123` | Free delivery over Rs. 3,000 · Buy 2 get 1 free on Snacks · 15% off produce |
@@ -39,10 +47,10 @@ the checkout area (or pressing *Checkout*) opens the billing flow, asking you to
 | Google: Ruwan Jayawardena / any other email | — | none |
 
 **Registering:** the login dialog has a *Create account* tab (name, email, optional Sri Lankan
-mobile, password with strength rules, terms). New accounts — and first-time Google sign-ins with
-any email — are stored in this browser's mock database and get a *Rs. 250 off over Rs. 1,500*
-welcome offer. Registering an email that already exists (or belongs to a Google account) is
-refused with a pointer to the right sign-in method.
+mobile, password with strength rules, terms). New accounts, and first-time Google sign-ins with
+any email, are stored in the `helamart` database. A first order at Lanka Fresh Mart gets
+*Rs. 250 off over Rs. 1,500*. Registering an email that already exists (or belongs to a Google
+account) is refused with a pointer to the right sign-in method.
 
 Test cards: `4242 4242 4242 4242` succeeds · `4000 0000 0000 0002` is declined (any future expiry/CVC).
 
@@ -51,15 +59,19 @@ signed in*, otherwise a browser-session cookie capped at 12 hours). Tokens refre
 expiry, rotation is serialised across tabs, reused refresh tokens revoke the session, five failed
 logins lock the account for a minute, and an ended session signs the user out.
 
-**Google sign-in:** without configuration a simulated account chooser is used. To use the real
-Google button set `NUXT_PUBLIC_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com`; the ID token is
-then sent to `authService.loginWithGoogle`, which the backend must verify with Google.
+**Google sign-in:** without configuration a simulated account chooser is used (accepted only by an
+API running in Development). To use the real Google button set
+`NUXT_PUBLIC_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com` here and the same id as
+`Auth:GoogleClientId` on the API, which verifies the ID token with Google.
 
-**Replacing the mock backend:** `app/services/*Service.ts` are the only files that change — each
-function maps to one endpoint (`/auth/login`, `/auth/google`, `/auth/refresh`, `/auth/logout`,
-`/auth/me`, `/me/offers`, `/orders`). With a real backend, the refresh token should live in an
-HttpOnly cookie set by the server, and prices/offers must be re-validated server-side (the mock
-already re-prices orders with `priceCart`).
+**Backend:** `app/services/*Service.ts` call the API through `app/services/http.ts`, one function
+per endpoint (`/auth/*`, `/me/location`, `/me/offers`, `/stores`, `/stores/:id/catalog`, `/orders`,
+`/partners/applications`). The server re-prices every order from its own prices and the shopper's
+offers, and takes the items out of the branch's stock. The cart preview still uses `priceCart`
+with the same rules. Still to do: move the refresh token into an HttpOnly cookie set by the server.
+
+**Not yet on the API:** the `/admin` portal below still runs on its in-browser mock database
+(`app/services/admin/*`). Its tables already exist and are seeded in `helamart`.
 
 ## Multi-supermarket portal (`/admin`)
 

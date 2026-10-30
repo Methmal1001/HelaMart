@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import type { AuthResult, AuthTokens, ShopperLocation, User } from '~/types'
 import { mockAccounts } from '~/data/mockUsers'
 import { decodeJwt } from '~/utils/jwt'
@@ -7,13 +8,20 @@ import { EMAIL_RE, isStrongPassword, normalizeSriLankanMobile } from '~/utils/va
 import { DISTRICTS } from '~/data/sriLanka'
 import { inSriLanka } from '~/data/places'
 import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccessToken, verifyAccessToken, writeDb } from './mock/server'
+=======
+import type { AuthResult, ShopperLocation, User } from '~/types'
+import { api } from './http'
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 
 /**
- * Auth API. Every function maps 1:1 to a future backend endpoint:
+ * Auth API (HelaMart backend):
  *   POST /auth/register · POST /auth/login · POST /auth/google · POST /auth/refresh · POST /auth/logout · GET /auth/me
- * Only the bodies change when the backend exists.
+ *   PUT /me/location
+ * The server hashes passwords, signs short-lived JWT access tokens, rotates refresh tokens
+ * (re-using a rotated one revokes the session family) and locks an email after repeated failures.
  */
 
+<<<<<<< HEAD
 /** Customers suspended platform-wide by HelaMart can't sign in. */
 function assertNotSuspended(user: User) {
   const record = readAdminDb().customers.find((c) => c.id === user.id || c.email === user.email)
@@ -81,66 +89,16 @@ function cleanLocation(loc: ShopperLocation | undefined | null): ShopperLocation
   return { label, district: loc.district, lat: Math.round(lat * 1e4) / 1e4, lng: Math.round(lng * 1e4) / 1e4, radiusKm, source }
 }
 
+=======
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 /** PUT /me/location — save (or change) the customer's shopping area. */
-export async function savePreferredLocation(accessToken: string, location: ShopperLocation): Promise<User> {
-  await latency(150, 350)
-  const user = findUserById(verifyAccessToken(accessToken))
-  if (!user) throw new ApiError(401, 'Account not found.')
-  const clean = cleanLocation(location)
-  const db = readDb()
-  db.preferences[user.id] = { ...db.preferences[user.id], location: clean }
-  writeDb(db)
-  return { ...user, preferredLocation: clean }
-}
-
-function issueSession(user: User, remember: boolean, familyId = randomId(8), absoluteExpiry?: number): AuthTokens {
-  const now = Date.now()
-  const access = signAccessToken(user, now)
-  const refreshToken = randomId(32)
-  const refreshExpiresAt = absoluteExpiry ?? now + (remember ? TOKEN_POLICY.rememberTtlMs : TOKEN_POLICY.sessionTtlMs)
-  const db = readDb()
-  db.sessions.push({
-    id: randomId(8),
-    userId: user.id,
-    tokenHash: hash(refreshToken),
-    expiresAt: refreshExpiresAt,
-    remember,
-    revoked: false,
-    familyId,
-  })
-  writeDb(db)
-  return { accessToken: access.token, refreshToken, accessExpiresAt: access.expiresAt, refreshExpiresAt, remember }
+export function savePreferredLocation(accessToken: string, location: ShopperLocation): Promise<User> {
+  return api<User>('/me/location', { method: 'PUT', body: location, token: accessToken })
 }
 
 /** POST /auth/login */
-export async function login(email: string, password: string, remember: boolean): Promise<AuthResult> {
-  await latency()
-  const key = email.trim().toLowerCase()
-  const db = readDb()
-  const lock = db.failedLogins[key]
-  if (lock && lock.count >= TOKEN_POLICY.maxFailedLogins && lock.until > Date.now()) {
-    const secs = Math.ceil((lock.until - Date.now()) / 1000)
-    throw new ApiError(429, `Too many attempts. Try again in ${secs} seconds.`, 'LOCKED')
-  }
-  // Seeded test accounts, then customers who registered in this browser.
-  const seeded = mockAccounts.find((a) => a.user.email === key && a.password)
-  const registered = db.credentials[key]
-  let user: User | undefined
-  if (seeded && seeded.password === password) user = seeded.user
-  else if (registered && registered.passwordHash === hashPassword(key, password)) {
-    user = db.extraUsers.find((u) => u.id === registered.userId)
-  }
-  if (!user) {
-    const count = (lock && lock.until > Date.now() ? lock.count : 0) + 1
-    db.failedLogins[key] = { count, until: Date.now() + TOKEN_POLICY.lockoutMs }
-    writeDb(db)
-    // Same message for unknown email and wrong password — don't reveal which accounts exist.
-    throw new ApiError(401, 'Incorrect email or password.', 'BAD_CREDENTIALS')
-  }
-  delete db.failedLogins[key]
-  writeDb(db)
-  assertNotSuspended(user)
-  return { user: withPreferences(user), tokens: issueSession(user, remember) }
+export function login(email: string, password: string, remember: boolean): Promise<AuthResult> {
+  return api<AuthResult>('/auth/login', { method: 'POST', body: { email, password, remember } })
 }
 
 export interface RegisterInput {
@@ -153,6 +111,7 @@ export interface RegisterInput {
 }
 
 /** POST /auth/register — creates a customer account and signs it in. */
+<<<<<<< HEAD
 export async function register(input: RegisterInput, remember: boolean): Promise<AuthResult> {
   await latency(400, 800)
   const email = input.email.trim().toLowerCase()
@@ -189,99 +148,35 @@ export async function register(input: RegisterInput, remember: boolean): Promise
   if (location) db.preferences[user.id] = { location }
   writeDb(db)
   return { user: withPreferences(user), tokens: issueSession(user, remember) }
+=======
+export function register(input: RegisterInput, remember: boolean): Promise<AuthResult> {
+  return api<AuthResult>('/auth/register', { method: 'POST', body: { ...input, remember } })
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 }
 
 /**
- * POST /auth/google — the client sends Google's ID token (credential).
- * The real backend MUST verify it with Google (signature, `aud` = our client id, expiry)
- * before trusting any claim. The mock only decodes it, or accepts a test account email.
+ * POST /auth/google — sends Google's ID token (credential); the server verifies it with Google.
+ * The simulated account chooser (email + name, no token) is only accepted by a development server.
  */
-export async function loginWithGoogle(
+export function loginWithGoogle(
   input: { idToken: string } | { email: string; name?: string },
   remember: boolean,
 ): Promise<AuthResult> {
-  await latency()
-  let email: string
-  let name: string | undefined
-  let picture: string | undefined
-  if ('idToken' in input) {
-    const claims = decodeJwt<{ email?: string; name?: string; picture?: string; email_verified?: boolean }>(input.idToken)
-    if (!claims?.email || claims.email_verified === false) throw new ApiError(401, 'Google sign-in failed.', 'GOOGLE_INVALID')
-    email = claims.email.toLowerCase()
-    name = claims.name
-    picture = claims.picture
-  } else {
-    email = input.email.trim().toLowerCase()
-    name = input.name
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'Enter a valid Google email address.', 'BAD_EMAIL')
-
-  let user = mockAccounts.find((a) => a.user.email === email)?.user
-  if (!user) {
-    // First Google sign-in for this email: create the customer account.
-    const db = readDb()
-    user = db.extraUsers.find((u) => u.email === email)
-    if (!user) {
-      user = {
-        id: `usr_g_${hash(email).slice(0, 10)}`,
-        name: name || email.split('@')[0]!,
-        email,
-        provider: 'google',
-        pictureUrl: picture,
-        avatarColor: '#174D38',
-      }
-      db.extraUsers.push(user)
-      writeDb(db)
-    }
-  }
-  assertNotSuspended(user)
-  return { user: withPreferences(user), tokens: issueSession(user, remember) }
+  return api<AuthResult>('/auth/google', { method: 'POST', body: { ...input, remember } })
 }
 
-/**
- * POST /auth/refresh — exchanges a refresh token for a new pair (rotation).
- * Re-using an already-rotated token signals theft: the whole session family is revoked.
- */
-export async function refresh(refreshToken: string): Promise<AuthResult> {
-  await latency(120, 300)
-  const db = readDb()
-  const record = db.sessions.find((s) => s.tokenHash === hash(refreshToken))
-  if (!record) throw new ApiError(401, 'Session not found.', 'SESSION_INVALID')
-  if (record.revoked) {
-    if (record.replacedBy) db.sessions.forEach((s) => s.familyId === record.familyId && (s.revoked = true))
-    writeDb(db)
-    throw new ApiError(401, 'Session has been revoked.', 'SESSION_REVOKED')
-  }
-  if (record.expiresAt <= Date.now()) throw new ApiError(401, 'Session expired.', 'SESSION_EXPIRED')
-  const user = findUserById(record.userId)
-  if (!user) throw new ApiError(401, 'Account not found.', 'SESSION_INVALID')
-
-  // The new refresh token keeps the original absolute expiry (no endless sliding sessions).
-  const tokens = issueSession(user, record.remember, record.familyId, record.expiresAt)
-  const db2 = readDb()
-  const old = db2.sessions.find((s) => s.id === record.id)
-  if (old) {
-    old.revoked = true
-    old.replacedBy = hash(tokens.refreshToken)
-  }
-  writeDb(db2)
-  return { user, tokens }
+/** POST /auth/refresh — exchanges a refresh token for a new pair (rotation). */
+export function refresh(refreshToken: string): Promise<AuthResult> {
+  return api<AuthResult>('/auth/refresh', { method: 'POST', body: { refreshToken } })
 }
 
 /** POST /auth/logout — revokes the refresh token. */
 export async function logout(refreshToken: string | null): Promise<void> {
-  await latency(80, 200)
   if (!refreshToken) return
-  const db = readDb()
-  const record = db.sessions.find((s) => s.tokenHash === hash(refreshToken))
-  if (record) record.revoked = true
-  writeDb(db)
+  await api<void>('/auth/logout', { method: 'POST', body: { refreshToken } })
 }
 
 /** GET /auth/me */
-export async function me(accessToken: string): Promise<User> {
-  await latency(80, 200)
-  const user = findUserById(verifyAccessToken(accessToken))
-  if (!user) throw new ApiError(401, 'Account not found.')
-  return user
+export function me(accessToken: string): Promise<User> {
+  return api<User>('/auth/me', { token: accessToken })
 }

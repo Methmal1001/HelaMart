@@ -1,4 +1,5 @@
 import type { CardDetails, CartLine, DeliveryDetails, Order, PaymentMethod, User } from '~/types'
+<<<<<<< HEAD
 import { getProduct } from '~/data/products'
 import { priceCart } from '~/utils/pricing'
 import { ApiError } from './apiError'
@@ -7,6 +8,9 @@ import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
 import { readAdminDb, writeAdminDb } from './admin/db'
 import { findPlace } from '~/data/places'
 import { coversLocation } from '~/lib/coverage'
+=======
+import { api } from './http'
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 
 export interface PlaceOrderRequest {
   /** Verified supermarket + branch the shopper is buying from. */
@@ -17,23 +21,13 @@ export interface PlaceOrderRequest {
   payment: { method: PaymentMethod; card?: CardDetails }
 }
 
-function luhn(num: string) {
-  let sum = 0
-  let dbl = false
-  for (let i = num.length - 1; i >= 0; i--) {
-    let d = Number(num[i])
-    if (dbl && (d *= 2) > 9) d -= 9
-    sum += d
-    dbl = !dbl
-  }
-  return sum % 10 === 0
-}
-
 /**
- * POST /orders — the server re-prices the cart with the customer's own offers
- * (never trusting client totals), "charges" the card and stores the order.
+ * POST /orders — the server re-prices the cart from its own prices and the customer's offers
+ * (client totals are never trusted), "charges" the card, takes the items out of the branch's
+ * stock and stores the order for that branch.
  * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined.
  */
+<<<<<<< HEAD
 export async function placeOrder(accessToken: string, req: PlaceOrderRequest, user: User): Promise<Order> {
   await latency(700, 1200)
   const userId = verifyAccessToken(accessToken)
@@ -98,4 +92,8 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
     writeAdminDb(adminDb)
   }
   return order
+=======
+export function placeOrder(accessToken: string, req: PlaceOrderRequest, _user: User): Promise<Order> {
+  return api<Order>('/orders', { method: 'POST', body: req, token: accessToken })
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 }

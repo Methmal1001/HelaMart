@@ -2,17 +2,27 @@ import type { FulfilmentMethod, Offer, Product } from '~/types'
 import type { Ref } from 'vue'
 import { listMyOffers, listStoreOffers, mergeOffers } from '~/services/offerService'
 import { catalogVersion } from '~/data/products'
+import type { StoreChoice } from './useStoreSelection'
 
+<<<<<<< HEAD
 /**
  * Promotions for the shopper:
  *  - personal offers (signed-in customers, loaded by the auth plugin)
  *  - the chosen supermarket branch's running offers (everyone, including guests)
  */
+=======
+/** Promotions for the signed-in shopper at the chosen branch (loaded by the auth plugin on login and store change). */
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 export function useOffers() {
   const offers = useState<Offer[]>('offers', () => [])
   const storeOffers = useState<Offer[]>('store-offers', () => [])
   const loading = useState<boolean>('offers-loading', () => false)
+<<<<<<< HEAD
   const { authorized, isAuthenticated, getAccessToken } = useAuth()
+=======
+  const store = useState<StoreChoice | null>('store-choice', () => null)
+  const { authorized, isAuthenticated } = useAuth()
+>>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 
   const activeOffers = computed(() => offers.value.filter((o) => isOfferActive(o)))
   /** Everything that prices this shopper's basket at the chosen branch. */
@@ -25,7 +35,7 @@ export function useOffers() {
     }
     loading.value = true
     try {
-      offers.value = await authorized(listMyOffers)
+      offers.value = await authorized((token) => listMyOffers(token, store.value))
     } catch {
       offers.value = []
     } finally {
