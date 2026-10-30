@@ -1,5 +1,5 @@
-import type { CategoryId, FixtureKind, FloorRect, StoreSection } from '~/types'
-import { getCategory } from './categories'
+import type { CategoryId, FixtureKind, FloorRect, StoreAreaId, StoreSection } from '~/types'
+import { areaColor, areaTitle, getCategory } from './categories'
 
 /**
  * Floor plan of the virtual store, in metres.
@@ -31,7 +31,7 @@ export const GONDOLA = {
 }
 
 export const GONDOLA_X = [-11.25, -6.75, -2.25, 2.25, 6.75, 11.25]
-export const GONDOLA_CATEGORIES: CategoryId[] = ['staples', 'snacks', 'beverages', 'cleaning', 'personal-care', 'household']
+export const GONDOLA_CATEGORIES: StoreAreaId[] = ['staples', 'snacks', 'beverages', 'cleaning', 'personal-care', 'household']
 
 export interface FixturePlan {
   sectionId: string
@@ -135,6 +135,17 @@ export function getSection(id: string): StoreSection | undefined {
   return sections.find((s) => s.id === id)
 }
 
+/** The store section where a category is shelved (its area). */
 export function sectionForCategory(categoryId: CategoryId): StoreSection | undefined {
-  return sections.find((s) => s.categoryId === categoryId)
+  const area = getCategory(categoryId).area
+  return sections.find((s) => s.categoryId === area)
+}
+
+/** Live title for a section's signs / minimap / "You're in…", from the supermarket's own categories. */
+export function sectionTitle(s: StoreSection): string {
+  return s.categoryId ? areaTitle(s.categoryId as StoreAreaId) : s.name
+}
+
+export function sectionColor(s: StoreSection): string {
+  return s.categoryId ? areaColor(s.categoryId as StoreAreaId) : s.color
 }

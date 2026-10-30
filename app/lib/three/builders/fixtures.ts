@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { CategoryId } from '~/types'
 import { fixtures, GONDOLA, type FixturePlan } from '~/data/storeLayout'
 import { getCategory } from '~/data/categories'
-import { productsInCategory } from '~/data/products'
+import { productsInArea } from '~/data/products'
 import { StaticBatch, frameMatrix } from '../batch'
 import type { CollisionWorld } from '../colliders'
 import type { MaterialLibrary } from '../materials'
@@ -110,7 +110,7 @@ function gondola(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4, L
 }
 
 function nextProduceId(cursor: { i: number }) {
-  const list = productsInCategory('produce')
+  const list = productsInArea('produce')
   return list[cursor.i++ % list.length]!.id
 }
 

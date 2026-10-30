@@ -74,7 +74,7 @@ async function submitRegister() {
   Object.keys(regErrors).forEach((k) => delete regErrors[k])
   if (reg.name.trim().length < 3) regErrors.name = 'Enter your full name.'
   if (!EMAIL_RE.test(email.value.trim())) regErrors.email = 'Enter a valid email address.'
-  if (reg.phone.trim() && !isSriLankanMobile(reg.phone)) regErrors.phone = 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.'
+  if (!isSriLankanMobile(reg.phone)) regErrors.phone = 'Enter your Sri Lankan mobile number, e.g. 077 123 4567.'
   const town = findPlace(reg.town)
   if (!town) regErrors.town = 'Choose your town from the list — we use it to show supermarkets near you.'
   if (!isStrongPassword(password.value)) regErrors.password = 'Your password doesn’t meet all the rules below.'
@@ -208,8 +208,8 @@ const inputCls =
           <span v-if="regErrors.email" class="mt-1 block text-xs text-[#8A2E2E]">{{ regErrors.email }}</span>
         </label>
         <label class="block">
-          <span class="mb-1.5 block text-sm font-semibold text-ink">Mobile number <span class="font-normal text-muted">(optional)</span></span>
-          <input v-model="reg.phone" type="tel" autocomplete="tel" :class="inputCls" placeholder="077 123 4567" :aria-invalid="!!regErrors.phone">
+          <span class="mb-1.5 block text-sm font-semibold text-ink">Mobile number <span class="font-normal text-muted">(for delivery updates)</span></span>
+          <input v-model="reg.phone" type="tel" autocomplete="tel" required data-testid="register-phone" :class="inputCls" placeholder="077 123 4567" :aria-invalid="!!regErrors.phone">
           <span v-if="regErrors.phone" class="mt-1 block text-xs text-[#8A2E2E]">{{ regErrors.phone }}</span>
         </label>
         <label class="block">

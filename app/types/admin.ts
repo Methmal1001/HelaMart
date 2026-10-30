@@ -1,4 +1,4 @@
-import type { CategoryId, DeliveryDetails, Offer, OrderLine, PriceBreakdown, Product } from './index'
+import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, PriceBreakdown, Product, StoreAreaId } from './index'
 
 // ================================================================== permissions
 
@@ -296,6 +296,13 @@ export interface AdminCategory {
   description: string
   color: string
   visible: boolean
+  icon: IconName
+  /** Store area it's shelved in (3D aisle / section). */
+  area: StoreAreaId
+  /** Display order in the shop (aisle list, filters). */
+  order: number
+  /** One of HelaMart's standard categories. */
+  standard: boolean
 }
 
 /** HelaMart homepage promotion banner — managed by HelaMart head office only. */

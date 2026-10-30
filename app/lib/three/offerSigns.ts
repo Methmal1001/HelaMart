@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { CategoryId } from '~/types'
 import { GONDOLA, GONDOLA_CATEGORIES, GONDOLA_X } from '~/data/storeLayout'
+import { getCategory } from '~/data/categories'
 
 /**
  * In-store promotion signage, like a real supermarket's:
@@ -110,10 +111,14 @@ export class OfferSignsLayer {
     if (!boards?.offers.length) return
 
     // End-cap wobblers above aisles whose category is on offer.
-    const byCategory = new Map<CategoryId, PromoBoard>()
-    for (const o of boards.offers) if (o.categoryId && !byCategory.has(o.categoryId)) byCategory.set(o.categoryId, o)
+    // By store area, so offers on a supermarket's own categories show on the aisle where they're shelved.
+    const byArea = new Map<string, PromoBoard>()
+    for (const o of boards.offers) {
+      const area = o.categoryId ? getCategory(o.categoryId).area : undefined
+      if (area && !byArea.has(area)) byArea.set(area, o)
+    }
     GONDOLA_CATEGORIES.forEach((cat, i) => {
-      const o = byCategory.get(cat)
+      const o = byArea.get(cat)
       const x = GONDOLA_X[i]
       if (!o || x === undefined) return
       const tex = this.texture(endcapCanvas(o))

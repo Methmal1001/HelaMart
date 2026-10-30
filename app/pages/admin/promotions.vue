@@ -2,7 +2,6 @@
 import type { AdminOffer, TableColumn } from '~/types/admin'
 import type { CategoryId, OfferConditions, OfferRule } from '~/types'
 import type { ScheduleState } from '~/utils/schedule'
-import { categories } from '~/data/categories'
 import { products } from '~/data/products'
 import { branchDirectory, setOfferSchedule, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
 
@@ -18,9 +17,11 @@ const branches = ref<{ id: string; name: string }[]>([])
 const loading = ref(true)
 const canManage = computed(() => auth.can('promotions.manage') && !auth.readOnly.value)
 
+const { categories, load: loadCategories } = useTenantCategories()
+
 onMounted(async () => {
   try {
-    ;[offers.value, branches.value] = await Promise.all([auth.call(listOffers), auth.call(branchDirectory)])
+    ;[offers.value, branches.value] = await Promise.all([auth.call(listOffers), auth.call(branchDirectory), loadCategories()])
     if (auth.can('customers.view')) customers.value = await auth.call(listChainCustomers)
   } catch (e) {
     notify.error(e)
@@ -77,7 +78,7 @@ function open(o: AdminOffer | 'new') {
   end.setHours(23, 59, 0, 0)
   const nextYear = toLocalInput(end)
   if (o === 'new') {
-    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
+    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: categories.value[0]?.id ?? 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
     Object.assign(f, { condMinRs: '', condMinItems: '', days: [], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '', limit: '', announce: false })
     return
   }

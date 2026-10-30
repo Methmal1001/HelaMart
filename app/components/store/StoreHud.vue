@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { getProduct } from '~/data/products'
+import { catalogVersion, getProduct } from '~/data/products'
+import { sectionColor, sectionTitle } from '~/data/storeLayout'
 
 const xp = useStoreExperience()
 const ui = useStoreUi()
@@ -8,6 +9,12 @@ const bill = useBill()
 const { startCheckout } = useCheckout()
 const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
 const { area, openFinder } = useShoppingArea()
+/** The supermarket's own name/colour for the section the shopper is in. */
+const sectionLook = computed(() => {
+  void catalogVersion.value
+  const s = xp.currentSection.value
+  return s ? { title: sectionTitle(s), color: sectionColor(s) } : null
+})
 const { storeOffers: allStoreOffers } = useOffers()
 const storeOffers = computed(() => allStoreOffers.value.filter((o) => !o.upcoming))
 onMounted(() => !storeChoice.value && refreshStores())
@@ -77,11 +84,11 @@ async function locate(id: string) {
         role="status"
         aria-live="polite"
       >
-        <span class="size-2.5 shrink-0 rounded-full" :style="{ background: section?.color ?? '#174D38' }" aria-hidden="true" />
+        <span class="size-2.5 shrink-0 rounded-full" :style="{ background: sectionLook?.color ?? '#174D38' }" aria-hidden="true" />
         <span class="truncate">
           <template v-if="section">
             <span class="text-muted">You’re in</span>
-            {{ section.aisle ? `${section.aisle} · ` : '' }}{{ section.name }}
+            {{ section.aisle ? `${section.aisle} · ` : '' }}{{ sectionLook?.title }}
           </template>
           <template v-else>Main walkway</template>
         </span>

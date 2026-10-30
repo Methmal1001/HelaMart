@@ -1,5 +1,6 @@
 import type { Branch, Customer, PlatformDashboard, PlatformSettings, StaffView, Tenant, TenantStatus } from '~/types/admin'
 import { ROLE_IDS } from '~/data/admin/permissions'
+import { standardCategoriesFor } from '~/data/admin/seed'
 import { PROVINCE_OF, type District } from '~/data/sriLanka'
 import { EMAIL_RE, isSriLankanMobile } from '~/utils/validation'
 import { ApiError } from '../apiError'
@@ -160,7 +161,8 @@ export function approveTenant(token: string, id: string, input: { commissionPerc
       id: `br_${randomId(5)}`, tenantId: t.id, name: t.firstBranch.name, code: `${code}-001`, district: t.firstBranch.district, city: t.firstBranch.city,
       address: t.hqAddress, phone: t.phone, openingHours: t.defaultHours, status: 'open', deliveryRadiusKm: 8, createdAt: nowIso(),
     })
-    for (const c of ctx.db.categories.filter((x) => x.tenantId === 'tnt_lfm')) ctx.db.categories.push({ ...c, tenantId: t.id })
+    // Every new supermarket starts with HelaMart's standard categories (it can customise them).
+    ctx.db.categories.push(...standardCategoriesFor(t.id))
     const { staff, tempPassword } = createChainAdminAccount(ctx, t, { name: t.ownerName, email: t.email, phone: '' })
     audit(ctx.db, ctx, 'tenant.approve', t.name, `Approved · ${input.plan} plan · ${input.commissionPercent}% commission · chain admin ${staff.email}`, 'warning', t.id)
     return { tenant: t, admin: staff, tempPassword }

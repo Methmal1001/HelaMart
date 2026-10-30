@@ -1,5 +1,6 @@
 import { listStores, type PublicStore } from '~/services/partnerService'
-import { getStoreCatalog } from '~/services/catalogService'
+import { getStoreCatalog, getStoreCategories } from '~/services/catalogService'
+import { setActiveCategories } from '~/data/categories'
 import { getProduct, setActiveCatalog } from '~/data/products'
 import { branchServes, rankStores } from '~/lib/area'
 
@@ -33,6 +34,8 @@ export function useStoreSelection() {
   /** Load the chosen branch's catalogue and drop cart items it doesn't sell. */
   function applyCatalog(announce = false) {
     if (!choice.value) return
+    // The supermarket's own categories first (names, colours, order), then its products.
+    setActiveCategories(getStoreCategories(choice.value.storeId))
     setActiveCatalog(getStoreCatalog(choice.value.storeId, choice.value.branchId))
     const missing = lines.value.filter((l) => !getProduct(l.productId))
     for (const l of missing) remove(l.productId)

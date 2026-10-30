@@ -3,7 +3,7 @@ import { mockAccounts } from '~/data/mockUsers'
 import { decodeJwt } from '~/utils/jwt'
 import { ApiError } from './apiError'
 import { readAdminDb } from './admin/db'
-import { EMAIL_RE, isSriLankanMobile, isStrongPassword } from '~/utils/validation'
+import { EMAIL_RE, isStrongPassword, normalizeSriLankanMobile } from '~/utils/validation'
 import { DISTRICTS } from '~/data/sriLanka'
 import { inSriLanka } from '~/data/places'
 import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccessToken, verifyAccessToken, writeDb } from './mock/server'
@@ -27,8 +27,44 @@ function findUserById(id: string): User | undefined {
 
 /** The account as returned to the client, including saved preferences. */
 function withPreferences(user: User): User {
-  const location = readDb().preferences[user.id]?.location
-  return location ? { ...user, preferredLocation: location } : { ...user }
+  const prefs = readDb().preferences[user.id]
+  const out: User = { ...user }
+  if (prefs?.location) out.preferredLocation = prefs.location
+  if (prefs?.phone) out.phone = prefs.phone
+  return out
+}
+
+/** Every account's current mobile number (to keep numbers unique to one account). */
+function phoneInUse(phone: string, exceptUserId?: string) {
+  const db = readDb()
+  const all = [
+    ...mockAccounts.map((a) => ({ id: a.user.id, phone: db.preferences[a.user.id]?.phone ?? a.user.phone })),
+    ...db.extraUsers.map((u) => ({ id: u.id, phone: db.preferences[u.id]?.phone ?? u.phone })),
+  ]
+  const digits = (p?: string) => (p ? normalizeSriLankanMobile(p) : null)
+  return all.some((a) => a.id !== exceptUserId && digits(a.phone) === phone)
+}
+
+/** Validate and normalise a customer's mobile number (required for every account). */
+function cleanPhone(raw: string | undefined, userId?: string): string {
+  const phone = normalizeSriLankanMobile(String(raw ?? ''))
+  if (!phone) throw new ApiError(422, 'Enter your Sri Lankan mobile number, e.g. 077 123 4567.', 'BAD_PHONE')
+  if (phoneInUse(phone, userId)) throw new ApiError(409, 'That mobile number is already used by another HelaMart account.', 'PHONE_TAKEN')
+  return phone
+}
+
+/** PUT /me/phone — add or change the customer's mobile number. */
+export async function savePhone(accessToken: string, raw: string): Promise<User> {
+  await latency(150, 350)
+  const user = findUserById(verifyAccessToken(accessToken))
+  if (!user) throw new ApiError(401, 'Account not found.')
+  const phone = cleanPhone(raw, user.id)
+  const db = readDb()
+  db.preferences[user.id] = { ...db.preferences[user.id], phone }
+  const extra = db.extraUsers.find((u) => u.id === user.id)
+  if (extra) extra.phone = phone
+  writeDb(db)
+  return { ...user, phone }
 }
 
 /** Validates a shopping area sent by the client (never trust coordinates or labels as-is). */
@@ -123,7 +159,7 @@ export async function register(input: RegisterInput, remember: boolean): Promise
   const name = input.name.trim().replace(/\s+/g, ' ')
   if (name.length < 3) throw new ApiError(422, 'Enter your full name.', 'BAD_NAME')
   if (!EMAIL_RE.test(email)) throw new ApiError(422, 'Enter a valid email address.', 'BAD_EMAIL')
-  if (input.phone && !isSriLankanMobile(input.phone)) throw new ApiError(422, 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.', 'BAD_PHONE')
+  const phone = cleanPhone(input.phone)
   if (!isStrongPassword(input.password)) throw new ApiError(422, 'Choose a stronger password.', 'WEAK_PASSWORD')
   const location = input.location ? cleanLocation(input.location) : undefined
 
@@ -144,7 +180,7 @@ export async function register(input: RegisterInput, remember: boolean): Promise
     id: `usr_${randomId(6)}`,
     name,
     email,
-    phone: input.phone.trim() || undefined,
+    phone,
     provider: 'password',
     avatarColor: ['#174D38', '#2F6E8F', '#9E3A5A', '#B9803F', '#5F7484'][email.length % 5],
   }

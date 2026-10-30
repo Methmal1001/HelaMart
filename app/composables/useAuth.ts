@@ -199,10 +199,17 @@ export function useAuth() {
     return updated
   }
 
+    /** Add or change the customer's mobile number (required on every account). */
+  async function savePhone(phone: string) {
+    const updated = await authorized((t) => authApi.savePhone(t, phone))
+    if (user.value?.id === updated.id) user.value = updated
+    return updated
+  }
+
     /** Expiry info for the account menu. */
   function sessionInfo() {
     return tokens ? { accessExpiresAt: tokens.accessExpiresAt, refreshExpiresAt: tokens.refreshExpiresAt, remember: tokens.remember } : null
   }
 
-  return { user, status, isAuthenticated, login, register, loginWithGoogle, logout, getAccessToken, authorized, sessionInfo, savePreferredLocation }
+  return { user, status, isAuthenticated, login, register, loginWithGoogle, logout, getAccessToken, authorized, sessionInfo, savePreferredLocation, savePhone }
 }

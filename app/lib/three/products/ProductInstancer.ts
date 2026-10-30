@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import type { CategoryId, Product, ProductShape } from '~/types'
-import { productsInCategory } from '~/data/products'
+import type { CategoryId, Product, ProductShape, StoreAreaId } from '~/types'
+import { productsInArea } from '~/data/products'
 import { createShapeGeometries, productDimensions, SHAPES_WITH_LABELS, type ShapeGeometry } from './shapes'
 import { buildProductAtlas, type ProductAtlas, type ShelfPromos } from './atlas'
 
@@ -108,7 +108,8 @@ export class ProductInstancer {
 
     for (const slot of slots) {
       // Out-of-stock items leave the shelf (they stay visible in the catalogue).
-      const inCategory = productsInCategory(slot.categoryId).filter((p) => p.stock !== 0)
+      // Everything shelved in this area: its standard category plus the supermarket's own categories placed here.
+      const inCategory = productsInArea(slot.categoryId as StoreAreaId).filter((p) => p.stock !== 0)
       const candidates = slot.productId
         ? inCategory.filter((p) => p.id === slot.productId)
         : inCategory.filter((p) => !slot.shapes || slot.shapes.includes(p.shape))

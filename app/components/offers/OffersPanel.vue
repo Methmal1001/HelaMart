@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { CategoryId } from '~/types'
+import { getProduct, productsInCategory } from '~/data/products'
+import { getCategory } from '~/data/categories'
 import { textOn } from '~/lib/branding'
 
 /**
@@ -16,6 +18,7 @@ const { choice, currentStore } = useStoreSelection()
 const bill = useBill()
 const route = useRoute()
 const xp = useStoreExperience()
+const { show } = useToasts()
 
 const open = computed(() => panel.value === 'offers')
 const appliedIds = computed(() => new Set(bill.value.applied.map((a) => a.offer.id)))
@@ -31,19 +34,46 @@ function progress(o: (typeof storeOffers.value)[number]) {
   return Math.min(100, Math.round((have / target) * 100))
 }
 
-/** Category offers: take the shopper to that aisle. */
+/** Item offers point at a place in the store: that product, or that category's aisle. */
 function categoryOf(o: (typeof storeOffers.value)[number]): CategoryId | null {
   const r = o.rule
   return r.kind === 'percent-category' || (r.kind === 'bxgy' && r.categoryId) ? (r.categoryId as CategoryId) : null
 }
-async function shop(o: (typeof storeOffers.value)[number]) {
+function targetOf(o: (typeof storeOffers.value)[number]): { productId: string; place: string } | null {
+  const r = o.rule
+  if (r.kind === 'percent-product') {
+    const p = getProduct(r.productId)
+    return p && p.stock !== 0 ? { productId: p.id, place: p.name } : null
+  }
+  if (r.kind === 'bxgy' && r.productIds?.length) {
+    const p = r.productIds.map((id) => getProduct(id)).find((x) => x && x.stock !== 0)
+    if (p) return { productId: p.id, place: p.name }
+  }
   const cat = categoryOf(o)
+  if (!cat) return null
+  // Prefer a product the offer actually discounts, in stock at this branch.
+  const p = productsInCategory(cat).find((x) => x.stock !== 0)
+  return p ? { productId: p.id, place: `${getCategory(cat).name} aisle` } : null
+}
+
+/**
+ * Take the shopper to the offer inside HelaMart's 3D store. Already inside →
+ * walk there now. Otherwise open the store: the shopper picks an avatar,
+ * enters, and is walked to the offer's aisle.
+ */
+async function shop(o: (typeof storeOffers.value)[number]) {
+  const target = targetOf(o)
+  if (!target) return
+  const label = `${o.title} · ${target.place}`
   closePanel()
-  if (route.path === '/' && xp.phase.value === 'inside' && cat) {
-    const { productsInCategory } = await import('~/data/products')
-    const first = productsInCategory(cat).find((p) => p.stock !== 0)
-    if (first) await xp.goToProduct(first.id)
-  } else openPanel('browse')
+  if (route.path === '/' && xp.phase.value === 'inside') {
+    await xp.goToProduct(target.productId)
+    show(`Here you are: ${label}`, 'success', 4500)
+    return
+  }
+  xp.pendingProductId.value = target.productId
+  xp.pendingLabel.value = label
+  if (route.path !== '/') await navigateTo('/')
 }
 </script>
 
@@ -83,7 +113,9 @@ async function shop(o: (typeof storeOffers.value)[number]) {
                 <span class="block h-full rounded-full bg-hela-gold-600 transition-all" :style="{ width: `${progress(o)}%` }" />
               </div>
             </div>
-            <button v-if="categoryOf(o)" type="button" class="px-1 text-xs font-bold text-hela-green hover:underline" @click="shop(o)">Shop these items →</button>
+            <button v-if="targetOf(o)" type="button" class="inline-flex items-center gap-1 px-1 text-xs font-bold text-hela-green hover:underline" :data-testid="`shop-offer-${o.code}`" @click="shop(o)">
+              <AppIcon name="pin" :size="13" />Shop this offer in the store →
+            </button>
           </li>
         </ul>
       </section>

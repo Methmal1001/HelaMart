@@ -28,6 +28,8 @@ export function useStoreExperience() {
   const welcomeBanner = useState<boolean>('xp-welcome-banner', () => false)
   /** A product to locate once the store is ready (e.g. from the catalogue page). */
   const pendingProductId = useState<string | null>('xp-pending-product', () => null)
+  /** Why we're heading there, e.g. "20% off all drinks · Beverages aisle" (offers). */
+  const pendingLabel = useState<string | null>('xp-pending-label', () => null)
 
   const currentSection = computed(() => (player.value?.sectionId ? getSection(player.value.sectionId) ?? null : null))
 
@@ -62,6 +64,7 @@ export function useStoreExperience() {
     fading,
     welcomeBanner,
     pendingProductId,
+    pendingLabel,
     currentSection,
     attach,
     detach,

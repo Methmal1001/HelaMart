@@ -90,6 +90,15 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         <StorePicker />
       </div>
 
+      <div v-if="xp.pendingLabel.value" class="mt-4 flex items-start gap-3 rounded-2xl bg-[#FFF4F0] p-3.5 ring-2 ring-[#E23B3B]" role="status" data-testid="pending-offer">
+        <span class="grid size-9 shrink-0 place-items-center rounded-full bg-[#E23B3B] text-white"><AppIcon name="gift" :size="17" /></span>
+        <div class="min-w-0 flex-1 text-sm">
+          <p class="font-bold text-ink">Taking you to: {{ xp.pendingLabel.value }}</p>
+          <p class="text-xs text-muted">{{ avatar ? 'Press Enter — we’ll walk you straight to it.' : 'Choose your avatar first, then enter — we’ll walk you straight to it.' }}</p>
+        </div>
+        <button type="button" class="shrink-0 rounded-lg p-1 text-muted hover:bg-white" aria-label="Cancel" @click="(xp.pendingLabel.value = null), (xp.pendingProductId.value = null)"><AppIcon name="close" :size="15" /></button>
+      </div>
+
       <div class="mt-5 lg:mt-6">
         <h2 class="text-base font-bold text-ink">Who is shopping today?</h2>
         <p class="mt-1 text-xs leading-relaxed text-muted sm:text-[0.8rem]">
@@ -116,7 +125,7 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         @click="enter"
       >
         <AppIcon name="door" :size="19" />
-        {{ !ready ? 'Preparing the store…' : !avatar ? 'Choose an avatar to enter' : blocker === 'area' ? 'Choose your area to enter' : blocker ? 'Pick a store that delivers here' : 'Enter HelaMart' }}
+        {{ !ready ? 'Preparing the store…' : !avatar ? 'Choose an avatar to enter' : blocker === 'area' ? 'Choose your area to enter' : blocker ? 'Pick a store that delivers here' : xp.pendingLabel.value ? 'Enter & go to the offer' : 'Enter HelaMart' }}
         <AppIcon v-if="avatar && ready" name="arrow-right" :size="18" />
       </button>
 

@@ -7,6 +7,13 @@ export function isSriLankanMobile(value: string) {
   return /^(\+?94|0)?7\d{8}$/.test(value.replace(/[\s-]/g, ''))
 }
 
+/** "0771234567" / "+94 77 123 4567" → "+94 77 123 4567" (null when not a Sri Lankan mobile). */
+export function normalizeSriLankanMobile(value: string): string | null {
+  const d = value.replace(/[\s-]/g, '').replace(/^\+?94|^0/, '')
+  if (!/^7\d{8}$/.test(d)) return null
+  return `+94 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`
+}
+
 export const PASSWORD_RULES: { id: string; label: string; test: (pw: string) => boolean }[] = [
   { id: 'length', label: 'At least 8 characters', test: (pw) => pw.length >= 8 },
   { id: 'letter', label: 'Upper- and lower-case letters', test: (pw) => /[a-z]/.test(pw) && /[A-Z]/.test(pw) },

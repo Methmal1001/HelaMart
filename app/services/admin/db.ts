@@ -16,6 +16,7 @@ import type {
 } from '~/types/admin'
 import { SAMPLE_STORE_OFFERS, buildSeed, sampleBanners } from '~/data/admin/seed'
 import { PLATFORM_PERMISSIONS, ROLE_IDS } from '~/data/admin/permissions'
+import { STANDARD_CATEGORIES } from '~/data/categories'
 import { hash, hashPassword, readDb as readStoreDb } from '../mock/server'
 
 /**
@@ -99,7 +100,7 @@ function seed(): AdminDb {
 }
 
 /** Bump when the sample data gains something older browser copies should receive. */
-const DATA_VERSION = 4
+const DATA_VERSION = 5
 
 /**
  * One-time upgrade of data saved by an older version of the prototype:
@@ -135,6 +136,14 @@ function upgradeSampleData(db: AdminDb) {
   }
   const superRole = db.roles.find((r) => r.id === ROLE_IDS.superAdmin)
   if (superRole) superRole.permissions = [...new Set([...superRole.permissions, ...PLATFORM_PERMISSIONS])]
+  // v5: categories carry an icon, store area and order (customisable per supermarket).
+  const order = new Map<string, number>()
+  for (const c of db.categories) {
+    const std = STANDARD_CATEGORIES.find((s) => s.id === c.id)
+    const n = order.get(c.tenantId) ?? 0
+    order.set(c.tenantId, n + 1)
+    Object.assign(c, { icon: c.icon ?? std?.icon ?? 'tag', area: c.area ?? std?.area ?? 'household', order: c.order ?? n, standard: c.standard ?? !!std })
+  }
   db.dataVersion = DATA_VERSION
 }
 
@@ -170,6 +179,14 @@ function syncStorefront(db: AdminDb) {
         createdAt: new Date().toISOString(), district: '—', city: '—', tenantIds: [], blockedByTenants: [], ordersCount: 0, totalSpentCents: 0,
       })
     }
+  }
+  // Keep every customer's mobile number current (added or changed on the storefront).
+  for (const c of db.customers) {
+    const phone = store.preferences?.[c.id]?.phone ?? store.extraUsers.find((u) => u.id === c.id)?.phone
+    if (phone && c.phone !== phone) c.phone = phone
+    // New storefront customers: district/town from the shopping area they chose.
+    const loc = store.preferences?.[c.id]?.location
+    if (loc && (c.district === '—' || !c.district)) Object.assign(c, { district: loc.district, city: loc.label })
   }
   // Derived stats + chain membership from orders.
   for (const c of db.customers) {

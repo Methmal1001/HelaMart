@@ -44,7 +44,7 @@ interface Db {
   credentials: Record<string, { userId: string; passwordHash: string }>
   failedLogins: Record<string, { count: number; until: number }>
   /** Per-customer preferences (e.g. saved shopping area), keyed by user id. */
-  preferences: Record<string, { location?: ShopperLocation }>
+  preferences: Record<string, { location?: ShopperLocation; phone?: string }>
 }
 
 function emptyDb(): Db {

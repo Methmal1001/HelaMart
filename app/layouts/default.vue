@@ -9,5 +9,6 @@
     <OffersPanel />
     <AuthDialog />
     <AreaFinder />
+    <PhoneRequiredDialog />
   </div>
 </template>

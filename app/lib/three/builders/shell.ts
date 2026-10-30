@@ -6,10 +6,19 @@ import type { MaterialLibrary } from '../materials'
 import {
   floorTexture,
   pavementTexture,
-  sectionSignTexture,
   storefrontSignTexture,
   welcomeMatTexture,
 } from '../textures'
+
+/** Where a hanging/wall section sign goes; its face is drawn by SectionSignsLayer from the live category names. */
+export interface SignSpot {
+  sectionId: string
+  x: number
+  y: number
+  z: number
+  w: number
+  doubleSided: boolean
+}
 
 interface ShellContext {
   batch: StaticBatch
@@ -18,6 +27,8 @@ interface ShellContext {
   materials: MaterialLibrary
   world: CollisionWorld
   group: THREE.Group
+  /** Collected sign positions (faces are added later, and redrawn when categories change). */
+  signs?: SignSpot[]
 }
 
 const WALL_H = 6.2
@@ -218,20 +229,9 @@ export function buildInterior(ctx: ShellContext) {
   buildSignage(ctx)
 }
 
-function hangingSign(ctx: ShellContext, title: string, subtitle: string | undefined, color: string, x: number, y: number, z: number, w: number, doubleSided = true) {
-  const tex = sectionSignTexture(title, subtitle, color)
+function hangingSign(ctx: ShellContext, sectionId: string, x: number, y: number, z: number, w: number, doubleSided = true) {
   const h = w / 4
-  // Aisle signs are backlit panels: crisp, true-colour text from anywhere in the store.
-  const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
-  const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-  front.position.set(x, y, z + 0.02)
-  ctx.group.add(front)
-  if (doubleSided) {
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-    back.position.set(x, y, z - 0.02)
-    back.rotation.y = Math.PI
-    ctx.group.add(back)
-  }
+  ctx.signs?.push({ sectionId, x, y, z, w, doubleSided })
   const frame = ctx.materials.color('#174D38', 0.5)
   ctx.batch.box(frame, w + 0.06, h + 0.06, 0.03, x, y, z)
   if (doubleSided) {
@@ -244,15 +244,15 @@ function hangingSign(ctx: ShellContext, title: string, subtitle: string | undefi
 function buildSignage(ctx: ShellContext) {
   for (const s of sections) {
     if (s.kind === 'gondola') {
-      hangingSign(ctx, s.name, s.aisle?.replace('Aisle ', 'A'), s.color, s.area.x, 3.15, GONDOLA.zStart + 0.3, 2.8)
-      hangingSign(ctx, s.name, s.aisle?.replace('Aisle ', 'A'), s.color, s.area.x, 3.15, GONDOLA.zEnd - 0.3, 2.8)
+      hangingSign(ctx, s.id, s.area.x, 3.15, GONDOLA.zStart + 0.3, 2.8)
+      hangingSign(ctx, s.id, s.area.x, 3.15, GONDOLA.zEnd - 0.3, 2.8)
     } else if (s.kind === 'produce') {
-      hangingSign(ctx, s.name, undefined, s.color, s.area.x, 3.4, -3.6, 4.4)
+      hangingSign(ctx, s.id, s.area.x, 3.4, -3.6, 4.4)
     } else if (s.kind === 'checkout') {
-      hangingSign(ctx, 'Checkout', undefined, s.color, s.area.x, 3.4, -8.4, 3.6)
+      hangingSign(ctx, s.id, s.area.x, 3.4, -8.4, 3.6)
     } else {
       // Back-wall sections get large wall signs.
-      hangingSign(ctx, s.name, undefined, s.color, s.area.x, 3.25, STORE.minZ + 0.06, 4.8, false)
+      hangingSign(ctx, s.id, s.area.x, 3.25, STORE.minZ + 0.06, 4.8, false)
     }
   }
 }

@@ -18,7 +18,7 @@ import type {
 } from '~/types/admin'
 import type { CartLine } from '~/types'
 import { masterProducts as products } from '~/data/products'
-import { categories } from '~/data/categories'
+import { STANDARD_CATEGORIES } from '~/data/categories'
 import { mockAccounts } from '~/data/mockUsers'
 import { DISTRICTS } from '~/data/sriLanka'
 import { priceCart } from '~/utils/pricing'
@@ -80,6 +80,11 @@ export function sampleBanners(now: number): PlatformBanner[] {
     { ...base, id: 'bnr_south', title: 'The south coast’s own supermarket', subtitle: 'Southern Harvest Mart — 10% off household essentials in Galle & Matara.', theme: 'gold', tenantId: 'tnt_shm', offerId: 'off_shm_house', cta: 'shop', target: 'districts', districts: ['Galle', 'Matara'], priority: 15 },
     { ...base, id: 'bnr_welcome', title: 'Your neighbourhood supermarket, in 3D', subtitle: 'Walk the aisles, fill your cart and get it delivered from a verified store near you.', theme: 'green', cta: 'none', target: 'all', priority: 5 },
   ]
+}
+
+/** Every supermarket starts with HelaMart's standard categories (fully editable afterwards). */
+export function standardCategoriesFor(tenantId: string): AdminCategory[] {
+  return STANDARD_CATEGORIES.map((c, i) => ({ id: c.id, tenantId, name: c.name, description: c.description, color: c.color, visible: true, icon: c.icon, area: c.area, order: i, standard: true }))
 }
 
 export function buildSeed({ hashPassword, now }: SeedInput) {
@@ -364,7 +369,7 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
   const adminProducts: AdminProduct[] = []
   const adminCategories: AdminCategory[] = []
   for (const t of operating) {
-    for (const c of categories) adminCategories.push({ id: c.id, tenantId: t.id, name: c.name, description: c.description, color: c.color, visible: true })
+    adminCategories.push(...standardCategoriesFor(t.id))
     for (const prod of products) {
       if (t.id !== 'tnt_lfm' && r() < 0.15) continue // smaller chains stock a subset
       const factor = t.id === 'tnt_lfm' ? 1 : 0.94 + r() * 0.12

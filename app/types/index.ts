@@ -6,7 +6,11 @@
 
 export type AvatarKind = 'male' | 'female'
 
-export type CategoryId =
+/**
+ * The 10 physical areas of the HelaMart 3D store (each standard category owns
+ * one). A supermarket's own categories are shelved in one of these areas.
+ */
+export type StoreAreaId =
   | 'produce'
   | 'bakery'
   | 'dairy'
@@ -17,6 +21,9 @@ export type CategoryId =
   | 'cleaning'
   | 'personal-care'
   | 'household'
+
+/** A category id: one of the standard ones (= its store area) or a supermarket's own, e.g. "cat_k3x9q". */
+export type CategoryId = string
 
 /** Procedural 3D placeholder used until a real product model/image exists. */
 export type ProductShape =
@@ -41,6 +48,10 @@ export interface Category {
   /** Accent colour used on signage, minimap and UI chips for this section. */
   color: string
   icon: IconName
+  /** Where it's shelved in the 3D store. */
+  area: StoreAreaId
+  /** One of HelaMart's standard categories (every new supermarket starts with these). */
+  standard?: boolean
 }
 
 export interface Product {

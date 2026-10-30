@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AdminProduct, TableColumn } from '~/types/admin'
 import type { CategoryId, ProductShape } from '~/types'
-import { categories, getCategory } from '~/data/categories'
+import { getCategory } from '~/data/categories'
 import { adjustStock, branchDirectory, createProduct, listProducts, setProductStatus, updateProduct, uploadProductImage, type ProductInput } from '~/services/admin/tenantApi'
 import { resolveImageUrl } from '~/services/mock/mediaStore'
 import { ImageRejected, prepareProductImage, type PreparedImage } from '~/utils/imageProcessing'
@@ -20,10 +20,12 @@ const filter = ref<'all' | 'low' | 'out' | 'hidden'>(route.query.filter === 'low
 const canEdit = computed(() => auth.can('products.manage') && !auth.readOnly.value)
 const canStock = computed(() => auth.can('inventory.manage') && !auth.readOnly.value)
 
+const { categories, load: loadCategories } = useTenantCategories()
+
 async function load() {
   loading.value = true
   try {
-    ;[products.value, branches.value] = await Promise.all([auth.call(listProducts), auth.call(branchDirectory)])
+    ;[products.value, branches.value] = await Promise.all([auth.call(listProducts), auth.call(branchDirectory), loadCategories()])
     if (branches.value.length === 1) branch.value = branches.value[0]!.id
   } catch (e) {
     notify.error(e)
@@ -133,7 +135,7 @@ function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
   void resetPhoto(p === 'new' ? undefined : p.image)
-  if (p === 'new') Object.assign(form, { name: '', brand: '', categoryId: 'staples', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
+  if (p === 'new') Object.assign(form, { name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
   else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), badge: p.badge ?? '' })
 }
 
@@ -254,7 +256,7 @@ async function saveStock() {
       <form id="product-form" class="grid gap-3 sm:grid-cols-2" @submit.prevent="save">
         <label class="sm:col-span-2"><span class="field-label">Name</span><input v-model="form.name" class="field" maxlength="80" data-autofocus required></label>
         <label><span class="field-label">Brand</span><input v-model="form.brand" class="field" maxlength="60"></label>
-        <label><span class="field-label">Category</span><select v-model="form.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+        <label><span class="field-label">Category</span><select v-model="form.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}{{ c.visible ? '' : ' (hidden)' }}</option></select></label>
         <label><span class="field-label">Price (LKR)</span><input v-model="form.price" class="field" inputmode="decimal" placeholder="0.00" required></label>
         <label><span class="field-label">Pack size</span><input v-model="form.size" class="field" placeholder="e.g. 1 kg"></label>
         <label><span class="field-label">Sold per</span><input v-model="form.unit" class="field" placeholder="pack, bottle, per kg"></label>

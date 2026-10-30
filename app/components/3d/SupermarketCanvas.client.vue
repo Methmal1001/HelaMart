@@ -152,8 +152,13 @@ watch(
   () => [xp.phase.value, xp.pendingProductId.value] as const,
   ([phase, pending]) => {
     if (phase !== 'inside' || !pending) return
+    const label = xp.pendingLabel.value
     xp.pendingProductId.value = null
-    setTimeout(() => xp.goToProduct(pending), 350)
+    xp.pendingLabel.value = null
+    setTimeout(async () => {
+      await xp.goToProduct(pending)
+      if (label) show(`Here you are: ${label}`, 'success', 4500)
+    }, 350)
   },
   { immediate: true },
 )

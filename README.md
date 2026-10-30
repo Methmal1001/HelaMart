@@ -133,6 +133,28 @@ works inside any approved supermarket's portal with full chain-admin access (off
 branches, staff, branding). It requires password confirmation, a purple bar shows it's active, and
 every action is logged in that supermarket's audit log as "(HelaMart Super Admin)".
 
+### Categories (per supermarket)
+
+Every new supermarket starts with HelaMart's **10 standard categories**. Each standard category owns
+one physical area of the 3D store. In *Categories*, a supermarket can:
+- rename, recolour, re-icon, describe, show/hide and **reorder** its categories;
+- **add its own** (e.g. "Baby Care") and choose which store area shelves them;
+- **remove** one, moving its products (and offers on it) to another category, or hiding them;
+- **add back** a removed standard category.
+
+The shop follows straight away: the aisle list and filters (in the supermarket's order), product
+pages, offers, and in the 3D store the aisle signs, minimap and "You're in…" chip (e.g.
+"Aisle 5 · Personal Care · Baby Care"). Removed or hidden categories take their products off the
+shelves. A store area with no category shows "Coming soon", and the admin page warns about it.
+
+### Customer mobile numbers
+
+Every signed-in customer must have a **Sri Lankan mobile number** (stored as `+94 7X XXX XXXX`, one
+account per number). It's required when registering. Accounts without one (e.g. a first Google
+sign-in) are asked for it before continuing (`PUT /me/phone`), and customers can change it in
+*Your account*. HelaMart head office (*Customers — all of Sri Lanka*) and each supermarket
+(*Customers*) see it in a searchable **Mobile** column.
+
 ### Finding supermarkets by area
 
 Shoppers see the HelaMart-verified supermarkets **near their area**, nearest first, with distances

@@ -1,5 +1,6 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
-import type { CategoryId, OfferConditions, OfferRule, ProductShape } from '~/types'
+import type { CategoryId, IconName, OfferConditions, OfferRule, ProductShape } from '~/types'
+import { STANDARD_CATEGORIES, STORE_AREAS } from '~/data/categories'
 import { ApiError } from '../apiError'
 import { latency, randomId } from '../mock/server'
 import { putMedia } from '../mock/mediaStore'
@@ -276,6 +277,7 @@ function validateProduct(input: ProductInput, ctx?: AdminContext) {
   if (!Number.isInteger(input.priceCents) || input.priceCents <= 0 || input.priceCents > 100_000_000) throw new ApiError(422, 'Enter a valid price.')
   if (!/^#[0-9a-f]{6}$/i.test(input.color) || !/^#[0-9a-f]{6}$/i.test(input.accent)) throw new ApiError(422, 'Pick valid package colours.')
   if (!Number.isInteger(input.reorderLevel) || input.reorderLevel < 0) throw new ApiError(422, 'Reorder level must be 0 or more.')
+  if (ctx && !ctx.db.categories.some((c) => c.tenantId === ctx.tenant?.id && c.id === input.categoryId)) throw new ApiError(422, 'Choose one of your categories.')
 }
 
 export function createProduct(token: string, input: ProductInput): Promise<AdminProduct> {
@@ -385,19 +387,115 @@ export async function storeUpload(
 export function listCategories(token: string): Promise<AdminCategory[]> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'products.view')
-    return inTenant(ctx, ctx.db.categories)
+    return inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order)
   })
 }
 
-export function updateCategory(token: string, id: CategoryId, input: Pick<AdminCategory, 'name' | 'description' | 'color' | 'visible'>): Promise<AdminCategory> {
+export type CategoryInput = Pick<AdminCategory, 'name' | 'description' | 'color' | 'visible' | 'icon' | 'area'>
+
+const CATEGORY_ICONS: IconName[] = ['apple', 'bread', 'milk', 'snowflake', 'bottle', 'cookie', 'wheat', 'spray', 'sparkle', 'home', 'basket', 'gift', 'tag', 'package', 'cart', 'store']
+export const categoryIconChoices = CATEGORY_ICONS
+
+function cleanCategory(ctx: AdminContext, input: CategoryInput, id?: string) {
+  const name = sanitize(input.name, 40)
+  if (name.length < 2) throw new ApiError(422, 'Enter a category name.')
+  if (inTenant(ctx, ctx.db.categories).some((c) => c.id !== id && c.name.toLowerCase() === name.toLowerCase())) throw new ApiError(409, 'You already have a category with that name.')
+  if (!/^#[0-9a-f]{6}$/i.test(input.color)) throw new ApiError(422, 'Pick a valid colour.')
+  if (!CATEGORY_ICONS.includes(input.icon)) throw new ApiError(422, 'Choose an icon.')
+  if (!STORE_AREAS.includes(input.area)) throw new ApiError(422, 'Choose where it’s shelved in the store.')
+  return { name, description: sanitize(input.description, 200), color: input.color.toLowerCase(), icon: input.icon, area: input.area, visible: !!input.visible }
+}
+
+/** Add one of the supermarket's own categories. */
+export function createCategory(token: string, input: CategoryInput): Promise<AdminCategory> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    const t = requireWritable(ctx)
+    const fields = cleanCategory(ctx, input)
+    const mine = inTenant(ctx, ctx.db.categories)
+    if (mine.length >= 40) throw new ApiError(422, 'You can have up to 40 categories.')
+    const c: AdminCategory = { ...fields, id: `cat_${randomId(4)}`, tenantId: t.id, order: Math.max(-1, ...mine.map((x) => x.order)) + 1, standard: false }
+    ctx.db.categories.push(c)
+    audit(ctx.db, ctx, 'category.create', c.name, `Shelved in the ${STANDARD_CATEGORIES.find((s) => s.area === c.area)?.name} area`)
+    return c
+  })
+}
+
+export function updateCategory(token: string, id: CategoryId, input: CategoryInput): Promise<AdminCategory> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'categories.manage')
     requireWritable(ctx)
     const c = ownedOrNotFound(ctx, ctx.db.categories.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Category')
-    if (sanitize(input.name, 60).length < 2) throw new ApiError(422, 'Enter a category name.')
-    if (!/^#[0-9a-f]{6}$/i.test(input.color)) throw new ApiError(422, 'Pick a valid colour.')
-    Object.assign(c, { ...input, name: sanitize(input.name, 60), description: sanitize(input.description, 200) })
+    Object.assign(c, cleanCategory(ctx, input, id))
     audit(ctx.db, ctx, 'category.update', c.name, c.visible ? 'Visible' : 'Hidden from store')
+    return c
+  })
+}
+
+/** Move a category up or down the shop's list. */
+export function moveCategory(token: string, id: CategoryId, dir: -1 | 1): Promise<AdminCategory[]> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    requireWritable(ctx)
+    const list = inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order)
+    const i = list.findIndex((c) => c.id === id)
+    const j = i + dir
+    if (i < 0) throw new ApiError(404, 'Category not found.')
+    if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j]!, list[i]!]
+    list.forEach((c, k) => (c.order = k))
+    return list
+  })
+}
+
+/**
+ * Remove a category. Its products (and any offers on it) move to another of
+ * the supermarket's categories, or the products are hidden from the shop.
+ */
+export function deleteCategory(token: string, id: CategoryId, opts: { moveTo?: CategoryId; hideProducts?: boolean }): Promise<{ moved: number; hidden: number }> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    requireStepUp(ctx)
+    const t = requireWritable(ctx)
+    const c = ownedOrNotFound(ctx, ctx.db.categories.find((x) => x.id === id && x.tenantId === t.id), 'Category')
+    const target = opts.moveTo ? ctx.db.categories.find((x) => x.id === opts.moveTo && x.tenantId === t.id && x.id !== id) : undefined
+    if (opts.moveTo && !target) throw new ApiError(422, 'Choose another of your categories to move the products to.')
+    const items = inTenant(ctx, ctx.db.products).filter((p) => p.categoryId === id)
+    if (items.length && !target && !opts.hideProducts) throw new ApiError(409, `${c.name} still has ${items.length} products — move them to another category first.`)
+    let hidden = 0
+    for (const p of items) {
+      if (target) p.categoryId = target.id
+      else {
+        p.status = 'hidden'
+        hidden++
+      }
+    }
+    // Offers on this category follow its products (or are paused).
+    for (const o of inTenant(ctx, ctx.db.offers)) {
+      const r = o.rule
+      if ((r.kind === 'percent-category' || r.kind === 'bxgy') && r.categoryId === id) {
+        if (target) r.categoryId = target.id
+        else o.status = 'paused'
+      }
+    }
+    ctx.db.categories = ctx.db.categories.filter((x) => x !== c)
+    inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order).forEach((x, k) => (x.order = k))
+    audit(ctx.db, ctx, 'category.delete', c.name, target ? `${items.length} products moved to ${target.name}` : `${hidden} products hidden`, 'warning')
+    return { moved: target ? items.length : 0, hidden }
+  })
+}
+
+/** Bring back one of HelaMart's standard categories that was removed. */
+export function restoreStandardCategory(token: string, id: CategoryId): Promise<AdminCategory> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    const t = requireWritable(ctx)
+    const std = STANDARD_CATEGORIES.find((s) => s.id === id)
+    if (!std) throw new ApiError(404, 'Not a standard category.')
+    if (ctx.db.categories.some((c) => c.tenantId === t.id && c.id === id)) throw new ApiError(409, `${std.name} is already in your store.`)
+    const mine = inTenant(ctx, ctx.db.categories)
+    const c: AdminCategory = { id: std.id, tenantId: t.id, name: std.name, description: std.description, color: std.color, icon: std.icon, area: std.area, visible: true, order: Math.max(-1, ...mine.map((x) => x.order)) + 1, standard: true }
+    ctx.db.categories.push(c)
+    audit(ctx.db, ctx, 'category.restore', c.name)
     return c
   })
 }
