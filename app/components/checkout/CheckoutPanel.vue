@@ -13,6 +13,7 @@ const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
 const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
 const { load: loadOffers } = useOffers()
+const { load: loadOrders, openOrders } = useMyOrders()
 const { area } = useShoppingArea()
 /** Home delivery only goes to the cities / villages in the chosen branch's delivery area. */
 const branch = computed(() => currentStore.value?.branches.find((b) => b.id === storeChoice.value?.branchId))
@@ -143,6 +144,7 @@ async function pay() {
     // Stock and once-per-customer offers have changed.
     void refreshStores()
     void loadOffers()
+    void loadOrders()
   } catch (e) {
     if (isUnauthorized(e)) {
       error.value = 'Your session expired. Please log in again to finish paying.'
@@ -335,6 +337,11 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
             <p class="text-xs text-white/80">Order {{ order.number }} has been placed.</p>
           </div>
         </div>
+        <p class="mb-3 flex items-start gap-2 rounded-xl bg-hela-gold-100/60 px-3 py-2.5 text-xs text-[#6d5622]" data-testid="bill-saved-note">
+          <AppIcon name="receipt" :size="15" class="mt-px shrink-0" />
+          <span>This bill is saved to your account. Reopen or print it — and track your {{ order.delivery.method === 'delivery' ? 'delivery' : 'pickup' }} — any time from
+            <button type="button" class="font-bold text-hela-green underline" data-testid="open-my-orders" @click="openOrders(order.id)">Your orders</button>.</span>
+        </p>
         <OrderReceipt :order="order" />
       </section>
 

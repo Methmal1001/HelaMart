@@ -1,4 +1,4 @@
-import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, PriceBreakdown, Product, StoreAreaId } from './index'
+import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, OrderProgress, PriceBreakdown, Product, StoreAreaId } from './index'
 
 // ================================================================== permissions
 
@@ -253,7 +253,7 @@ export interface Customer {
 
 // ================================================================== commerce
 
-export type OrderStatus = 'pending' | 'packing' | 'out_for_delivery' | 'ready_for_pickup' | 'delivered' | 'cancelled' | 'refunded'
+export type OrderStatus = OrderProgress
 
 export interface OrderEvent {
   at: string

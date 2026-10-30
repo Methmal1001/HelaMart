@@ -59,9 +59,12 @@ watch([() => choice.value?.storeId, loaded], async () => {
 <template>
   <section aria-labelledby="chooser-title" data-testid="store-chooser">
     <div class="flex items-center justify-between gap-2">
-      <h2 id="chooser-title" class="text-base font-bold text-ink">Your supermarket <span v-if="area && loaded" class="text-xs font-semibold text-muted">· {{ totalAvailable }} deliver here</span></h2>
-      <button v-if="area" type="button" class="flex min-w-0 items-center gap-1 rounded-full bg-hela-green-50 px-2.5 py-1 text-xs font-bold text-hela-green transition hover:bg-hela-green hover:text-white" data-testid="change-area" @click="openFinder()">
-        <AppIcon name="pin" :size="12" /><span class="truncate">{{ area.label }}</span><span class="opacity-70">· Change</span>
+      <h2 id="chooser-title" class="min-w-0 text-base leading-tight font-bold text-ink">
+        Your supermarket
+        <span v-if="area && loaded" class="block text-xs font-semibold text-muted">{{ totalAvailable }} deliver{{ totalAvailable === 1 ? 's' : '' }} to your area</span>
+      </h2>
+      <button v-if="area" type="button" class="flex max-w-[55%] shrink-0 items-center gap-1 rounded-full bg-hela-green-50 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-hela-green transition hover:bg-hela-green hover:text-white" data-testid="change-area" @click="openFinder()">
+        <AppIcon name="pin" :size="12" class="shrink-0" /><span class="truncate">{{ area.label }}</span><span class="shrink-0 opacity-70">· Change</span>
       </button>
     </div>
 

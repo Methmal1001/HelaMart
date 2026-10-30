@@ -31,6 +31,34 @@ function luhn(num: string) {
 }
 
 /**
+ * GET /me/orders — the signed-in customer's orders, newest first, with the
+ * supermarket's latest progress (packing, out for delivery…) so a bill can be
+ * reopened and reprinted any time.
+ */
+export async function listMyOrders(accessToken: string): Promise<Order[]> {
+  if (backendEnabled()) return api<Order[]>('/me/orders', { token: accessToken })
+  await latency(150, 350)
+  const userId = verifyAccessToken(accessToken)
+  const platform = readAdminDb()
+  return readDb()
+    .orders.filter((o) => o.userId === userId)
+    .map((o) => {
+      const desk = platform.orders.find((x) => x.id === o.id)
+      const branch = platform.branches.find((b) => b.id === o.branchId)
+      return {
+        ...o,
+        storeName: o.storeName ?? platform.tenants.find((t) => t.id === o.storeId)?.name,
+        branchName: o.branchName ?? branch?.name,
+        progress: desk?.status ?? 'pending',
+        // Staff names stay on the order desk; the customer sees what happened and when.
+        tracking: desk?.history.map((h) => ({ at: h.at, status: h.status, note: h.status === 'cancelled' || h.status === 'refunded' ? h.note : undefined })) ?? [{ at: o.createdAt, status: 'pending' as const }],
+        payment: desk?.payment.status === 'refunded' ? { ...o.payment, status: 'refunded' as const } : o.payment,
+      }
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+/**
  * POST /orders — the server re-prices the cart with the customer's own offers
  * (never trusting client totals), "charges" the card and stores the order.
  * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined.
@@ -89,6 +117,8 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
     delivery: req.delivery,
     payment: { method: req.payment.method, cardLast4, status: req.payment.method === 'card' ? 'paid' : 'pay-on-delivery' },
     status: 'confirmed',
+    storeName: store.name,
+    branchName: branch.name,
   }
   db.orders.push(order)
   writeDb(db)

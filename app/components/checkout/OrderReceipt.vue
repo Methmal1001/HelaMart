@@ -20,13 +20,17 @@ const b = computed(() => props.order.breakdown)
     </header>
 
     <dl class="grid grid-cols-2 gap-x-4 gap-y-1 border-b border-dashed border-line py-3 text-xs">
+      <template v-if="order.storeName">
+        <dt class="text-muted">Supermarket</dt>
+        <dd class="text-right text-ink">{{ order.storeName }}<template v-if="order.branchName"> · {{ order.branchName }}</template></dd>
+      </template>
       <dt class="text-muted">Customer</dt>
       <dd class="text-right text-ink">{{ order.delivery.fullName }}</dd>
       <dt class="text-muted">Phone</dt>
       <dd class="text-right text-ink">{{ order.delivery.phone }}</dd>
       <dt class="text-muted">{{ order.delivery.method === 'delivery' ? 'Deliver to' : 'Collect from' }}</dt>
       <dd class="text-right text-ink">
-        {{ order.delivery.method === 'delivery' ? `${order.delivery.address}, ${order.delivery.city}` : 'HelaMart store — pickup counter' }}
+        {{ order.delivery.method === 'delivery' ? `${order.delivery.address}, ${order.delivery.city}` : `${order.storeName ?? 'HelaMart store'}${order.branchName ? ` ${order.branchName}` : ''} — pickup counter` }}
       </dd>
       <dt class="text-muted">Time slot</dt>
       <dd class="text-right text-ink">{{ order.delivery.slot }}</dd>

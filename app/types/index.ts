@@ -379,6 +379,15 @@ export interface Order {
   lines: OrderLine[]
   breakdown: PriceBreakdown
   delivery: DeliveryDetails
-  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' }
+  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
   status: 'confirmed'
+  /** Supermarket and branch names at the time of the order (for the bill). */
+  storeName?: string
+  branchName?: string
+  /** Where the supermarket has got to with it (from its order desk). */
+  progress?: OrderProgress
+  /** Each step the supermarket recorded (packed, out for delivery, delivered…), oldest first. */
+  tracking?: { at: string; status: OrderProgress; note?: string }[]
 }
+
+export type OrderProgress = 'pending' | 'packing' | 'out_for_delivery' | 'ready_for_pickup' | 'delivered' | 'cancelled' | 'refunded'
