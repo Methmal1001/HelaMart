@@ -231,13 +231,27 @@ export interface AuthResult {
 
 // ------------------------------------------------------------------ offers & pricing
 
+/**
+ * What an item offer applies to: everything, and/or any mix of categories and
+ * hand-picked products (a product matches if it's listed or in a listed category).
+ */
+export interface ItemTarget {
+  all?: boolean
+  categoryIds: CategoryId[]
+  productIds: string[]
+}
+
 export type OfferRule =
-  /** % off every product in a category. */
+  /** % off the selected items (categories and/or products, or everything), optionally capped. */
+  | { kind: 'percent-items'; percent: number; target: ItemTarget; maxDiscountCents?: number }
+  /** A fixed amount off each selected item (never below zero). */
+  | { kind: 'amount-items'; amountCents: number; target: ItemTarget }
+  /** % off every product in a category (older offers; new ones use percent-items). */
   | { kind: 'percent-category'; categoryId: CategoryId; percent: number; maxDiscountCents?: number }
   /** % off one specific product. */
   | { kind: 'percent-product'; productId: string; percent: number }
-  /** Buy N, get M free (per product line). */
-  | { kind: 'bxgy'; categoryId?: CategoryId; productIds?: string[]; buy: number; get: number }
+  /** Buy N, get M free (per product line). `target` picks the items; older offers use categoryId/productIds. */
+  | { kind: 'bxgy'; categoryId?: CategoryId; productIds?: string[]; target?: ItemTarget; buy: number; get: number }
   /** Fixed amount off the order above a minimum spend. */
   | { kind: 'fixed-off'; amountCents: number; minSpendCents: number }
   /** Delivery fee waived above a minimum spend. */

@@ -40,8 +40,9 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // HelaMart API (H:\HelaMart_API). Set via env: NUXT_PUBLIC_API_BASE=https://api.example.lk/api
-      apiBase: 'http://localhost:5206/api',
+      // HelaMart API (ASP.NET Core, H:\HelaMart_API). Empty = the storefront runs on in-browser sample data.
+      // To use the API: NUXT_PUBLIC_API_BASE=http://localhost:5206/api (sign-in, stores, catalogue, orders, offers).
+      apiBase: '',
       // Google OAuth Web client ID. Empty → simulated Google sign-in for testing.
       // Set via env: NUXT_PUBLIC_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
       googleClientId: '',

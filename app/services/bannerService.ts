@@ -11,7 +11,7 @@ import { putMedia } from './mock/mediaStore'
 import { readAdminDb, writeAdminDb } from './admin/db'
 import { audit, authenticate, requirePermission, requirePlatform, requireStepUp, sanitize } from './admin/security'
 import { nowIso, run } from './admin/common'
-import { listStores } from './partnerService'
+import { listLocalStores } from './partnerService'
 
 /**
  * HelaMart homepage banners. Only HelaMart head office (platform.banners.manage)
@@ -149,7 +149,7 @@ export interface PublicBanner {
 /** The banners for a shopper's area, best first. Without an area only "everyone" banners show. */
 export function bannersFor(area: ShopperLocation | null, now = Date.now()): PublicBanner[] {
   const db = readAdminDb()
-  const stores = listStores()
+  const stores = listLocalStores()
   const out: (PublicBanner & { priority: number })[] = []
   for (const b of db.banners) {
     if (b.status !== 'active' || Date.parse(b.startsAt) > now || Date.parse(b.endsAt) <= now) continue

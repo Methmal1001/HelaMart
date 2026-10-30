@@ -15,8 +15,8 @@ const loaded = ref(false)
 const query = ref('')
 const row = ref<HTMLElement | null>(null)
 
-onMounted(() => {
-  refresh()
+onMounted(async () => {
+  await refresh()
   loaded.value = true
 })
 

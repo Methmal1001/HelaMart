@@ -11,8 +11,8 @@ const { user, authorized, isAuthenticated } = useAuth()
 const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
-<<<<<<< HEAD
 const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
+const { load: loadOffers } = useOffers()
 const { area } = useShoppingArea()
 /** Home delivery only goes to the cities / villages in the chosen branch's delivery area. */
 const branch = computed(() => currentStore.value?.branches.find((b) => b.id === storeChoice.value?.branchId))
@@ -21,10 +21,6 @@ function pickCity() {
   if (CITIES.value.includes(delivery.city)) return
   delivery.city = area.value && CITIES.value.includes(area.value.label) ? area.value.label : (CITIES.value[0] ?? '')
 }
-=======
-const { choice: storeChoice, refresh: refreshStores } = useStoreSelection()
-const { load: loadOffers } = useOffers()
->>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
 
 const open = computed(() => panel.value === 'checkout')
 const step = ref<Step>('review')
@@ -142,11 +138,11 @@ async function pay() {
   try {
     order.value = await authorized((token) => placeOrder(token, request, user.value!))
     clear()
-    // Branch stock and first-order offers changed on the server.
-    void refreshStores()
-    void loadOffers()
     step.value = 'done'
     show(`Order ${order.value.number} confirmed. Thank you!`, 'success', 4000)
+    // Stock and once-per-customer offers have changed.
+    void refreshStores()
+    void loadOffers()
   } catch (e) {
     if (isUnauthorized(e)) {
       error.value = 'Your session expired. Please log in again to finish paying.'

@@ -1,8 +1,8 @@
-import type { Offer, OfferRule, Product } from '~/types'
+import type { ItemTarget, Offer, OfferRule, Product } from '~/types'
 import { getCategory } from '~/data/categories'
 import { getProduct } from '~/data/products'
 import { formatLKR } from './currency'
-import { isOfferActive, offerTimingProblem } from './pricing'
+import { isOfferActive, offerTimingProblem, ruleTarget, targetMatches } from './pricing'
 
 /**
  * Shopper-facing wording for offers — the same text on admin previews,
@@ -13,13 +13,27 @@ const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const hour = (h: number) => `${h % 12 || 12}${h < 12 || h === 24 ? 'am' : 'pm'}`
 const rs = (c: number) => formatLKR(c).replace('.00', '')
 
+/** "Beverages", "Ginger Beer", "Beverages, Snacks + 2 items", "Everything in store". */
+export function targetLabel(t: ItemTarget | null, short = false) {
+  if (!t) return 'Selected items'
+  if (t.all) return 'Everything in store'
+  const names = [...t.categoryIds.map((c) => getCategory(c).name), ...t.productIds.map((id) => getProduct(id)?.name ?? 'a product')]
+  if (!names.length) return 'Selected items'
+  const keep = short ? 1 : 2
+  if (names.length <= keep + 1) return names.join(names.length === 2 ? ' & ' : ', ')
+  return `${names.slice(0, keep).join(', ')} + ${names.length - keep} more`
+}
+
 /** Big promo text: "20% OFF", "Rs. 500 OFF", "BUY 2 GET 1", "FREE DELIVERY". */
 export function offerHeadline(rule: OfferRule) {
   switch (rule.kind) {
+    case 'percent-items':
     case 'percent-category':
     case 'percent-product':
     case 'percent-order':
       return `${rule.percent}% OFF`
+    case 'amount-items':
+      return `${rs(rule.amountCents)} OFF EACH`
     case 'fixed-off':
       return `${rs(rule.amountCents)} OFF`
     case 'bxgy':
@@ -32,12 +46,13 @@ export function offerHeadline(rule: OfferRule) {
 /** What it applies to: "Beverages", "Ginger Beer", "your basket". */
 export function offerSubject(rule: OfferRule) {
   switch (rule.kind) {
+    case 'percent-items':
+    case 'amount-items':
     case 'percent-category':
-      return getCategory(rule.categoryId).name
     case 'percent-product':
-      return getProduct(rule.productId)?.name ?? 'Selected product'
+      return targetLabel(ruleTarget(rule))
     case 'bxgy':
-      return rule.categoryId ? `${getCategory(rule.categoryId).name} (same item)` : 'Selected items'
+      return `${targetLabel(ruleTarget(rule))} (same item)`
     case 'fixed-off':
     case 'percent-order':
       return rule.minSpendCents ? `Orders over ${rs(rule.minSpendCents)}` : 'Your whole basket'
@@ -49,9 +64,11 @@ export function offerSubject(rule: OfferRule) {
 /** One-line admin description of the rule. */
 export function describeRule(rule: OfferRule) {
   switch (rule.kind) {
+    case 'percent-items': return `${rule.percent}% off ${targetLabel(rule.target)}${rule.maxDiscountCents ? ` (max ${formatLKR(rule.maxDiscountCents)})` : ''}`
+    case 'amount-items': return `${formatLKR(rule.amountCents)} off each · ${targetLabel(rule.target)}`
     case 'percent-category': return `${rule.percent}% off ${getCategory(rule.categoryId).name}${rule.maxDiscountCents ? ` (max ${formatLKR(rule.maxDiscountCents)})` : ''}`
     case 'percent-product': return `${rule.percent}% off ${getProduct(rule.productId)?.name ?? rule.productId}`
-    case 'bxgy': return `Buy ${rule.buy} get ${rule.get} free${rule.categoryId ? ` · ${getCategory(rule.categoryId).name}` : ''}`
+    case 'bxgy': return `Buy ${rule.buy} get ${rule.get} free · ${targetLabel(ruleTarget(rule))}`
     case 'fixed-off': return `${formatLKR(rule.amountCents)} off over ${formatLKR(rule.minSpendCents)}`
     case 'free-delivery': return `Free delivery over ${formatLKR(rule.minSpendCents)}`
     case 'percent-order': return `${rule.percent}% off the basket over ${formatLKR(rule.minSpendCents)}${rule.maxDiscountCents ? ` (max ${formatLKR(rule.maxDiscountCents)})` : ''}`
@@ -93,10 +110,16 @@ export function productPromo(product: Pick<Product, 'id' | 'categoryId' | 'price
     const conditional = !!(o.conditions?.minSpendCents || o.conditions?.minItems)
     let promo: ProductPromo | null = null
     let value = 0
-    if ((r.kind === 'percent-product' && r.productId === product.id) || (r.kind === 'percent-category' && r.categoryId === product.categoryId)) {
+    const target = ruleTarget(r)
+    if (!target || !targetMatches(target, product)) continue
+    if (r.kind === 'percent-product' || r.kind === 'percent-category' || r.kind === 'percent-items') {
       promo = { offer: o, badge: `SAVE ${r.percent}%`, nowCents: Math.round((product.priceCents * (100 - r.percent)) / 100), conditional }
       value = r.percent
-    } else if (r.kind === 'bxgy' && (r.productIds?.includes(product.id) || r.categoryId === product.categoryId)) {
+    } else if (r.kind === 'amount-items') {
+      const off = Math.min(r.amountCents, product.priceCents)
+      promo = { offer: o, badge: `SAVE ${rs(off)}`, nowCents: product.priceCents - off, conditional }
+      value = (100 * off) / Math.max(1, product.priceCents)
+    } else if (r.kind === 'bxgy') {
       promo = { offer: o, badge: `BUY ${r.buy} GET ${r.get}`, conditional }
       value = (100 * r.get) / (r.buy + r.get)
     }

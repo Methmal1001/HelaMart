@@ -35,25 +35,17 @@ function progress(o: (typeof storeOffers.value)[number]) {
 }
 
 /** Item offers point at a place in the store: that product, or that category's aisle. */
-function categoryOf(o: (typeof storeOffers.value)[number]): CategoryId | null {
-  const r = o.rule
-  return r.kind === 'percent-category' || (r.kind === 'bxgy' && r.categoryId) ? (r.categoryId as CategoryId) : null
-}
 function targetOf(o: (typeof storeOffers.value)[number]): { productId: string; place: string } | null {
-  const r = o.rule
-  if (r.kind === 'percent-product') {
-    const p = getProduct(r.productId)
-    return p && p.stock !== 0 ? { productId: p.id, place: p.name } : null
+  const t = ruleTarget(o.rule)
+  if (!t || t.all) return null
+  // A hand-picked product first, else the first listed category's aisle — in stock at this branch.
+  const p = t.productIds.map((id) => getProduct(id)).find((x) => x && x.stock !== 0)
+  if (p) return { productId: p.id, place: p.name }
+  for (const cat of t.categoryIds as CategoryId[]) {
+    const q = productsInCategory(cat).find((x) => x.stock !== 0)
+    if (q) return { productId: q.id, place: `${getCategory(cat).name} aisle` }
   }
-  if (r.kind === 'bxgy' && r.productIds?.length) {
-    const p = r.productIds.map((id) => getProduct(id)).find((x) => x && x.stock !== 0)
-    if (p) return { productId: p.id, place: p.name }
-  }
-  const cat = categoryOf(o)
-  if (!cat) return null
-  // Prefer a product the offer actually discounts, in stock at this branch.
-  const p = productsInCategory(cat).find((x) => x.stock !== 0)
-  return p ? { productId: p.id, place: `${getCategory(cat).name} aisle` } : null
+  return null
 }
 
 /**

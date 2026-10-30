@@ -1,6 +1,16 @@
 import { ApiError } from './apiError'
 
 /**
+ * True when the storefront should use the HelaMart API (NUXT_PUBLIC_API_BASE is set).
+ * Off by default: everything runs on the in-browser sample data. Parts the API doesn't
+ * serve yet (delivery areas, branding, store offers, categories, banners…) always use
+ * the in-browser data.
+ */
+export function backendEnabled() {
+  return !!useRuntimeConfig().public.apiBase
+}
+
+/**
  * Calls the HelaMart API (`runtimeConfig.public.apiBase`, e.g. http://localhost:5206/api).
  * Error responses are `{ status, message, code }`; they're thrown as ApiError so callers
  * keep handling failures exactly as they did with the mock backend.

@@ -1,4 +1,4 @@
-import type { AppliedOffer, CartLine, FulfilmentMethod, Offer, OfferRule, PriceBreakdown, PricedLine, Product, UnmetOffer } from '~/types'
+import type { AppliedOffer, CartLine, FulfilmentMethod, ItemTarget, Offer, OfferRule, PriceBreakdown, PricedLine, Product, UnmetOffer } from '~/types'
 import { getProduct } from '~/data/products'
 import { getCategory } from '~/data/categories'
 import { formatLKR } from './currency'
@@ -28,25 +28,51 @@ export function offerTimingProblem(offer: Offer, now = Date.now(), fulfilment?: 
   return null
 }
 
-function lineMatches(offer: Offer, product: Product) {
-  const r = offer.rule
+/** "Beverages items", "Ginger Beer", "eligible items" — for unlock hints. */
+function targetPhrase(t: ItemTarget | null) {
+  if (!t || t.all) return 'items'
+  if (t.categoryIds.length === 1 && !t.productIds.length) return `${getCategory(t.categoryIds[0]!).name} items`
+  if (t.productIds.length === 1 && !t.categoryIds.length) return getProduct(t.productIds[0]!)?.name ?? 'the product'
+  return 'eligible items'
+}
+
+export const ITEM_RULES: OfferRule['kind'][] = ['percent-items', 'amount-items', 'percent-category', 'percent-product', 'bxgy']
+
+/** The items an item offer applies to (older single-category / single-product offers included). Null for basket offers. */
+export function ruleTarget(r: OfferRule): ItemTarget | null {
   switch (r.kind) {
+    case 'percent-items':
+    case 'amount-items':
+      return r.target
     case 'percent-category':
-      return product.categoryId === r.categoryId
+      return { categoryIds: [r.categoryId], productIds: [] }
     case 'percent-product':
-      return product.id === r.productId
+      return { categoryIds: [], productIds: [r.productId] }
     case 'bxgy':
-      return (r.productIds?.includes(product.id) ?? false) || (!!r.categoryId && product.categoryId === r.categoryId)
+      return r.target ?? { categoryIds: r.categoryId ? [r.categoryId] : [], productIds: r.productIds ?? [] }
     default:
-      return false
+      return null
   }
 }
 
+export function targetMatches(t: ItemTarget, product: Pick<Product, 'id' | 'categoryId'>) {
+  return !!t.all || t.productIds.includes(product.id) || t.categoryIds.includes(product.categoryId)
+}
+
+function lineMatches(offer: Offer, product: Product) {
+  const t = ruleTarget(offer.rule)
+  return !!t && targetMatches(t, product)
+}
+
+/** Optional cap on an item offer's total discount. */
+const itemCap = (r: OfferRule) => (r.kind === 'percent-category' || r.kind === 'percent-items' ? r.maxDiscountCents : undefined)
+
 function lineDiscount(offer: Offer, line: PricedLine): number {
   const r = offer.rule
-  if (r.kind === 'percent-category' || r.kind === 'percent-product') {
+  if (r.kind === 'percent-category' || r.kind === 'percent-product' || r.kind === 'percent-items') {
     return Math.floor((line.lineTotalCents * r.percent) / 100)
   }
+  if (r.kind === 'amount-items') return Math.min(r.amountCents, line.unitPriceCents) * line.quantity
   if (r.kind === 'bxgy') {
     const free = Math.floor(line.quantity / (r.buy + r.get)) * r.get
     return free * line.unitPriceCents
@@ -99,7 +125,7 @@ export function priceCart(
     }
     return true
   })
-  const itemOffers = active.filter((o) => ['percent-category', 'percent-product', 'bxgy'].includes(o.rule.kind))
+  const itemOffers = active.filter((o) => ITEM_RULES.includes(o.rule.kind))
 
   const products = new Map<string, Product>()
   const lines: PricedLine[] = cart.flatMap((l) => {
@@ -126,7 +152,7 @@ export function priceCart(
   }
   // Apply per-offer caps.
   for (const offer of itemOffers) {
-    const cap = offer.rule.kind === 'percent-category' ? offer.rule.maxDiscountCents : undefined
+    const cap = itemCap(offer.rule)
     if (!cap) continue
     const affected = lines.filter((l) => l.offerId === offer.id)
     const sum = affected.reduce((s, l) => s + l.discountCents, 0)
@@ -155,12 +181,7 @@ export function priceCart(
       const need = r.buy + r.get - (l.quantity % (r.buy + r.get))
       unmet.push({ offer, hint: `Add ${need} more ${products.get(l.productId)!.name} to get ${r.get} free.` })
     } else if (!matching.length) {
-      const target =
-        r.kind === 'percent-category' ? `${getCategory(r.categoryId).name} items`
-        : r.kind === 'percent-product' ? (getProduct(r.productId)?.name ?? 'the product')
-        : r.kind === 'bxgy' && r.categoryId ? `${getCategory(r.categoryId).name} items`
-        : 'eligible items'
-      unmet.push({ offer, hint: `Add ${target} to use this offer.` })
+      unmet.push({ offer, hint: `Add ${targetPhrase(ruleTarget(r))} to use this offer.` })
     }
   }
 

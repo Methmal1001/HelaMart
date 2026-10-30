@@ -476,6 +476,11 @@ export function deleteCategory(token: string, id: CategoryId, opts: { moveTo?: C
         if (target) r.categoryId = target.id
         else o.status = 'paused'
       }
+      const t = 'target' in r ? r.target : undefined
+      if (t?.categoryIds.includes(id)) {
+        t.categoryIds = target ? [...new Set(t.categoryIds.map((x) => (x === id ? target.id : x)))] : t.categoryIds.filter((x) => x !== id)
+        if (!t.all && !t.categoryIds.length && !t.productIds.length) o.status = 'paused'
+      }
     }
     ctx.db.categories = ctx.db.categories.filter((x) => x !== c)
     inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order).forEach((x, k) => (x.order = k))
@@ -608,6 +613,14 @@ function cleanConditions(c: OfferConditions | undefined, expiresAt: string): Off
   return Object.keys(out).length ? out : undefined
 }
 
+/** The chain's products, for picking what an offer applies to (no stock or prices needed). */
+export function listOfferProducts(token: string): Promise<{ id: string; name: string; brand: string; size: string; categoryId: CategoryId; hidden: boolean }[]> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'promotions.view')
+    return inTenant(ctx, ctx.db.products).map((p) => ({ id: p.id, name: p.name, brand: p.brand, size: p.size, categoryId: p.categoryId, hidden: p.status === 'hidden' }))
+  })
+}
+
 export function saveOffer(token: string, input: OfferInput, id?: string): Promise<AdminOffer> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'promotions.manage')
@@ -618,7 +631,18 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
     if (sanitize(input.title, 80).length < 3) throw new ApiError(422, 'Enter a title.')
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) throw new ApiError(422, 'Expiry must be in the future.')
     const r = input.rule
-    if ((r.kind === 'percent-category' || r.kind === 'percent-product') && !(r.percent > 0 && r.percent <= 90)) throw new ApiError(422, 'Percentage must be between 1 and 90.')
+    if ((r.kind === 'percent-category' || r.kind === 'percent-product' || r.kind === 'percent-items') && !(r.percent > 0 && r.percent <= 90)) throw new ApiError(422, 'Percentage must be between 1 and 90.')
+    if (r.kind === 'amount-items' && !(r.amountCents > 0)) throw new ApiError(422, 'Enter the amount taken off each item.')
+    if ((r.kind === 'percent-items' || r.kind === 'amount-items' || r.kind === 'bxgy') && 'target' in r && r.target) {
+      const tg = r.target
+      tg.categoryIds = [...new Set(tg.categoryIds)]
+      tg.productIds = [...new Set(tg.productIds)]
+      if (tg.all) Object.assign(tg, { categoryIds: [], productIds: [] })
+      else if (!tg.categoryIds.length && !tg.productIds.length) throw new ApiError(422, 'Choose the categories or products this offer applies to.')
+      const myCats = new Set(inTenant(ctx, ctx.db.categories).map((c) => c.id))
+      const myProducts = new Set(inTenant(ctx, ctx.db.products).map((p) => p.id))
+      if (tg.categoryIds.some((c) => !myCats.has(c)) || tg.productIds.some((p) => !myProducts.has(p))) throw new ApiError(403, 'You can only target your own categories and products.')
+    }
     if (r.kind === 'fixed-off' && !(r.amountCents > 0 && r.minSpendCents >= 0)) throw new ApiError(422, 'Enter a valid discount and minimum spend.')
     if (r.kind === 'bxgy' && !(r.buy >= 1 && r.get >= 1)) throw new ApiError(422, 'Buy and get quantities must be at least 1.')
     if (r.kind === 'percent-order' && !(r.percent > 0 && r.percent <= 90 && r.minSpendCents >= 0 && (r.maxDiscountCents ?? 1) > 0)) throw new ApiError(422, 'Enter a valid basket percentage, minimum spend and cap.')

@@ -13,10 +13,8 @@ export interface StoreChoice {
 }
 
 const KEY = 'helamart:store-choice:v1'
-
-/** One store-list request at a time, shared by every caller. */
+/** Shared across callers: one store-list request at a time, and only the latest catalogue request wins. */
 let inflight: Promise<void> | null = null
-/** The latest catalogue request; older responses are ignored. */
 let catalogRequest = 0
 
 function isChoice(v: unknown): v is StoreChoice {
@@ -27,8 +25,8 @@ function isChoice(v: unknown): v is StoreChoice {
  * Which verified supermarket + branch the shopper is buying from.
  * Only approved, active supermarkets are offered; a saved choice that has
  * since been restricted/banned/closed is dropped automatically. Choosing a
- * store loads its own catalogue (products, prices, photos, branch stock)
- * from the HelaMart API.
+ * store loads its own catalogue (products, prices, photos, branch stock) —
+ * from the HelaMart API when NUXT_PUBLIC_API_BASE is set, else sample data.
  */
 export function useStoreSelection() {
   const choice = useState<StoreChoice | null>('store-choice', () => null)
@@ -38,13 +36,6 @@ export function useStoreSelection() {
   const { area } = useShoppingArea()
 
   /** Load the chosen branch's catalogue and drop cart items it doesn't sell. */
-<<<<<<< HEAD
-  function applyCatalog(announce = false) {
-    if (!choice.value) return
-    // The supermarket's own categories first (names, colours, order), then its products.
-    setActiveCategories(getStoreCategories(choice.value.storeId))
-    setActiveCatalog(getStoreCatalog(choice.value.storeId, choice.value.branchId))
-=======
   async function applyCatalog(announce = false) {
     const current = choice.value
     if (!current) return
@@ -58,8 +49,9 @@ export function useStoreSelection() {
     }
     // The shopper picked another branch while this one was loading.
     if (request !== catalogRequest) return
+    // The supermarket's own categories first (names, colours, order), then its products.
+    setActiveCategories(getStoreCategories(current.storeId))
     setActiveCatalog(list)
->>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
     const missing = lines.value.filter((l) => !getProduct(l.productId))
     for (const l of missing) remove(l.productId)
     if (announce && missing.length) show(`${missing.length} item${missing.length === 1 ? '' : 's'} not sold at ${current.storeName} ${missing.length === 1 ? 'was' : 'were'} removed from your cart.`)
@@ -92,8 +84,16 @@ export function useStoreSelection() {
       choice.value = first && b ? { storeId: first.id, branchId: b.id, storeName: first.name, branchName: b.name, brandColor: first.brandColor } : null
     }
     if (choice.value) writeStorage(KEY, choice.value)
-    // The area may have been set before the store list arrived: make sure the choice is inside it.
-    if (firstLoad) alignToArea()
+    // The area may have been set before the store list arrived: make sure the choice delivers there.
+    if (firstLoad && area.value) {
+      const ranked = rankStores(stores.value, area.value)
+      const current = ranked.find((r) => r.store.id === choice.value?.storeId)?.branches.find((b) => b.id === choice.value?.branchId)
+      const best = ranked.find((r) => r.available)
+      if (!current?.delivers && best?.serving) {
+        choice.value = { storeId: best.store.id, branchId: best.serving.id, storeName: best.store.name, branchName: best.serving.name, brandColor: best.store.brandColor }
+        writeStorage(KEY, choice.value)
+      }
+    }
     await applyCatalog()
   }
 
@@ -121,13 +121,8 @@ export function useStoreSelection() {
       if (announce) show(`No HelaMart supermarket delivers to ${a.label} yet. Try a nearby town.`, 'error')
       return
     }
-<<<<<<< HEAD
-    select(best.store.id, best.serving.id)
+    void select(best.store.id, best.serving.id)
     if (announce) show(`Now shopping at ${best.store.name} · ${best.serving.name} — it delivers to ${a.label}.`, 'success')
-=======
-    void select(best.store.id, best.nearest.id)
-    if (announce) show(`Now shopping at ${best.store.name} · ${best.nearest.name} — ${formatKm(best.nearest.distanceKm)} from ${a.label}.`, 'success')
->>>>>>> 8e46a242e2aecf7d41f2156e1dff89087a4c12c2
   }
 
   /** The chosen supermarket's public record, including its HelaMart-approved branding. */

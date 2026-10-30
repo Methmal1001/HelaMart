@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { AdminOffer, TableColumn } from '~/types/admin'
-import type { CategoryId, OfferConditions, OfferRule } from '~/types'
+import type { CategoryId, ItemTarget, OfferConditions, OfferRule } from '~/types'
 import type { ScheduleState } from '~/utils/schedule'
-import { products } from '~/data/products'
-import { branchDirectory, setOfferSchedule, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
+import { branchDirectory, setOfferSchedule, deleteOffer, listChainCustomers, listOfferProducts, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'promotions.view' })
 useHead({ title: 'Promotions' })
@@ -15,13 +14,15 @@ const offers = ref<AdminOffer[]>([])
 const customers = ref<ChainCustomer[]>([])
 const branches = ref<{ id: string; name: string }[]>([])
 const loading = ref(true)
+type PickProduct = Awaited<ReturnType<typeof listOfferProducts>>[number]
+const products = ref<PickProduct[]>([])
 const canManage = computed(() => auth.can('promotions.manage') && !auth.readOnly.value)
 
 const { categories, load: loadCategories } = useTenantCategories()
 
 onMounted(async () => {
   try {
-    ;[offers.value, branches.value] = await Promise.all([auth.call(listOffers), auth.call(branchDirectory), loadCategories()])
+    ;[offers.value, branches.value, products.value] = await Promise.all([auth.call(listOffers), auth.call(branchDirectory), auth.call(listOfferProducts), loadCategories()])
     if (auth.can('customers.view')) customers.value = await auth.call(listChainCustomers)
   } catch (e) {
     notify.error(e)
@@ -30,7 +31,24 @@ onMounted(async () => {
   }
 })
 
-const describe = (o: AdminOffer) => [describeRule(o.rule), ...offerConditionChips(o)].join(' · ')
+/** Names from this chain's own catalogue (the admin isn't browsing a store, so the shopper catalogue can't name them). */
+const productName = (id: string) => products.value.find((p) => p.id === id)?.name
+const categoryName = (id: CategoryId) => categories.value.find((c) => c.id === id)?.name ?? id
+function targetText(t: ItemTarget) {
+  if (t.all) return 'everything'
+  const names = [...t.categoryIds.map(categoryName), ...t.productIds.map((id) => productName(id) ?? 'a removed product')]
+  return names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} + ${names.length - 2} more`
+}
+function ruleText(r: OfferRule) {
+  const t = ruleTarget(r)
+  if (!t) return describeRule(r)
+  const what = targetText(t)
+  if (r.kind === 'amount-items') return `${formatLKR(r.amountCents)} off each · ${what}`
+  if (r.kind === 'bxgy') return `Buy ${r.buy} get ${r.get} free · ${what}`
+  if ('percent' in r) return `${r.percent}% off ${what}${'maxDiscountCents' in r && r.maxDiscountCents ? ` (max ${formatLKR(r.maxDiscountCents)})` : ''}`
+  return describeRule(r)
+}
+const describe = (o: AdminOffer) => [ruleText(o.rule), ...offerConditionChips(o)].join(' · ')
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 /** Publishing life-cycle: live, scheduled, paused or ended. */
 const lifeOf = (o: AdminOffer) => ({ status: o.status, startsAt: o.conditions?.startsAt, endsAt: o.expiresAt })
@@ -63,7 +81,9 @@ const columns: TableColumn[] = [
 type Kind = OfferRule['kind']
 const editing = ref<AdminOffer | 'new' | null>(null)
 const f = reactive({
-  code: '', title: '', description: '', kind: 'percent-category' as Kind, percent: 10, categoryId: 'beverages' as CategoryId, productId: products[0]!.id,
+  code: '', title: '', description: '', kind: 'percent-items' as Kind, percent: 10,
+  /** What item offers apply to. */
+  all: false, categoryIds: [] as CategoryId[], productIds: [] as string[], itemRs: '50',
   maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: '', audience: 'all' as AdminOffer['audience'], customerIds: [] as string[], branchIds: [] as string[],
   // Conditions
   condMinRs: '', condMinItems: '' as string | number, days: [] as number[], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '' as '' | 'delivery' | 'pickup', limit: '' as string | number,
@@ -78,7 +98,7 @@ function open(o: AdminOffer | 'new') {
   end.setHours(23, 59, 0, 0)
   const nextYear = toLocalInput(end)
   if (o === 'new') {
-    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: categories.value[0]?.id ?? 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
+    Object.assign(f, { code: '', title: '', description: '', kind: 'percent-items', percent: 10, all: false, categoryIds: [], productIds: [], itemRs: '50', maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
     Object.assign(f, { condMinRs: '', condMinItems: '', days: [], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '', limit: '', announce: false })
     return
   }
@@ -88,12 +108,14 @@ function open(o: AdminOffer | 'new') {
     timed: c.fromHour !== undefined, fromHour: c.fromHour ?? 18, toHour: c.toHour ?? 21, starts: c.startsAt ? toLocalInput(c.startsAt) : '', fulfilment: c.fulfilment ?? '', limit: c.perCustomerLimit ?? '', announce: !!o.announce,
   })
   const r = o.rule
+  const t = ruleTarget(r)
   Object.assign(f, {
-    code: o.code, title: o.title, description: o.description, kind: r.kind, expires: toLocalInput(o.expiresAt), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
+    // Older single-category / single-product offers open as "% off selected items".
+    code: o.code, title: o.title, description: o.description, kind: r.kind === 'percent-category' || r.kind === 'percent-product' ? 'percent-items' : r.kind,
+    all: !!t?.all, categoryIds: [...(t?.categoryIds ?? [])], productIds: [...(t?.productIds ?? [])], itemRs: r.kind === 'amount-items' ? String(r.amountCents / 100) : '50',
+    expires: toLocalInput(o.expiresAt), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
     percent: 'percent' in r ? r.percent : 10,
-    categoryId: 'categoryId' in r && r.categoryId ? r.categoryId : 'beverages',
-    productId: r.kind === 'percent-product' ? r.productId : products[0]!.id,
-    maxRs: (r.kind === 'percent-category' || r.kind === 'percent-order') && r.maxDiscountCents ? String(r.maxDiscountCents / 100) : '',
+    maxRs: (r.kind === 'percent-category' || r.kind === 'percent-items' || r.kind === 'percent-order') && r.maxDiscountCents ? String(r.maxDiscountCents / 100) : '',
     amountRs: r.kind === 'fixed-off' ? String(r.amountCents / 100) : '250',
     minRs: 'minSpendCents' in r ? String(r.minSpendCents / 100) : '1500',
     buy: r.kind === 'bxgy' ? r.buy : 2,
@@ -102,11 +124,15 @@ function open(o: AdminOffer | 'new') {
 }
 
 const cents = (rs: string) => Math.round(Number.parseFloat(rs || '0') * 100)
+const isItemKind = computed(() => f.kind === 'percent-items' || f.kind === 'amount-items' || f.kind === 'bxgy')
+const target = (): ItemTarget => (f.all ? { all: true, categoryIds: [], productIds: [] } : { categoryIds: [...f.categoryIds], productIds: [...f.productIds] })
 function buildRule(): OfferRule {
   switch (f.kind) {
-    case 'percent-category': return { kind: f.kind, categoryId: f.categoryId, percent: Number(f.percent), maxDiscountCents: f.maxRs ? cents(f.maxRs) : undefined }
-    case 'percent-product': return { kind: f.kind, productId: f.productId, percent: Number(f.percent) }
-    case 'bxgy': return { kind: f.kind, categoryId: f.categoryId, buy: Number(f.buy), get: Number(f.get) }
+    case 'percent-category':
+    case 'percent-product':
+    case 'percent-items': return { kind: 'percent-items', target: target(), percent: Number(f.percent), maxDiscountCents: f.maxRs ? cents(f.maxRs) : undefined }
+    case 'amount-items': return { kind: f.kind, target: target(), amountCents: cents(f.itemRs) }
+    case 'bxgy': return { kind: f.kind, target: target(), buy: Number(f.buy), get: Number(f.get) }
     case 'fixed-off': return { kind: f.kind, amountCents: cents(f.amountRs), minSpendCents: cents(f.minRs) }
     case 'free-delivery': return { kind: f.kind, minSpendCents: cents(f.minRs) }
     case 'percent-order': return { kind: f.kind, percent: Number(f.percent), minSpendCents: cents(f.minRs), maxDiscountCents: f.maxRs ? cents(f.maxRs) : undefined }
@@ -134,8 +160,39 @@ const preview = computed(() => ({
 }))
 const hourLabel = (h: number) => `${h % 12 || 12}:00 ${h < 12 || h === 24 ? 'am' : 'pm'}`
 
+// ---- "Applies to" picker
+const productQuery = ref('')
+const showAllProducts = ref(false)
+const pickable = computed(() => {
+  const q = productQuery.value.trim().toLowerCase()
+  const list = products.value.filter((p) => !p.hidden || f.productIds.includes(p.id))
+  const hits = q ? list.filter((p) => `${p.name} ${p.brand} ${categoryName(p.categoryId)}`.toLowerCase().includes(q)) : list
+  // Chosen products first so they're easy to untick.
+  return [...hits].sort((a, b) => Number(f.productIds.includes(b.id)) - Number(f.productIds.includes(a.id)))
+})
+const pickableShown = computed(() => (showAllProducts.value || productQuery.value ? pickable.value : pickable.value.slice(0, 8)))
+function toggleIn<T>(list: T[], v: T) {
+  const i = list.indexOf(v)
+  if (i >= 0) list.splice(i, 1)
+  else list.push(v)
+}
+/** Products covered by the chosen categories (already included, shown as such). */
+const coveredByCategory = (p: PickProduct) => f.categoryIds.includes(p.categoryId)
+const coveredCount = computed(() => (f.all ? products.value.filter((p) => !p.hidden).length : products.value.filter((p) => !p.hidden && (coveredByCategory(p) || f.productIds.includes(p.id))).length))
+const targetSummary = computed(() => {
+  if (f.all) return `Every product in your store (${coveredCount.value})`
+  const parts = []
+  if (f.categoryIds.length) parts.push(`${f.categoryIds.length} categor${f.categoryIds.length === 1 ? 'y' : 'ies'}`)
+  if (f.productIds.length) parts.push(`${f.productIds.length} product${f.productIds.length === 1 ? '' : 's'}`)
+  return parts.length ? `${parts.join(' + ')} · ${coveredCount.value} products in all` : 'Nothing chosen yet'
+})
+
 async function save() {
   error.value = ''
+  if (isItemKind.value && !f.all && !f.categoryIds.length && !f.productIds.length) {
+    error.value = 'Choose what this offer applies to: everything, or some categories / products.'
+    return
+  }
   const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: fromLocalInput(f.expires) ?? '', audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds, conditions: buildConditions(), announce: f.announce }
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
@@ -246,12 +303,16 @@ async function remove(o: AdminOffer) {
         <label class="sm:col-span-2"><span class="field-label">Description</span><input v-model="f.description" class="field" maxlength="200"></label>
         <label class="sm:col-span-2"><span class="field-label">Offer type</span>
           <select v-model="f.kind" class="field">
-            <option value="percent-category">% off a category</option>
-            <option value="percent-product">% off one product</option>
-            <option value="bxgy">Buy X, get Y free</option>
+            <optgroup label="On selected items">
+              <option value="percent-items">% off selected items</option>
+              <option value="amount-items">Rs. off each selected item</option>
+              <option value="bxgy">Buy X, get Y free</option>
+            </optgroup>
+            <optgroup label="On the whole basket">
             <option value="fixed-off">Amount off above a spend</option>
             <option value="percent-order">% off the whole basket above a spend</option>
             <option value="free-delivery">Free delivery above a spend</option>
+            </optgroup>
           </select>
         </label>
         <template v-if="f.kind === 'percent-order'">
@@ -259,16 +320,68 @@ async function remove(o: AdminOffer) {
           <label><span class="field-label">Minimum basket (Rs.)</span><input v-model="f.minRs" class="field" inputmode="decimal"></label>
           <label><span class="field-label">Max discount (Rs., optional)</span><input v-model="f.maxRs" class="field" inputmode="decimal"></label>
         </template>
-        <template v-else-if="f.kind === 'percent-category' || f.kind === 'percent-product'">
-          <label><span class="field-label">Discount %</span><input v-model.number="f.percent" type="number" min="1" max="90" class="field"></label>
-          <label v-if="f.kind === 'percent-category'"><span class="field-label">Category</span><select v-model="f.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
-          <label v-else><span class="field-label">Product</span><select v-model="f.productId" class="field"><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
-          <label v-if="f.kind === 'percent-category'"><span class="field-label">Max discount (Rs., optional)</span><input v-model="f.maxRs" class="field" inputmode="decimal"></label>
-        </template>
-        <template v-else-if="f.kind === 'bxgy'">
-          <label><span class="field-label">Buy</span><input v-model.number="f.buy" type="number" min="1" class="field"></label>
-          <label><span class="field-label">Get free</span><input v-model.number="f.get" type="number" min="1" class="field"></label>
-          <label class="sm:col-span-2"><span class="field-label">Category</span><select v-model="f.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+        <template v-else-if="isItemKind">
+          <template v-if="f.kind === 'percent-items'">
+            <label><span class="field-label">Discount %</span><input v-model.number="f.percent" type="number" min="1" max="90" class="field" data-testid="offer-percent"></label>
+            <label><span class="field-label">Max discount (Rs., optional)</span><input v-model="f.maxRs" class="field" inputmode="decimal"></label>
+          </template>
+          <label v-else-if="f.kind === 'amount-items'" class="sm:col-span-2"><span class="field-label">Rs. off each item</span><input v-model="f.itemRs" class="field" inputmode="decimal" data-testid="offer-item-rs"></label>
+          <template v-else>
+            <label><span class="field-label">Buy</span><input v-model.number="f.buy" type="number" min="1" class="field"></label>
+            <label><span class="field-label">Get free</span><input v-model.number="f.get" type="number" min="1" class="field"></label>
+          </template>
+
+          <!-- Applies to -->
+          <fieldset class="sm:col-span-2 rounded-xl p-3 ring-1 ring-line" data-testid="offer-target">
+            <legend class="field-label px-1">Applies to</legend>
+            <div class="flex flex-wrap gap-2 text-sm" role="radiogroup" aria-label="Applies to">
+              <button type="button" role="radio" :aria-checked="!f.all" class="rounded-full px-3 py-1 font-semibold ring-1 transition" :class="!f.all ? 'bg-hela-green text-white ring-hela-green' : 'ring-line hover:bg-hela-green-50'" data-testid="target-selected" @click="f.all = false">Selected categories &amp; products</button>
+              <button type="button" role="radio" :aria-checked="f.all" class="rounded-full px-3 py-1 font-semibold ring-1 transition" :class="f.all ? 'bg-hela-green text-white ring-hela-green' : 'ring-line hover:bg-hela-green-50'" data-testid="target-all" @click="f.all = true">Everything in store</button>
+            </div>
+
+            <template v-if="!f.all">
+              <p class="mt-3 text-xs font-bold text-muted">Categories <span class="font-normal">— every product in them</span></p>
+              <div class="mt-1.5 flex flex-wrap gap-1.5">
+                <button
+                  v-for="c in categories"
+                  :key="c.id"
+                  type="button"
+                  :aria-pressed="f.categoryIds.includes(c.id)"
+                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition"
+                  :class="f.categoryIds.includes(c.id) ? 'text-white' : 'bg-white text-ink ring-line hover:ring-hela-green'"
+                  :style="f.categoryIds.includes(c.id) ? { background: c.color, '--tw-ring-color': c.color } : undefined"
+                  :data-testid="`target-cat-${c.id}`"
+                  @click="toggleIn(f.categoryIds, c.id)"
+                >
+                  <span class="size-2 rounded-full" :style="{ background: f.categoryIds.includes(c.id) ? '#fff' : c.color }" />{{ c.name }}
+                  <AppIcon v-if="f.categoryIds.includes(c.id)" name="check" :size="11" :stroke-width="3" />
+                </button>
+              </div>
+
+              <p class="mt-3 text-xs font-bold text-muted">Products <span class="font-normal">— pick individual items too</span></p>
+              <label class="relative mt-1.5 block">
+                <span class="sr-only">Search products</span>
+                <AppIcon name="search" :size="14" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+                <input v-model="productQuery" type="search" class="field h-9 pl-8 text-sm" placeholder="Search by name, brand or category" data-testid="target-product-search">
+              </label>
+              <ul class="mt-1.5 max-h-56 divide-y divide-line overflow-y-auto rounded-lg ring-1 ring-line">
+                <li v-for="p in pickableShown" :key="p.id">
+                  <label class="flex cursor-pointer items-center gap-2.5 px-2.5 py-1.5 text-sm hover:bg-hela-green-50/60" :class="{ 'opacity-60': coveredByCategory(p) && !f.productIds.includes(p.id) }">
+                    <input type="checkbox" class="size-4 accent-hela-green" :checked="f.productIds.includes(p.id) || coveredByCategory(p)" :disabled="coveredByCategory(p) && !f.productIds.includes(p.id)" :data-testid="`target-prod-${p.id}`" @change="toggleIn(f.productIds, p.id)">
+                    <span class="min-w-0 flex-1 truncate"><b class="font-semibold text-ink">{{ p.name }}</b> <span class="text-xs text-muted">{{ p.brand }} · {{ p.size }}</span></span>
+                    <span class="shrink-0 text-[0.65rem] text-muted">{{ coveredByCategory(p) && !f.productIds.includes(p.id) ? 'in a chosen category' : categoryName(p.categoryId) }}</span>
+                  </label>
+                </li>
+                <li v-if="!pickable.length" class="px-2.5 py-3 text-center text-xs text-muted">{{ products.length ? `No product matches “${productQuery}”.` : 'No products yet.' }}</li>
+              </ul>
+              <button v-if="!productQuery && pickable.length > pickableShown.length" type="button" class="mt-1 text-xs font-bold text-hela-green hover:underline" @click="showAllProducts = true">Show all {{ pickable.length }} products</button>
+            </template>
+
+            <p class="mt-3 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold" :class="f.all || f.categoryIds.length || f.productIds.length ? 'bg-hela-green-50 text-hela-green' : 'bg-hela-gold-100/70 text-[#6d5622]'" data-testid="target-summary">
+              <AppIcon name="tag" :size="12" />{{ targetSummary }}
+              <button v-if="!f.all && (f.categoryIds.length || f.productIds.length)" type="button" class="ml-auto font-bold underline" @click="f.categoryIds = []; f.productIds = []">Clear</button>
+            </p>
+          </fieldset>
         </template>
         <template v-else>
           <label v-if="f.kind === 'fixed-off'"><span class="field-label">Discount (Rs.)</span><input v-model="f.amountRs" class="field" inputmode="decimal"></label>
