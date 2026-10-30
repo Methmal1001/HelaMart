@@ -31,7 +31,7 @@ export const GONDOLA = {
 }
 
 export const GONDOLA_X = [-11.25, -6.75, -2.25, 2.25, 6.75, 11.25]
-const GONDOLA_CATEGORIES: CategoryId[] = ['staples', 'snacks', 'beverages', 'cleaning', 'personal-care', 'household']
+export const GONDOLA_CATEGORIES: CategoryId[] = ['staples', 'snacks', 'beverages', 'cleaning', 'personal-care', 'household']
 
 export interface FixturePlan {
   sectionId: string

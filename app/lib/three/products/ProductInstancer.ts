@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { CategoryId, Product, ProductShape } from '~/types'
 import { productsInCategory } from '~/data/products'
 import { createShapeGeometries, productDimensions, SHAPES_WITH_LABELS, type ShapeGeometry } from './shapes'
-import { buildProductAtlas, type ProductAtlas } from './atlas'
+import { buildProductAtlas, type ProductAtlas, type ShelfPromos } from './atlas'
 
 /**
  * A surface that products are placed on. The slot frame's origin is the
@@ -99,7 +99,7 @@ export class ProductInstancer {
    * (Re)stock every slot from the live catalogue. Async because uploaded photos
    * are decoded from IndexedDB; a newer call supersedes one still in flight.
    */
-  async build(slots: ProductSlot[], depthRows: number, maxAnisotropy = 4) {
+  async build(slots: ProductSlot[], depthRows: number, maxAnisotropy = 4, promos?: ShelfPromos) {
     const token = ++this.buildToken
     const rand = mulberry32(20260)
     const cursors = new Map<CategoryId, number>()
@@ -122,7 +122,7 @@ export class ProductInstancer {
       }
     }
 
-    const atlas = onShelves.size ? await buildProductAtlas([...onShelves.values()], maxAnisotropy) : null
+    const atlas = onShelves.size ? await buildProductAtlas([...onShelves.values()], maxAnisotropy, promos) : null
     if (token !== this.buildToken) {
       atlas?.dispose()
       return

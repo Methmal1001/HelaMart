@@ -96,6 +96,34 @@ password step-up for sensitive actions, 10-minute rotating sessions with inactiv
 lockouts, forced password change for temporary passwords, full audit trail per supermarket and
 platform-wide, security headers / no-index / no-store on `/admin`, strict CSP in production.
 
+### Offers, promotions & homepage banners
+
+**Supermarket offers** (*Promotions*, chain admins and branch heads): % off a category or product,
+buy X get Y, amount off or % off the basket above a spend, free delivery. Each offer can run at
+**all branches or chosen branches**, for all / new / selected customers, with optional
+**conditions**: minimum spend, minimum items, days of the week, a daily time window, a start date,
+delivery- or pickup-only, and a per-customer limit. A live coupon preview shows what shoppers see.
+
+Shoppers (guests included) see the chosen branch's offers:
+- product ribbons ("SAVE 20%", "BUY 2 GET 1") with was/now prices;
+- an **Offers** drawer of coupons with progress bars ("Spend Rs. 260 more to unlock …");
+- in the 3D store, red "special" shelf tags, promo boards on the end-caps of discounted aisles and
+  an "Offers this week" board.
+
+Offers apply automatically in the cart, and the order API re-prices with the same rules (and counts usage).
+
+**HelaMart homepage banners** (*Homepage banners*, head office only): headline, theme or uploaded
+image, an optional featured supermarket and offer, a button ("Shop at …" / "See the offer"),
+schedule and priority. Targeting: everyone, chosen districts, or **only where the featured
+supermarket delivers** (so shoppers only see stores they can order from). They appear as a floating
+card on the welcome screen (a slim strip on phones) and a hero carousel on Browse. The admin page
+previews them "as a shopper in <town>".
+
+**Super Admin → Manage portal** (*Supermarkets → open one → Manage portal*): HelaMart's Super Admin
+works inside any approved supermarket's portal with full chain-admin access (offers, products,
+branches, staff, branding). It requires password confirmation, a purple bar shows it's active, and
+every action is logged in that supermarket's audit log as "(HelaMart Super Admin)".
+
 ### Finding supermarkets by area
 
 Shoppers see the HelaMart-verified supermarkets **near their area**, nearest first, with distances

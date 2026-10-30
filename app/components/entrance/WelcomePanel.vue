@@ -127,6 +127,7 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
         <span>No sign-up needed. You can change avatar anytime.</span>
         <NuxtLink to="/browse" class="font-semibold text-hela-green underline-offset-4 hover:underline">Shop without 3D</NuxtLink>
       </div>
+      <div class="mt-3 lg:hidden"><HomeBanners variant="strip" /></div>
       <p class="mt-3 border-t border-line pt-3 text-xs text-muted">
         Own a supermarket in Sri Lanka?
         <NuxtLink to="/partner" class="font-semibold text-hela-green underline-offset-4 hover:underline">Join HelaMart →</NuxtLink>

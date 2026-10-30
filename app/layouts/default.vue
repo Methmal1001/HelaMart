@@ -6,6 +6,7 @@
     <CartDrawer />
     <CheckoutPanel />
     <AccountPanel />
+    <OffersPanel />
     <AuthDialog />
     <AreaFinder />
   </div>

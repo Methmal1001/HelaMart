@@ -1,5 +1,5 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
-import type { CategoryId, OfferRule, ProductShape } from '~/types'
+import type { CategoryId, OfferConditions, OfferRule, ProductShape } from '~/types'
 import { ApiError } from '../apiError'
 import { latency, randomId } from '../mock/server'
 import { putMedia } from '../mock/mediaStore'
@@ -460,6 +460,52 @@ export interface OfferInput {
   audience: AdminOffer['audience']
   customerIds: string[]
   branchIds: string[]
+  conditions?: OfferConditions
+}
+
+/** Validates and normalises an offer's conditions (minimum spend, days, hours…). */
+function cleanConditions(c: OfferConditions | undefined, expiresAt: string): OfferConditions | undefined {
+  if (!c) return undefined
+  const out: OfferConditions = {}
+  const int = (v: unknown) => (v === undefined || v === null || v === '' ? undefined : Math.floor(Number(v)))
+  const minSpend = int(c.minSpendCents)
+  if (minSpend !== undefined) {
+    if (!(minSpend >= 0 && minSpend <= 10_000_000_00)) throw new ApiError(422, 'Enter a valid minimum spend.')
+    if (minSpend > 0) out.minSpendCents = minSpend
+  }
+  const minItems = int(c.minItems)
+  if (minItems !== undefined) {
+    if (!(minItems >= 1 && minItems <= 200)) throw new ApiError(422, 'Minimum items must be 1–200.')
+    if (minItems > 1) out.minItems = minItems
+  }
+  if (c.days?.length) {
+    const days = [...new Set(c.days.map(Number))].filter((d) => d >= 0 && d <= 6).sort()
+    if (!days.length) throw new ApiError(422, 'Choose valid days.')
+    if (days.length < 7) out.days = days
+  }
+  const from = int(c.fromHour)
+  const to = int(c.toHour)
+  if (from !== undefined || to !== undefined) {
+    if (from === undefined || to === undefined || !(from >= 0 && from <= 23) || !(to >= 1 && to <= 24) || from === to) throw new ApiError(422, 'Choose a valid time window (start and end hour).')
+    out.fromHour = from
+    out.toHour = to
+  }
+  if (c.startsAt) {
+    const t = Date.parse(c.startsAt)
+    if (Number.isNaN(t)) throw new ApiError(422, 'Choose a valid start date.')
+    if (t >= Date.parse(expiresAt)) throw new ApiError(422, 'The offer must start before it expires.')
+    out.startsAt = new Date(t).toISOString()
+  }
+  if (c.fulfilment) {
+    if (c.fulfilment !== 'delivery' && c.fulfilment !== 'pickup') throw new ApiError(422, 'Choose delivery or pickup.')
+    out.fulfilment = c.fulfilment
+  }
+  const limit = int(c.perCustomerLimit)
+  if (limit !== undefined) {
+    if (!(limit >= 1 && limit <= 50)) throw new ApiError(422, 'Uses per customer must be 1–50.')
+    out.perCustomerLimit = limit
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 export function saveOffer(token: string, input: OfferInput, id?: string): Promise<AdminOffer> {
@@ -475,6 +521,9 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
     if ((r.kind === 'percent-category' || r.kind === 'percent-product') && !(r.percent > 0 && r.percent <= 90)) throw new ApiError(422, 'Percentage must be between 1 and 90.')
     if (r.kind === 'fixed-off' && !(r.amountCents > 0 && r.minSpendCents >= 0)) throw new ApiError(422, 'Enter a valid discount and minimum spend.')
     if (r.kind === 'bxgy' && !(r.buy >= 1 && r.get >= 1)) throw new ApiError(422, 'Buy and get quantities must be at least 1.')
+    if (r.kind === 'percent-order' && !(r.percent > 0 && r.percent <= 90 && r.minSpendCents >= 0 && (r.maxDiscountCents ?? 1) > 0)) throw new ApiError(422, 'Enter a valid basket percentage, minimum spend and cap.')
+    if (r.kind === 'free-delivery' && !(r.minSpendCents >= 0)) throw new ApiError(422, 'Enter a valid minimum spend.')
+    const conditions = cleanConditions(input.conditions, input.expiresAt)
     const allowed = allowedBranchIds(ctx)
     if (input.branchIds.some((b) => !allowed.has(b))) throw new ApiError(403, 'You can only run offers at your own branches.', 'BRANCH_FORBIDDEN')
     if (!isChainLevel(ctx) && !input.branchIds.length) throw new ApiError(422, 'Choose the branches this offer runs at.')
@@ -482,7 +531,7 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
       if (!input.customerIds.length) throw new ApiError(422, 'Choose at least one customer.')
       if (input.customerIds.some((cid) => !ctx.db.customers.find((c) => c.id === cid)?.tenantIds.includes(t.id))) throw new ApiError(403, 'You can only target your own customers.')
     }
-    const base = { ...input, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
+    const base = { ...input, conditions, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
     if (id) {
       const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
       Object.assign(o, base)

@@ -41,6 +41,13 @@ export const PLATFORM_PERMISSION_GROUPS: PermissionGroup<PlatformPermission>[] =
       { id: 'platform.settings.manage', label: 'Platform & security settings', description: 'Security policy, commission, applications.', sensitive: true },
     ],
   },
+  {
+    id: 'p-marketing',
+    label: 'HelaMart homepage',
+    permissions: [
+      { id: 'platform.banners.manage', label: 'Manage homepage banners', description: 'Create, target and schedule the promotion banners shoppers see on HelaMart.' },
+    ],
+  },
 ]
 
 /** Permissions inside one supermarket chain. */

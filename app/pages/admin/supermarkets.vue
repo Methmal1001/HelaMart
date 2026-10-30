@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn, Tenant, TenantStatus } from '~/types/admin'
+import { ROLE_IDS } from '~/data/admin/permissions'
 import {
   addChainAdmin,
   approveTenant,
@@ -20,6 +21,15 @@ useHead({ title: 'Supermarkets' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
+/** Super Admin can work inside any approved supermarket's portal (offers, products, branches…). */
+const canManagePortal = computed(() => auth.user.value?.roleId === ROLE_IDS.superAdmin)
+async function managePortal(id: string) {
+  try {
+    await auth.manageTenant(id)
+  } catch (e) {
+    notify.error(e)
+  }
+}
 const { confirm } = useAdminConfirm()
 const route = useRoute()
 const tenants = ref<TenantSummary[]>([])
@@ -307,6 +317,7 @@ const allVerified = computed(() => t.value?.documents.every((d) => d.verified) ?
           <button type="button" class="btn-primary h-9" :disabled="!allVerified" @click="startApprove"><AppIcon name="check" :size="16" />Approve</button>
         </template>
         <template v-else-if="auth.can('tenants.moderate')">
+          <button v-if="canManagePortal && ['active', 'restricted'].includes(t.status)" type="button" class="btn-primary h-9" :data-testid="`manage-${t.id}`" @click="managePortal(t.id)"><AppIcon name="shield" :size="15" />Manage portal</button>
           <button v-if="['active', 'restricted'].includes(t.status)" type="button" class="btn-ghost h-9 mr-auto" @click="(Object.assign(terms, { plan: t.plan, commission: t.commissionPercent }), (editingTerms = true))"><AppIcon name="edit" :size="15" />Plan & commission</button>
           <button v-if="t.status === 'active'" type="button" class="btn-ghost h-9 text-[#7A5600]" @click="moderate('restrict')">Restrict</button>
           <button v-if="['active', 'restricted'].includes(t.status)" type="button" class="btn-ghost h-9 text-[#8A2E2E]" @click="moderate('ban')">Ban</button>

@@ -91,7 +91,7 @@ export function useStoreSelection() {
 
   /** Does the chosen branch deliver to the shopper's area? (null = no area chosen yet) */
   const choiceServesArea = computed(() => {
-    if (!area.value) return null
+    if (!area.value || !choice.value) return null
     const b = currentStore.value?.branches.find((x) => x.id === choice.value?.branchId)
     return !!b && branchServes(b, area.value)
   })

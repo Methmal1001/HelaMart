@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AdminOffer, TableColumn } from '~/types/admin'
-import type { CategoryId, OfferRule } from '~/types'
-import { categories, getCategory } from '~/data/categories'
-import { products, getProduct } from '~/data/products'
+import type { CategoryId, OfferConditions, OfferRule } from '~/types'
+import { categories } from '~/data/categories'
+import { products } from '~/data/products'
 import { branchDirectory, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'promotions.view' })
@@ -28,22 +28,15 @@ onMounted(async () => {
   }
 })
 
-function describe(rule: OfferRule) {
-  switch (rule.kind) {
-    case 'percent-category': return `${rule.percent}% off ${getCategory(rule.categoryId).name}${rule.maxDiscountCents ? ` (max ${formatLKR(rule.maxDiscountCents)})` : ''}`
-    case 'percent-product': return `${rule.percent}% off ${getProduct(rule.productId)?.name ?? rule.productId}`
-    case 'bxgy': return `Buy ${rule.buy} get ${rule.get} free${rule.categoryId ? ` · ${getCategory(rule.categoryId).name}` : ''}`
-    case 'fixed-off': return `${formatLKR(rule.amountCents)} off over ${formatLKR(rule.minSpendCents)}`
-    case 'free-delivery': return `Free delivery over ${formatLKR(rule.minSpendCents)}`
-  }
-}
+const describe = (o: AdminOffer) => [describeRule(o.rule), ...offerConditionChips(o)].join(' · ')
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const expired = (o: AdminOffer) => Date.parse(o.expiresAt) < Date.now()
 const audienceText = (o: AdminOffer) => (o.audience === 'all' ? 'All customers' : o.audience === 'new' ? 'New customers' : `${o.customerIds.length} selected`)
 const branchText = (o: AdminOffer) => (o.branchIds.length ? o.branchIds.map((id) => branches.value.find((b) => b.id === id)?.name ?? id).join(', ') : 'All branches')
 
 const columns: TableColumn[] = [
   { key: 'code', label: 'Offer', sortable: true, value: (o: AdminOffer) => `${o.code} ${o.title}` },
-  { key: 'rule', label: 'Rule', value: (o: AdminOffer) => describe(o.rule) },
+  { key: 'rule', label: 'Rule & conditions', value: (o: AdminOffer) => describe(o) },
   { key: 'audience', label: 'Audience', value: (o: AdminOffer) => audienceText(o) },
   { key: 'branches', label: 'Branches', value: (o: AdminOffer) => branchText(o) },
   { key: 'usageCount', label: 'Used', sortable: true, align: 'right' },
@@ -58,6 +51,8 @@ const editing = ref<AdminOffer | 'new' | null>(null)
 const f = reactive({
   code: '', title: '', description: '', kind: 'percent-category' as Kind, percent: 10, categoryId: 'beverages' as CategoryId, productId: products[0]!.id,
   maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: '', audience: 'all' as AdminOffer['audience'], customerIds: [] as string[], branchIds: [] as string[],
+  // Conditions
+  condMinRs: '', condMinItems: '' as string | number, days: [] as number[], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '' as '' | 'delivery' | 'pickup', limit: '' as string | number,
 })
 const error = ref('')
 
@@ -67,15 +62,21 @@ function open(o: AdminOffer | 'new') {
   const nextYear = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)
   if (o === 'new') {
     Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
+    Object.assign(f, { condMinRs: '', condMinItems: '', days: [], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '', limit: '' })
     return
   }
+  const c = o.conditions ?? {}
+  Object.assign(f, {
+    condMinRs: c.minSpendCents ? String(c.minSpendCents / 100) : '', condMinItems: c.minItems ?? '', days: [...(c.days ?? [])],
+    timed: c.fromHour !== undefined, fromHour: c.fromHour ?? 18, toHour: c.toHour ?? 21, starts: c.startsAt?.slice(0, 10) ?? '', fulfilment: c.fulfilment ?? '', limit: c.perCustomerLimit ?? '',
+  })
   const r = o.rule
   Object.assign(f, {
     code: o.code, title: o.title, description: o.description, kind: r.kind, expires: o.expiresAt.slice(0, 10), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
     percent: 'percent' in r ? r.percent : 10,
     categoryId: 'categoryId' in r && r.categoryId ? r.categoryId : 'beverages',
     productId: r.kind === 'percent-product' ? r.productId : products[0]!.id,
-    maxRs: r.kind === 'percent-category' && r.maxDiscountCents ? String(r.maxDiscountCents / 100) : '',
+    maxRs: (r.kind === 'percent-category' || r.kind === 'percent-order') && r.maxDiscountCents ? String(r.maxDiscountCents / 100) : '',
     amountRs: r.kind === 'fixed-off' ? String(r.amountCents / 100) : '250',
     minRs: 'minSpendCents' in r ? String(r.minSpendCents / 100) : '1500',
     buy: r.kind === 'bxgy' ? r.buy : 2,
@@ -91,12 +92,32 @@ function buildRule(): OfferRule {
     case 'bxgy': return { kind: f.kind, categoryId: f.categoryId, buy: Number(f.buy), get: Number(f.get) }
     case 'fixed-off': return { kind: f.kind, amountCents: cents(f.amountRs), minSpendCents: cents(f.minRs) }
     case 'free-delivery': return { kind: f.kind, minSpendCents: cents(f.minRs) }
+    case 'percent-order': return { kind: f.kind, percent: Number(f.percent), minSpendCents: cents(f.minRs), maxDiscountCents: f.maxRs ? cents(f.maxRs) : undefined }
   }
 }
 
+function buildConditions(): OfferConditions | undefined {
+  const c: OfferConditions = {}
+  if (f.condMinRs) c.minSpendCents = cents(f.condMinRs)
+  if (f.condMinItems !== '' && Number(f.condMinItems) > 1) c.minItems = Number(f.condMinItems)
+  if (f.days.length && f.days.length < 7) c.days = [...f.days].sort()
+  if (f.timed) Object.assign(c, { fromHour: Number(f.fromHour), toHour: Number(f.toHour) })
+  if (f.starts) c.startsAt = `${f.starts}T00:00:00+05:30`
+  if (f.fulfilment) c.fulfilment = f.fulfilment
+  if (f.limit !== '' && Number(f.limit) > 0) c.perCustomerLimit = Number(f.limit)
+  return Object.keys(c).length ? c : undefined
+}
+
+/** Live coupon preview of the offer being edited (what shoppers will see). */
+const preview = computed(() => ({
+  id: 'preview', code: f.code.toUpperCase(), title: f.title || 'Your offer title', description: f.description, rule: buildRule(),
+  expiresAt: `${f.expires || '2099-12-31'}T23:59:59+05:30`, conditions: buildConditions(), storeName: auth.user.value?.tenantName ?? undefined,
+}))
+const hourLabel = (h: number) => `${h % 12 || 12}:00 ${h < 12 || h === 24 ? 'am' : 'pm'}`
+
 async function save() {
   error.value = ''
-  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: `${f.expires}T23:59:59+05:30`, audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds }
+  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: `${f.expires}T23:59:59+05:30`, audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds, conditions: buildConditions() }
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
     const o = await auth.call((t) => saveOffer(t, input, id))
@@ -132,7 +153,7 @@ async function remove(o: AdminOffer) {
 
 <template>
   <div>
-    <AdminPageHeader title="Promotions" description="Offers are applied automatically at checkout for the customers they target.">
+    <AdminPageHeader title="Promotions" description="Offers show to shoppers at the branches you choose (shelves, product ribbons and the Offers board) and apply automatically in the cart once the conditions are met.">
       <button v-if="canManage" type="button" class="btn-primary h-10" @click="open('new')"><AppIcon name="plus" :size="17" />New offer</button>
     </AdminPageHeader>
 
@@ -141,7 +162,7 @@ async function remove(o: AdminOffer) {
         <span class="block font-semibold text-ink">{{ row.title }}</span>
         <code class="text-xs font-bold text-hela-gold-600">{{ row.code }}</code>
       </template>
-      <template #cell-rule="{ row }"><span class="text-xs text-muted">{{ describe(row.rule) }}</span></template>
+      <template #cell-rule="{ row }"><span class="text-xs text-muted">{{ describe(row) }}</span></template>
       <template #cell-audience="{ row }"><span class="text-xs text-muted">{{ audienceText(row) }}</span></template>
       <template #cell-branches="{ row }"><span class="text-xs text-muted">{{ branchText(row) }}</span></template>
       <template #cell-expiresAt="{ row }"><span class="text-xs text-muted">{{ row.expiresAt.slice(0, 10) }}</span></template>
@@ -155,8 +176,9 @@ async function remove(o: AdminOffer) {
       </template>
     </AdminDataTable>
 
-    <AdminModal :open="!!editing" :title="editing === 'new' ? 'New offer' : 'Edit offer'" size="lg" @close="editing = null">
-      <form id="offer-form" class="grid gap-3 sm:grid-cols-2" @submit.prevent="save">
+    <AdminModal :open="!!editing" :title="editing === 'new' ? 'New offer' : 'Edit offer'" size="xl" @close="editing = null">
+      <div class="grid gap-5 lg:grid-cols-[1fr_20rem]">
+      <form id="offer-form" class="grid content-start gap-3 sm:grid-cols-2" @submit.prevent="save">
         <label><span class="field-label">Code</span><input v-model="f.code" class="field uppercase" maxlength="16" placeholder="e.g. DRINKS10" data-autofocus></label>
         <label><span class="field-label">Expires on</span><input v-model="f.expires" type="date" class="field"></label>
         <label class="sm:col-span-2"><span class="field-label">Title (shown to customers)</span><input v-model="f.title" class="field" maxlength="80"></label>
@@ -167,10 +189,16 @@ async function remove(o: AdminOffer) {
             <option value="percent-product">% off one product</option>
             <option value="bxgy">Buy X, get Y free</option>
             <option value="fixed-off">Amount off above a spend</option>
+            <option value="percent-order">% off the whole basket above a spend</option>
             <option value="free-delivery">Free delivery above a spend</option>
           </select>
         </label>
-        <template v-if="f.kind === 'percent-category' || f.kind === 'percent-product'">
+        <template v-if="f.kind === 'percent-order'">
+          <label><span class="field-label">Discount %</span><input v-model.number="f.percent" type="number" min="1" max="90" class="field"></label>
+          <label><span class="field-label">Minimum basket (Rs.)</span><input v-model="f.minRs" class="field" inputmode="decimal"></label>
+          <label><span class="field-label">Max discount (Rs., optional)</span><input v-model="f.maxRs" class="field" inputmode="decimal"></label>
+        </template>
+        <template v-else-if="f.kind === 'percent-category' || f.kind === 'percent-product'">
           <label><span class="field-label">Discount %</span><input v-model.number="f.percent" type="number" min="1" max="90" class="field"></label>
           <label v-if="f.kind === 'percent-category'"><span class="field-label">Category</span><select v-model="f.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
           <label v-else><span class="field-label">Product</span><select v-model="f.productId" class="field"><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
@@ -205,8 +233,44 @@ async function remove(o: AdminOffer) {
             </label>
           </div>
         </fieldset>
+        <fieldset class="rounded-xl bg-cream/60 p-3 sm:col-span-2" data-testid="offer-conditions">
+          <legend class="px-1 text-sm font-bold text-ink">Conditions <span class="font-normal text-muted">(optional; all must be met)</span></legend>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <label><span class="field-label">Minimum spend (Rs.)</span><input v-model="f.condMinRs" class="field" inputmode="decimal" placeholder="e.g. 5000" data-testid="cond-min-spend"></label>
+            <label><span class="field-label">Minimum items</span><input v-model="f.condMinItems" type="number" min="2" class="field" placeholder="e.g. 3"></label>
+            <label><span class="field-label">Uses per customer</span><input v-model="f.limit" type="number" min="1" max="50" class="field" placeholder="Unlimited"></label>
+            <label><span class="field-label">Starts on</span><input v-model="f.starts" type="date" class="field"></label>
+            <label><span class="field-label">Order type</span>
+              <select v-model="f.fulfilment" class="field"><option value="">Delivery &amp; pickup</option><option value="delivery">Home delivery only</option><option value="pickup">Store pickup only</option></select>
+            </label>
+            <div>
+              <label class="field-label flex items-center gap-2"><input v-model="f.timed" type="checkbox" class="accent-hela-green"> Time window</label>
+              <div v-if="f.timed" class="flex items-center gap-1.5">
+                <select v-model.number="f.fromHour" class="field px-2 text-xs" aria-label="From"><option v-for="h in 24" :key="h - 1" :value="h - 1">{{ hourLabel(h - 1) }}</option></select>
+                <span class="text-xs text-muted">to</span>
+                <select v-model.number="f.toHour" class="field px-2 text-xs" aria-label="To"><option v-for="h in 24" :key="h" :value="h">{{ hourLabel(h) }}</option></select>
+              </div>
+              <p v-else class="text-xs text-muted">All day</p>
+            </div>
+            <div class="sm:col-span-3">
+              <span class="field-label">Days <span class="font-normal text-muted">(none ticked = every day)</span></span>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <label v-for="(d, i) in DAYS" :key="d" class="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-bold ring-1 transition" :class="f.days.includes(i) ? 'bg-hela-green text-white ring-hela-green' : 'bg-white text-ink ring-line'">
+                  <input v-model="f.days" type="checkbox" :value="i" class="sr-only">{{ d }}
+                </label>
+                <button type="button" class="ml-1 text-xs font-bold text-hela-green hover:underline" @click="f.days = [0, 6]">Weekends</button>
+              </div>
+            </div>
+          </div>
+        </fieldset>
         <p v-if="error" class="text-sm text-[#8A2E2E] sm:col-span-2" role="alert">{{ error }}</p>
       </form>
+      <aside class="space-y-2 lg:sticky lg:top-0 lg:self-start">
+        <p class="text-xs font-bold tracking-wide text-muted uppercase">Shopper preview</p>
+        <OfferCard :offer="preview" />
+        <p class="text-xs text-muted">Shown on the Offers board, product ribbons and shelf tags at {{ f.branchIds.length ? `${f.branchIds.length} branch${f.branchIds.length === 1 ? '' : 'es'}` : 'all branches' }}, for {{ f.audience === 'all' ? 'all customers' : f.audience === 'new' ? 'new customers' : 'the selected customers' }}.</p>
+      </aside>
+      </div>
       <template #footer>
         <button type="button" class="btn-ghost h-9" @click="editing = null">Cancel</button>
         <button type="submit" form="offer-form" class="btn-primary h-9">Save offer</button>

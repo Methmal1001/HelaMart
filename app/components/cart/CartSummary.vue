@@ -46,19 +46,19 @@ const { requestLogin } = useAuthDialog()
         <dd class="text-lg font-extrabold tabular-nums text-hela-green">{{ formatLKR(b.totalCents) }}</dd>
       </div>
       <p v-if="b.totalDiscountCents" class="rounded-lg bg-hela-green-50 px-3 py-1.5 text-center text-xs font-bold text-hela-green">
-        You save {{ formatLKR(b.totalDiscountCents) }} with your offers
+        You save {{ formatLKR(b.totalDiscountCents) }} with offers
       </p>
     </dl>
 
     <template v-if="showHints && b.itemCount">
-      <ul v-if="isAuthenticated && b.unmet.length" class="mt-3 space-y-1.5">
+      <ul v-if="b.unmet.length" class="mt-3 space-y-1.5" data-testid="unlock-hints">
         <li v-for="u in b.unmet" :key="u.offer.id" class="flex gap-2 text-xs text-muted">
           <AppIcon name="gift" :size="14" class="mt-px shrink-0 text-hela-gold-600" />
           <span><b class="text-ink">{{ u.offer.title }}:</b> {{ u.hint }}</span>
         </li>
       </ul>
       <button
-        v-else-if="!isAuthenticated"
+        v-if="!isAuthenticated"
         type="button"
         class="mt-3 flex w-full items-center gap-2 rounded-lg bg-hela-gold-100/70 px-3 py-2 text-left text-xs text-[#6d5622] hover:bg-hela-gold-100"
         @click="requestLogin('Log in to apply your offers and promotions.')"

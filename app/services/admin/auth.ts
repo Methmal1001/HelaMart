@@ -168,7 +168,7 @@ export async function refresh(refreshToken: string): Promise<AdminLoginResult> {
   const { tokens, session } = issueSession(db, staff, s.userAgent, s.familyId, s)
   db.sessions.push({ ...s, id: `${s.id}~${randomId(4)}`, revoked: true, replacedBy: session.refreshHash })
   writeAdminDb(db)
-  return { user: toStaffView(db, staff), tokens }
+  return { user: toStaffView(db, staff, session), tokens }
 }
 
 /** Heartbeat: records activity so an active admin isn't signed out for "inactivity". */
@@ -219,7 +219,7 @@ export async function reauthenticate(accessToken: string, password: string) {
 export async function me(accessToken: string): Promise<StaffView> {
   await latency(60, 150)
   const ctx = authenticate(accessToken)
-  return toStaffView(ctx.db, ctx.staff)
+  return toStaffView(ctx.db, ctx.staff, ctx.session)
 }
 
 export async function changeOwnPassword(accessToken: string, current: string, next: string) {

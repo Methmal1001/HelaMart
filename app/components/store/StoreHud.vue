@@ -8,6 +8,7 @@ const bill = useBill()
 const { startCheckout } = useCheckout()
 const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
 const { area, openFinder } = useShoppingArea()
+const { storeOffers } = useOffers()
 onMounted(() => !storeChoice.value && refreshStores())
 
 const isTouch = ref(false)
@@ -99,6 +100,11 @@ async function locate(id: string) {
 
       <div class="pointer-events-auto flex items-center gap-2">
         <AccountButton compact />
+        <button type="button" class="btn-icon hud-surface relative sm:w-auto sm:gap-2 sm:px-3.5" :aria-label="`Offers${storeOffers.length ? ` (${storeOffers.length})` : ''}`" data-testid="hud-offers" @click="ui.openPanel('offers')">
+          <AppIcon name="gift" :size="19" class="text-[#C2361A]" />
+          <span class="hidden text-sm font-semibold sm:inline">Offers</span>
+          <span v-if="storeOffers.length" class="absolute -top-1.5 -right-1.5 grid min-w-5 place-items-center rounded-full bg-[#E23B3B] px-1 text-[0.65rem] font-bold text-white">{{ storeOffers.length }}</span>
+        </button>
         <button type="button" class="btn-icon hud-surface sm:w-auto sm:gap-2 sm:px-3.5" aria-label="Browse aisles list" @click="ui.openPanel('browse')">
           <AppIcon name="list" :size="19" />
           <span class="hidden text-sm font-semibold sm:inline">Browse</span>

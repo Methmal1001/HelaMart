@@ -286,8 +286,30 @@ export function useAdminAuth() {
     if (t) user.value = await adminAuth.me(t)
   }
 
+  /** Super Admin is working inside a supermarket's portal. */
+  const acting = computed(() => user.value?.acting ?? null)
+
+  /** Super Admin: open a supermarket's portal with full chain-admin access. */
+  async function manageTenant(tenantId: string) {
+    const { startManagingTenant } = await import('~/services/admin/platformApi')
+    await call((t) => startManagingTenant(t, tenantId), 'Managing a supermarket’s portal needs your password confirmed.')
+    await refreshMe()
+    await navigateTo('/admin')
+  }
+
+  /** Back to HelaMart control. */
+  async function stopManaging() {
+    const { stopManagingTenant } = await import('~/services/admin/platformApi')
+    await call(stopManagingTenant)
+    await refreshMe()
+    await navigateTo('/admin/supermarkets')
+  }
+
   return {
     user,
+    acting,
+    manageTenant,
+    stopManaging,
     status,
     isAuthenticated,
     isPlatform,

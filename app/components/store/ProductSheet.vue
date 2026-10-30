@@ -6,6 +6,8 @@ const { selectedProductId, closeProduct, openPanel } = useStoreUi()
 const { add, quantityOf } = useCart()
 const { show } = useToasts()
 const { phase, goToProduct } = useStoreExperience()
+const { promoFor } = useOffers()
+const promo = computed(() => (product.value ? promoFor(product.value) : null))
 const route = useRoute()
 
 const product = computed(() => {
@@ -63,7 +65,21 @@ async function findInStore() {
         <span class="chip bg-white text-muted ring-1 ring-line">{{ product.size }} · per {{ product.unit.replace('per ', '') }}</span>
       </div>
 
-      <p class="mt-4 text-3xl font-extrabold tracking-tight tabular-nums text-hela-green">{{ formatLKR(product.priceCents) }}</p>
+      <div v-if="promo" class="mt-4 overflow-hidden rounded-2xl ring-2 ring-[#E23B3B]" data-testid="product-promo">
+        <div class="flex items-center justify-between gap-2 bg-[#E23B3B] px-3 py-1.5 text-white">
+          <span class="text-sm font-black tracking-wide">{{ promo.badge }}</span>
+          <span class="truncate text-xs font-semibold opacity-90">{{ promo.offer.storeName ?? 'Your offer' }}</span>
+        </div>
+        <div class="flex items-end justify-between gap-3 bg-[#FFF4F0] px-3 py-2.5">
+          <div>
+            <p v-if="promo.nowCents && !promo.conditional" class="text-3xl font-extrabold tracking-tight tabular-nums text-[#C2361A]">{{ formatLKR(promo.nowCents) }}</p>
+            <p v-else class="text-3xl font-extrabold tracking-tight tabular-nums text-hela-green">{{ formatLKR(product.priceCents) }}</p>
+            <p v-if="promo.nowCents && !promo.conditional" class="text-sm tabular-nums text-muted">was <span class="line-through">{{ formatLKR(product.priceCents) }}</span></p>
+          </div>
+          <p class="max-w-[55%] text-right text-xs text-ink">{{ promo.offer.title }}<template v-if="offerConditionChips(promo.offer).length"><br><span class="text-muted">{{ offerConditionChips(promo.offer).join(' · ') }}</span></template></p>
+        </div>
+      </div>
+      <p v-else class="mt-4 text-3xl font-extrabold tracking-tight tabular-nums text-hela-green">{{ formatLKR(product.priceCents) }}</p>
       <p class="mt-2 text-sm leading-relaxed text-muted">{{ product.description }}</p>
       <p v-if="outOfStock" class="mt-3 flex items-center gap-1.5 rounded-lg bg-[#FBEAEA] px-3 py-2 text-sm font-semibold text-[#8A2E2E]">
         <AppIcon name="alert" :size="15" />Out of stock at this branch

@@ -2,9 +2,9 @@ import type { CardDetails, CartLine, DeliveryDetails, Order, PaymentMethod, User
 import { getProduct } from '~/data/products'
 import { priceCart } from '~/utils/pricing'
 import { ApiError } from './apiError'
-import { offersForUser } from './offerService'
+import { mergeOffers, offersForUser, storeOffersFor } from './offerService'
 import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
-import { readAdminDb } from './admin/db'
+import { readAdminDb, writeAdminDb } from './admin/db'
 import { findPlace } from '~/data/places'
 import { coversLocation } from '~/lib/coverage'
 
@@ -55,7 +55,8 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
   if (customer?.status === 'blocked') throw new ApiError(403, 'Your HelaMart account is suspended. Contact HelaMart support.', 'ACCOUNT_SUSPENDED')
   if (customer?.blockedByTenants.includes(store.id)) throw new ApiError(403, `${store.name} has blocked orders from this account. Contact the store for help.`, 'BLOCKED_BY_STORE')
 
-  const offers = offersForUser(userId)
+  // Re-price on the server with the shopper's own offers + this branch's running supermarket offers.
+  const offers = mergeOffers(offersForUser(userId), storeOffersFor(store.id, branch.id, userId))
   const breakdown = priceCart(req.lines, offers, { fulfilment: req.delivery.method })
 
   let cardLast4: string | undefined
@@ -89,5 +90,12 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
   }
   db.orders.push(order)
   writeDb(db)
+  // Count usage of the supermarket's offers (shown on its Promotions page).
+  const usedIds = new Set(breakdown.applied.map((a) => a.offer.id))
+  if (usedIds.size) {
+    const adminDb = readAdminDb()
+    for (const o of adminDb.offers) if (o.tenantId === store.id && usedIds.has(o.id)) o.usageCount++
+    writeAdminDb(adminDb)
+  }
   return order
 }

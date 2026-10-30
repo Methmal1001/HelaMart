@@ -1,5 +1,6 @@
 import type {
   BrandingRequest,
+  PlatformBanner,
   AdminCategory,
   AdminOffer,
   AdminOrder,
@@ -53,6 +54,32 @@ const iso = (ms: number) => new Date(ms).toISOString()
 export interface SeedInput {
   hashPassword: (email: string, password: string) => string
   now: number
+}
+
+/** Supermarket offers shown to shoppers (all customers) — a realistic mix of rules and conditions. */
+export const SAMPLE_STORE_OFFERS: Omit<AdminOffer, 'usageCount' | 'createdAt'>[] = [
+  { id: 'off_lfm_bev20', code: 'DRINKS20', title: '20% off all drinks', description: 'Tea, coffee, juices and fizzy drinks — this week only.', rule: { kind: 'percent-category', categoryId: 'beverages', percent: 20 }, expiresAt: '2027-06-30T23:59:59+05:30', tenantId: 'tnt_lfm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_lfm_big5', code: 'BIGBASKET', title: '5% off big baskets', description: '5% off your whole basket when you spend Rs. 10,000 or more (max Rs. 2,000).', rule: { kind: 'percent-order', percent: 5, minSpendCents: 1000000, maxDiscountCents: 200000 }, expiresAt: '2027-06-30T23:59:59+05:30', tenantId: 'tnt_lfm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_lfm_wknd', code: 'WEEKEND500', title: 'Weekend saver: Rs. 500 off', description: 'Rs. 500 off orders over Rs. 5,000 every Saturday and Sunday.', rule: { kind: 'fixed-off', amountCents: 50000, minSpendCents: 500000 }, expiresAt: '2027-06-30T23:59:59+05:30', conditions: { days: [0, 6] }, tenantId: 'tnt_lfm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_lfm_neg_snk', code: 'NEGSNACK', title: 'Negombo: buy 2 snacks, get 1 free', description: 'Mix and match the same snack at our Negombo branch.', rule: { kind: 'bxgy', categoryId: 'snacks', buy: 2, get: 1 }, expiresAt: '2027-03-31T23:59:59+05:30', tenantId: 'tnt_lfm', branchIds: ['br_lfm_neg'], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_wfm_dairy', code: 'WFMDAIRY15', title: '15% off dairy & chilled', description: 'Milk, curd, yoghurt and cheese.', rule: { kind: 'percent-category', categoryId: 'dairy', percent: 15 }, expiresAt: '2027-04-30T23:59:59+05:30', tenantId: 'tnt_wfm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_wfm_free', code: 'WFMFREE', title: 'Free delivery over Rs. 2,500', description: 'Anywhere in our delivery areas.', rule: { kind: 'free-delivery', minSpendCents: 250000 }, expiresAt: '2027-04-30T23:59:59+05:30', conditions: { fulfilment: 'delivery' }, tenantId: 'tnt_wfm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_shm_house', code: 'SOUTH10', title: '10% off household essentials', description: 'Cleaning and household items, all southern branches.', rule: { kind: 'percent-category', categoryId: 'household', percent: 10 }, expiresAt: '2027-05-31T23:59:59+05:30', tenantId: 'tnt_shm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_shm_happy', code: 'HAPPYHOUR', title: 'Happy hour: Rs. 300 off', description: 'Rs. 300 off orders over Rs. 3,000, 6–9 pm daily.', rule: { kind: 'fixed-off', amountCents: 30000, minSpendCents: 300000 }, expiresAt: '2027-05-31T23:59:59+05:30', conditions: { fromHour: 18, toHour: 21 }, tenantId: 'tnt_shm', branchIds: [], status: 'active', audience: 'all', customerIds: [] },
+  { id: 'off_hcf_veg', code: 'HILLVEG25', title: '25% off hill-country vegetables', description: 'Fresh produce at our Nuwara Eliya branch.', rule: { kind: 'percent-category', categoryId: 'produce', percent: 25 }, expiresAt: '2027-02-28T23:59:59+05:30', tenantId: 'tnt_hcf', branchIds: ['br_hcf_nue'], status: 'active', audience: 'all', customerIds: [] },
+]
+
+/** HelaMart homepage banners (managed by head office). */
+export function sampleBanners(now: number): PlatformBanner[] {
+  const iso = (t: number) => new Date(t).toISOString()
+  const base = { views: 0, clicks: 0, status: 'active' as const, startsAt: iso(now - 7 * 864e5), endsAt: iso(now + 120 * 864e5), createdAt: iso(now - 7 * 864e5), createdBy: 'Chamara Bandara', districts: [] as string[] }
+  return [
+    { ...base, id: 'bnr_lfm_drinks', title: '20% off all drinks', subtitle: 'Cool down this week at Lanka Fresh Mart — tea, juice and fizzy drinks.', theme: 'sunset', tenantId: 'tnt_lfm', offerId: 'off_lfm_bev20', cta: 'offers', target: 'deliverable', priority: 30 },
+    { ...base, id: 'bnr_wfm_free', title: 'Free delivery over Rs. 2,500', subtitle: 'Western Family Mart delivers across Gampaha — family prices, every day.', theme: 'ocean', tenantId: 'tnt_wfm', offerId: 'off_wfm_free', cta: 'shop', target: 'deliverable', priority: 25 },
+    { ...base, id: 'bnr_hcf_veg', title: 'Hill-country veg, 25% off', subtitle: 'Fresh from Nuwara Eliya at Hill Country Fresh.', theme: 'berry', tenantId: 'tnt_hcf', offerId: 'off_hcf_veg', cta: 'offers', target: 'deliverable', priority: 20 },
+    { ...base, id: 'bnr_south', title: 'The south coast’s own supermarket', subtitle: 'Southern Harvest Mart — 10% off household essentials in Galle & Matara.', theme: 'gold', tenantId: 'tnt_shm', offerId: 'off_shm_house', cta: 'shop', target: 'districts', districts: ['Galle', 'Matara'], priority: 15 },
+    { ...base, id: 'bnr_welcome', title: 'Your neighbourhood supermarket, in 3D', subtitle: 'Walk the aisles, fill your cart and get it delivered from a verified store near you.', theme: 'green', cta: 'none', target: 'all', priority: 5 },
+  ]
 }
 
 export function buildSeed({ hashPassword, now }: SeedInput) {
@@ -450,6 +477,7 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
   offers.push(
     { id: 'off_lfm_new', code: 'HELLOHELA', title: 'New customer: Rs. 250 off', description: 'Rs. 250 off your order of Rs. 1,500 or more.', rule: { kind: 'fixed-off', amountCents: 25000, minSpendCents: 150000 }, expiresAt: '2027-12-31T23:59:59+05:30', tenantId: 'tnt_lfm', branchIds: [], status: 'active', audience: 'new', customerIds: [], usageCount: 87, createdAt: iso(now - 90 * DAY) },
     { id: 'off_lfm_div', code: 'DIVU10', title: 'Divulapitiya opening week: 10% off produce', description: 'Fresh produce 10% off at our Divulapitiya branch.', rule: { kind: 'percent-category', categoryId: 'produce', percent: 10 }, expiresAt: '2027-01-31T23:59:59+05:30', tenantId: 'tnt_lfm', branchIds: ['br_lfm_div'], status: 'active', audience: 'all', customerIds: [], usageCount: 23, createdAt: iso(now - 10 * DAY) },
+    ...SAMPLE_STORE_OFFERS.map((o) => ({ ...o, usageCount: Math.floor(r() * 60), createdAt: iso(now - 12 * DAY) })),
     { id: 'off_cds_staples', code: 'CDSRICE5', title: '5% off rice & staples', description: 'Weekend staples discount.', rule: { kind: 'percent-category', categoryId: 'staples', percent: 5 }, expiresAt: '2027-03-31T23:59:59+05:30', tenantId: 'tnt_cds', branchIds: [], status: 'active', audience: 'all', customerIds: [], usageCount: 41, createdAt: iso(now - 30 * DAY) },
   )
 
@@ -501,5 +529,5 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     },
   ]
 
-  return { tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings, brandingRequests }
+  return { tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings, brandingRequests, banners: sampleBanners(now) }
 }

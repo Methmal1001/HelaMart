@@ -336,6 +336,35 @@ export function updatePlatformSettings(token: string, next: PlatformSettings): P
   })
 }
 
+/**
+ * Super Admin: open a supermarket's portal with full chain-admin access
+ * (promotions, products, branches, staff…). Password confirmation required;
+ * logged in both the HelaMart and the supermarket audit logs.
+ */
+export function startManagingTenant(token: string, tenantId: string): Promise<void> {
+  return run(token, (raw) => {
+    const ctx = platform(raw)
+    if (!isSuperAdmin(ctx)) throw new ApiError(403, 'Only a HelaMart Super Admin can manage a supermarket directly.', 'FORBIDDEN')
+    requireStepUp(ctx)
+    const t = ctx.db.tenants.find((x) => x.id === tenantId)
+    if (!t) throw new ApiError(404, 'Supermarket not found.')
+    if (t.status !== 'active' && t.status !== 'restricted') throw new ApiError(409, `${t.name} is ${t.status} — approve it before managing its portal.`)
+    ctx.session.actingTenantId = t.id
+    audit(ctx.db, ctx, 'platform.manage_start', t.name, 'Super Admin started managing this supermarket', 'warning', null)
+    audit(ctx.db, ctx, 'platform.manage_start', t.name, `${ctx.staff.name} (HelaMart Super Admin) started managing this supermarket`, 'warning', t.id)
+  })
+}
+
+/** Leave "manage supermarket" mode and return to HelaMart control. */
+export function stopManagingTenant(token: string): Promise<void> {
+  return run(token, (ctx) => {
+    if (!ctx.acting || !ctx.tenant) return
+    audit(ctx.db, ctx, 'platform.manage_stop', ctx.tenant.name, 'Super Admin stopped managing this supermarket', 'info', ctx.tenant.id)
+    audit(ctx.db, ctx, 'platform.manage_stop', ctx.tenant.name, 'Super Admin stopped managing this supermarket', 'info', null)
+    ctx.session.actingTenantId = undefined
+  })
+}
+
 export async function resetSampleData(token: string) {
   await latency(300, 500)
   const ctx = authenticate(token)

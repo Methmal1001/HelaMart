@@ -72,17 +72,22 @@ function changeArea() {
         </span>
         <span class="text-xs font-bold text-hela-green">Change</span>
       </button>
-      <p v-else class="rounded-xl bg-hela-gold-100/70 p-3 text-sm text-[#6d5622]">No supermarkets are open on HelaMart right now.</p>
+      <p v-else class="rounded-xl bg-hela-gold-100/70 p-3 text-sm text-[#6d5622]" data-testid="no-stores">No supermarkets are available on HelaMart yet — supermarkets appear once they’re verified and have set where they deliver.</p>
 
       <!-- Shopping area + availability -->
       <div class="mt-2 text-xs" data-testid="area-line">
-        <div v-if="area" class="flex items-center gap-2">
+        <div v-if="area && choice" class="flex items-center gap-2">
           <AppIcon name="pin" :size="13" class="shrink-0" :class="choiceServesArea === false ? 'text-[#8A2E2E]' : 'text-hela-green'" />
           <span class="min-w-0 truncate" :class="choiceServesArea === false ? 'font-semibold text-[#8A2E2E]' : 'text-muted'" data-testid="availability">
             <template v-if="choiceServesArea === false">Doesn’t deliver to {{ area.label }} — choose another supermarket</template>
             <template v-else>Delivers to <b class="text-ink">{{ area.label }}</b><template v-if="currentBranch"> · {{ formatKm(currentBranch.distanceKm) }} away</template></template>
           </span>
           <button type="button" class="ml-auto shrink-0 font-bold text-hela-green hover:underline" data-testid="change-area" @click="openFinder()">Change area</button>
+        </div>
+        <div v-else-if="area" class="flex items-center gap-2">
+          <AppIcon name="pin" :size="13" class="shrink-0 text-hela-green" />
+          <span class="min-w-0 truncate text-muted">Your area: <b class="text-ink">{{ area.label }}</b></span>
+          <button type="button" class="ml-auto shrink-0 font-bold text-hela-green hover:underline" @click="openFinder()">Change area</button>
         </div>
         <button v-else type="button" class="flex w-full items-center justify-center gap-2 rounded-xl bg-hela-green px-3 py-2 text-sm font-bold text-white shadow-card transition hover:bg-hela-green-900" data-testid="find-near-me" @click="openFinder()">
           <AppIcon name="map" :size="16" />Find supermarkets near you

@@ -14,6 +14,7 @@ const emit = defineEmits<{ locate: [productId: string] }>()
 const { add, quantityOf } = useCart()
 const { openProduct } = useStoreUi()
 const { show } = useToasts()
+const { promoFor } = useOffers()
 
 const query = ref('')
 const active = ref<CategoryId | 'all'>('all')
@@ -98,8 +99,9 @@ function aisleLabel(categoryId: CategoryId) {
 
         <ul class="grid gap-3" :class="compact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'">
           <li v-for="p in g.items" :key="p.id" class="flex gap-3 rounded-2xl bg-white p-3 ring-1 ring-line transition hover:shadow-card">
-            <button type="button" class="shrink-0" :aria-label="`View details for ${p.name}`" @click="openProduct(p.id)">
+            <button type="button" class="relative shrink-0" :aria-label="`View details for ${p.name}`" @click="openProduct(p.id)">
               <ProductThumb :product="p" class="size-20" />
+              <span v-if="promoFor(p)" class="absolute -top-1.5 -left-1.5 rounded-md bg-[#E23B3B] px-1.5 py-0.5 text-[0.6rem] font-black tracking-wide text-white shadow-sm" data-testid="promo-ribbon">{{ promoFor(p)!.badge }}</span>
             </button>
             <div class="flex min-w-0 flex-1 flex-col">
               <button type="button" class="truncate text-left text-sm font-bold text-ink hover:text-hela-green" @click="openProduct(p.id)">
@@ -109,7 +111,14 @@ function aisleLabel(categoryId: CategoryId) {
               <p v-if="p.stock === 0" class="text-xs font-semibold text-[#8A2E2E]">Out of stock at this branch</p>
               <p v-else-if="p.stock !== undefined && p.stock <= 5" class="text-xs font-semibold text-[#7A5600]">Only {{ p.stock }} left</p>
               <div class="mt-auto flex items-center justify-between gap-2 pt-2">
-                <span class="text-sm font-extrabold tabular-nums text-hela-green">{{ formatLKR(p.priceCents) }}</span>
+                <span v-if="promoFor(p)?.nowCents && !promoFor(p)!.conditional" class="flex flex-col leading-tight">
+                  <span class="text-sm font-extrabold tabular-nums text-[#C2361A]">{{ formatLKR(promoFor(p)!.nowCents!) }}</span>
+                  <span class="text-[0.7rem] tabular-nums text-muted line-through">{{ formatLKR(p.priceCents) }}</span>
+                </span>
+                <span v-else class="flex flex-col leading-tight">
+                  <span class="text-sm font-extrabold tabular-nums text-hela-green">{{ formatLKR(p.priceCents) }}</span>
+                  <span v-if="promoFor(p)?.conditional" class="text-[0.65rem] font-semibold text-[#C2361A]">{{ promoFor(p)!.badge }} · {{ offerConditionChips(promoFor(p)!.offer)[0] }}</span>
+                </span>
                 <div class="flex items-center gap-1.5">
                   <button
                     v-if="props.canLocate"

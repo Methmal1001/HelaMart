@@ -1,6 +1,9 @@
 import type { Offer } from '~/types'
+import type { AdminOffer } from '~/types/admin'
 import { mockAccounts } from '~/data/mockUsers'
-import { latency, verifyAccessToken } from './mock/server'
+import { isOfferActive } from '~/utils/pricing'
+import { latency, readDb, verifyAccessToken } from './mock/server'
+import { readAdminDb } from './admin/db'
 
 /** Every newly created customer (registration or first Google sign-in) gets this. */
 const NEW_CUSTOMER_OFFER: Offer = {
@@ -12,14 +15,63 @@ const NEW_CUSTOMER_OFFER: Offer = {
   expiresAt: '2027-12-31T23:59:59+05:30',
 }
 
-/** Server-side lookup of a customer's offers (also used when pricing orders). */
+/** Server-side lookup of a customer's personal offers (also used when pricing orders). */
 export function offersForUser(userId: string): Offer[] {
   const seeded = mockAccounts.find((a) => a.user.id === userId)
   return structuredClone(seeded ? seeded.offers : [NEW_CUSTOMER_OFFER])
 }
 
-/** GET /me/offers — promotions available to the signed-in customer. */
+/** GET /me/offers — personal promotions for the signed-in customer. */
 export async function listMyOffers(accessToken: string): Promise<Offer[]> {
   await latency(150, 350)
   return offersForUser(verifyAccessToken(accessToken))
+}
+
+/** How many of this customer's orders used the offer. */
+function timesUsed(userId: string, offerId: string) {
+  return readDb().orders.filter((o) => o.userId === userId && o.breakdown.applied.some((a) => a.offer.id === offerId)).length
+}
+
+/**
+ * The supermarket's running offers for one branch and shopper (server-side).
+ * Branch-wise offers only show at their branches; "new customer" offers only
+ * for shoppers who haven't ordered from this supermarket; "selected" ones
+ * only for the chosen customers; per-customer limits are enforced.
+ * Guests see offers for everyone (and new-customer offers, re-checked at checkout).
+ */
+export function storeOffersFor(storeId: string, branchId: string, userId: string | null, now = Date.now()): Offer[] {
+  const db = readAdminDb()
+  const store = db.tenants.find((t) => t.id === storeId)
+  if (!store || store.status !== 'active') return []
+  const orderedHere = userId ? db.orders.some((o) => o.customerId === userId && o.tenantId === storeId && o.status !== 'cancelled') || readDb().orders.some((o) => o.userId === userId && o.storeId === storeId) : false
+  return db.offers
+    .filter((o: AdminOffer) => {
+      if (o.tenantId !== storeId || o.status !== 'active' || !isOfferActive(o, now)) return false
+      if (o.branchIds.length && !o.branchIds.includes(branchId)) return false
+      if (o.audience === 'selected' && !(userId && o.customerIds.includes(userId))) return false
+      if (o.audience === 'new' && orderedHere) return false
+      const limit = o.conditions?.perCustomerLimit
+      if (limit && userId && timesUsed(userId, o.id) >= limit) return false
+      return true
+    })
+    .map((o) => ({ id: o.id, code: o.code, title: o.title, description: o.description, rule: o.rule, expiresAt: o.expiresAt, conditions: o.conditions, storeId, storeName: store.name, forNewCustomers: o.audience === 'new' || undefined }))
+}
+
+/** GET /stores/:id/offers?branch= — public; personalised when a token is sent. */
+export async function listStoreOffers(storeId: string, branchId: string, accessToken?: string | null): Promise<Offer[]> {
+  await latency(80, 200)
+  let userId: string | null = null
+  try {
+    userId = accessToken ? verifyAccessToken(accessToken) : null
+  } catch {
+    userId = null
+  }
+  return storeOffersFor(storeId, branchId, userId)
+}
+
+/** Personal + supermarket offers, without duplicates (same id or code). */
+export function mergeOffers(...lists: Offer[][]): Offer[] {
+  const out: Offer[] = []
+  for (const o of lists.flat()) if (!out.some((x) => x.id === o.id || x.code === o.code)) out.push(o)
+  return out
 }

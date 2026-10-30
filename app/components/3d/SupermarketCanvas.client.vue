@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { StoreEngine } from '~/lib/three/StoreEngine'
 import { isQualityLevel } from '~/composables/useStoreExperience'
-import { catalogVersion } from '~/data/products'
+import { catalogVersion, products } from '~/data/products'
+import type { ShelfPromos } from '~/lib/three/products/atlas'
+import type { PromoBoards } from '~/lib/three/offerSigns'
 
 /**
  * Client-only host for the Three.js store. The engine (and Three.js itself)
@@ -59,6 +61,8 @@ onMounted(async () => {
     // Stock the shelves with the chosen supermarket's latest catalogue (prices, photos, stock).
     refreshStores()
     engine.setBranding(brandingFor(currentStore.value))
+    const promo = promotions()
+    engine.setPromotions(promo.shelf, promo.boards)
     await engine.init()
     syncCart()
   } catch (err) {
@@ -80,6 +84,32 @@ onBeforeUnmount(() => {
 watch(avatar, (kind) => kind && engine?.selectAvatar(kind))
 // The supermarket's approved theme: racks, checkout, banners and signs.
 watch(() => JSON.stringify(brandingFor(currentStore.value)), () => engine?.setBranding(brandingFor(currentStore.value)))
+
+// The branch's promotions in the store: red shelf tags, end-cap boards and the "Offers this week" board.
+const { storeOffers, allOffers, promoFor } = useOffers()
+function promotions(): { shelf: ShelfPromos; boards: PromoBoards | null } {
+  void catalogVersion.value
+  const shelf: ShelfPromos = new Map()
+  for (const p of products) {
+    const promo = promoFor(p)
+    if (promo) shelf.set(p.id, { badge: promo.badge, nowCents: promo.conditional ? undefined : promo.nowCents })
+  }
+  const running = storeOffers.value.filter((o) => !offerTimingProblem(o))
+  const boards = running.length && currentStore.value
+    ? {
+        storeName: currentStore.value.name,
+        offers: running.map((o) => ({ headline: offerHeadline(o.rule), subject: offerSubject(o.rule), categoryId: o.rule.kind === 'percent-category' || o.rule.kind === 'bxgy' ? o.rule.categoryId : undefined })),
+      }
+    : null
+  return { shelf, boards }
+}
+watch(
+  () => JSON.stringify([allOffers.value.map((o) => o.id), currentStore.value?.id, catalogVersion.value]),
+  () => {
+    const { shelf, boards } = promotions()
+    engine?.setPromotions(shelf, boards)
+  },
+)
 // A different supermarket/branch (or updated photos and stock) restocks the shelves.
 watch(catalogVersion, () => {
   if (xp.phase.value !== 'loading') void engine?.rebuildProducts()

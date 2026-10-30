@@ -231,6 +231,30 @@ export type OfferRule =
   | { kind: 'fixed-off'; amountCents: number; minSpendCents: number }
   /** Delivery fee waived above a minimum spend. */
   | { kind: 'free-delivery'; minSpendCents: number }
+  /** % off the whole basket above a minimum spend (optionally capped). */
+  | { kind: 'percent-order'; percent: number; minSpendCents: number; maxDiscountCents?: number }
+
+/**
+ * Extra conditions a supermarket can put on an offer ("over Rs. 5,000",
+ * "weekends only", "6–9 pm", "pickup orders"…). All set conditions must hold.
+ */
+export interface OfferConditions {
+  /** Basket value (before discounts) must reach this. */
+  minSpendCents?: number
+  /** At least this many items in the basket. */
+  minItems?: number
+  /** Days of the week it runs (0 = Sunday … 6 = Saturday). Empty/absent = every day. */
+  days?: number[]
+  /** Daily time window, 24h clock, e.g. 18 → 21 for a 6–9 pm happy hour. */
+  fromHour?: number
+  toHour?: number
+  /** Not before this date-time (scheduled offers). */
+  startsAt?: string
+  /** Only for home delivery or only for store pickup. */
+  fulfilment?: FulfilmentMethod
+  /** How many orders each customer can use it on. */
+  perCustomerLimit?: number
+}
 
 export interface Offer {
   id: string
@@ -240,6 +264,12 @@ export interface Offer {
   rule: OfferRule
   /** ISO date-time. */
   expiresAt: string
+  conditions?: OfferConditions
+  /** Supermarket running the offer (absent = a personal HelaMart offer). */
+  storeId?: string
+  storeName?: string
+  /** Only for shoppers who haven't ordered from this supermarket yet. */
+  forNewCustomers?: boolean
 }
 
 export interface PricedLine {
