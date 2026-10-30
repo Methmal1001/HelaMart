@@ -138,7 +138,8 @@ export class OfferSignsLayer {
 
   private plane(map: THREE.Texture, w: number, h: number, pos: THREE.Vector3, rotY: number) {
     const geometry = new THREE.PlaneGeometry(w, h)
-    const material = new THREE.MeshStandardMaterial({ map, emissive: '#ffffff', emissiveMap: map, emissiveIntensity: 0.25, roughness: 0.5, side: THREE.FrontSide })
+    // Backlit promo signage: true colours regardless of store lighting.
+    const material = new THREE.MeshBasicMaterial({ map, toneMapped: false })
     const m = new THREE.Mesh(geometry, material)
     m.position.copy(pos)
     m.rotation.y = rotY

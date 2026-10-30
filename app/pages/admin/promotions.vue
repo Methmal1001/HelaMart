@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { AdminOffer, TableColumn } from '~/types/admin'
 import type { CategoryId, OfferConditions, OfferRule } from '~/types'
+import type { ScheduleState } from '~/utils/schedule'
 import { categories } from '~/data/categories'
 import { products } from '~/data/products'
-import { branchDirectory, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
+import { branchDirectory, setOfferSchedule, deleteOffer, listChainCustomers, listOffers, saveOffer, setOfferStatus, type ChainCustomer, type OfferInput } from '~/services/admin/tenantApi'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'promotions.view' })
 useHead({ title: 'Promotions' })
@@ -30,7 +31,19 @@ onMounted(async () => {
 
 const describe = (o: AdminOffer) => [describeRule(o.rule), ...offerConditionChips(o)].join(' · ')
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const expired = (o: AdminOffer) => Date.parse(o.expiresAt) < Date.now()
+/** Publishing life-cycle: live, scheduled, paused or ended. */
+const lifeOf = (o: AdminOffer) => ({ status: o.status, startsAt: o.conditions?.startsAt, endsAt: o.expiresAt })
+const stateOf = (o: AdminOffer) => scheduleState(lifeOf(o))
+const tab = ref<'all' | ScheduleState>('all')
+const counts = computed(() => {
+  const c: Record<string, number> = { all: offers.value.length, live: 0, scheduled: 0, paused: 0, ended: 0 }
+  for (const o of offers.value) c[stateOf(o)]!++
+  return c
+})
+const shown = computed(() => (tab.value === 'all' ? offers.value : offers.value.filter((o) => stateOf(o) === tab.value)))
+const TABS: { id: 'all' | ScheduleState; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'live', label: 'Live' }, { id: 'scheduled', label: 'Scheduled' }, { id: 'paused', label: 'Paused' }, { id: 'ended', label: 'Ended' },
+]
 const audienceText = (o: AdminOffer) => (o.audience === 'all' ? 'All customers' : o.audience === 'new' ? 'New customers' : `${o.customerIds.length} selected`)
 const branchText = (o: AdminOffer) => (o.branchIds.length ? o.branchIds.map((id) => branches.value.find((b) => b.id === id)?.name ?? id).join(', ') : 'All branches')
 
@@ -40,8 +53,8 @@ const columns: TableColumn[] = [
   { key: 'audience', label: 'Audience', value: (o: AdminOffer) => audienceText(o) },
   { key: 'branches', label: 'Branches', value: (o: AdminOffer) => branchText(o) },
   { key: 'usageCount', label: 'Used', sortable: true, align: 'right' },
-  { key: 'expiresAt', label: 'Expires', sortable: true },
-  { key: 'status', label: 'Status', value: (o: AdminOffer) => (expired(o) ? 'expired' : o.status) },
+  { key: 'expiresAt', label: 'Schedule', sortable: true, value: (o: AdminOffer) => scheduleText(lifeOf(o)) },
+  { key: 'status', label: 'Status', value: (o: AdminOffer) => stateOf(o) },
   { key: 'actions', label: '', align: 'right', value: () => '' },
 ]
 
@@ -53,26 +66,29 @@ const f = reactive({
   maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: '', audience: 'all' as AdminOffer['audience'], customerIds: [] as string[], branchIds: [] as string[],
   // Conditions
   condMinRs: '', condMinItems: '' as string | number, days: [] as number[], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '' as '' | 'delivery' | 'pickup', limit: '' as string | number,
+  announce: false,
 })
 const error = ref('')
 
 function open(o: AdminOffer | 'new') {
   editing.value = o
   error.value = ''
-  const nextYear = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)
+  const end = new Date(Date.now() + 90 * 864e5)
+  end.setHours(23, 59, 0, 0)
+  const nextYear = toLocalInput(end)
   if (o === 'new') {
     Object.assign(f, { code: '', title: '', description: '', kind: 'percent-category', percent: 10, categoryId: 'beverages', productId: products[0]!.id, maxRs: '', amountRs: '250', minRs: '1500', buy: 2, get: 1, expires: nextYear, audience: 'all', customerIds: [], branchIds: auth.isChainLevel.value ? [] : branches.value.map((b) => b.id) })
-    Object.assign(f, { condMinRs: '', condMinItems: '', days: [], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '', limit: '' })
+    Object.assign(f, { condMinRs: '', condMinItems: '', days: [], timed: false, fromHour: 18, toHour: 21, starts: '', fulfilment: '', limit: '', announce: false })
     return
   }
   const c = o.conditions ?? {}
   Object.assign(f, {
     condMinRs: c.minSpendCents ? String(c.minSpendCents / 100) : '', condMinItems: c.minItems ?? '', days: [...(c.days ?? [])],
-    timed: c.fromHour !== undefined, fromHour: c.fromHour ?? 18, toHour: c.toHour ?? 21, starts: c.startsAt?.slice(0, 10) ?? '', fulfilment: c.fulfilment ?? '', limit: c.perCustomerLimit ?? '',
+    timed: c.fromHour !== undefined, fromHour: c.fromHour ?? 18, toHour: c.toHour ?? 21, starts: c.startsAt ? toLocalInput(c.startsAt) : '', fulfilment: c.fulfilment ?? '', limit: c.perCustomerLimit ?? '', announce: !!o.announce,
   })
   const r = o.rule
   Object.assign(f, {
-    code: o.code, title: o.title, description: o.description, kind: r.kind, expires: o.expiresAt.slice(0, 10), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
+    code: o.code, title: o.title, description: o.description, kind: r.kind, expires: toLocalInput(o.expiresAt), audience: o.audience, customerIds: [...o.customerIds], branchIds: [...o.branchIds],
     percent: 'percent' in r ? r.percent : 10,
     categoryId: 'categoryId' in r && r.categoryId ? r.categoryId : 'beverages',
     productId: r.kind === 'percent-product' ? r.productId : products[0]!.id,
@@ -102,7 +118,8 @@ function buildConditions(): OfferConditions | undefined {
   if (f.condMinItems !== '' && Number(f.condMinItems) > 1) c.minItems = Number(f.condMinItems)
   if (f.days.length && f.days.length < 7) c.days = [...f.days].sort()
   if (f.timed) Object.assign(c, { fromHour: Number(f.fromHour), toHour: Number(f.toHour) })
-  if (f.starts) c.startsAt = `${f.starts}T00:00:00+05:30`
+  const startsAt = fromLocalInput(f.starts)
+  if (startsAt && Date.parse(startsAt) > Date.now()) c.startsAt = startsAt
   if (f.fulfilment) c.fulfilment = f.fulfilment
   if (f.limit !== '' && Number(f.limit) > 0) c.perCustomerLimit = Number(f.limit)
   return Object.keys(c).length ? c : undefined
@@ -111,13 +128,14 @@ function buildConditions(): OfferConditions | undefined {
 /** Live coupon preview of the offer being edited (what shoppers will see). */
 const preview = computed(() => ({
   id: 'preview', code: f.code.toUpperCase(), title: f.title || 'Your offer title', description: f.description, rule: buildRule(),
-  expiresAt: `${f.expires || '2099-12-31'}T23:59:59+05:30`, conditions: buildConditions(), storeName: auth.user.value?.tenantName ?? undefined,
+  expiresAt: fromLocalInput(f.expires) ?? '2099-12-31T18:29:00.000Z', conditions: buildConditions(), storeName: auth.user.value?.tenantName ?? undefined,
+  storeTheme: myTheme.value, upcoming: !!f.starts && (fromLocalInput(f.starts) ?? '') > new Date().toISOString(),
 }))
 const hourLabel = (h: number) => `${h % 12 || 12}:00 ${h < 12 || h === 24 ? 'am' : 'pm'}`
 
 async function save() {
   error.value = ''
-  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: `${f.expires}T23:59:59+05:30`, audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds, conditions: buildConditions() }
+  const input: OfferInput = { code: f.code, title: f.title, description: f.description, rule: buildRule(), expiresAt: fromLocalInput(f.expires) ?? '', audience: f.audience, customerIds: f.customerIds, branchIds: f.branchIds, conditions: buildConditions(), announce: f.announce }
   const id = editing.value === 'new' ? undefined : editing.value?.id
   try {
     const o = await auth.call((t) => saveOffer(t, input, id))
@@ -138,6 +156,34 @@ async function toggle(o: AdminOffer) {
   }
 }
 
+async function quick(o: AdminOffer, action: 'publish-now' | 'end-now') {
+  if (action === 'end-now') {
+    const r = await confirm({ title: `End ${o.code} now?`, message: 'Shoppers stop seeing it straight away. You can publish it again by editing its end time.', confirmLabel: 'End offer now', tone: 'danger' })
+    if (!r.ok) return
+  }
+  try {
+    const u = await auth.call((t) => setOfferSchedule(t, o.id, action))
+    offers.value = offers.value.map((x) => (x.id === u.id ? u : x))
+    notify.ok(action === 'publish-now' ? `${u.code} is live now` : `${u.code} has ended`)
+  } catch (e) {
+    notify.error(e)
+  }
+}
+
+/** The supermarket's theme for the coupon preview (same look shoppers get). */
+const myTheme = ref<{ logo?: string; primaryColor: string; accentColor: string } | undefined>()
+onMounted(async () => {
+  try {
+    const { getBranding } = await import('~/services/admin/brandingApi')
+    const { accentFor } = await import('~/lib/branding')
+    if (!auth.can('settings.manage')) return
+    const b = await auth.call(getBranding)
+    myTheme.value = { logo: b.live.logo, primaryColor: b.live.primaryColor, accentColor: accentFor(b.live) }
+  } catch {
+    /* preview falls back to the offer-type colours */
+  }
+})
+
 async function remove(o: AdminOffer) {
   const r = await confirm({ title: `Delete ${o.code}?`, message: 'Customers will no longer receive this offer. This cannot be undone.', confirmLabel: 'Delete offer', tone: 'danger' })
   if (!r.ok) return
@@ -157,7 +203,12 @@ async function remove(o: AdminOffer) {
       <button v-if="canManage" type="button" class="btn-primary h-10" @click="open('new')"><AppIcon name="plus" :size="17" />New offer</button>
     </AdminPageHeader>
 
-    <AdminDataTable :rows="offers" :columns="columns" row-key="id" :loading="loading" search-placeholder="Search code or title…">
+    <div class="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Filter offers by schedule">
+      <button v-for="t in TABS" :key="t.id" type="button" role="tab" class="chip ring-1" :class="tab === t.id ? 'bg-hela-green text-white ring-hela-green' : 'bg-white text-ink ring-line'" :aria-selected="tab === t.id" :data-testid="`offers-tab-${t.id}`" @click="tab = t.id">
+        {{ t.label }} <span class="opacity-70">{{ counts[t.id] }}</span>
+      </button>
+    </div>
+    <AdminDataTable :rows="shown" :columns="columns" row-key="id" :loading="loading" search-placeholder="Search code or title…">
       <template #cell-code="{ row }">
         <span class="block font-semibold text-ink">{{ row.title }}</span>
         <code class="text-xs font-bold text-hela-gold-600">{{ row.code }}</code>
@@ -165,12 +216,14 @@ async function remove(o: AdminOffer) {
       <template #cell-rule="{ row }"><span class="text-xs text-muted">{{ describe(row) }}</span></template>
       <template #cell-audience="{ row }"><span class="text-xs text-muted">{{ audienceText(row) }}</span></template>
       <template #cell-branches="{ row }"><span class="text-xs text-muted">{{ branchText(row) }}</span></template>
-      <template #cell-expiresAt="{ row }"><span class="text-xs text-muted">{{ row.expiresAt.slice(0, 10) }}</span></template>
-      <template #cell-status="{ row }"><AdminBadge :value="expired(row) ? 'expired' : row.status" /></template>
+      <template #cell-expiresAt="{ row }"><span class="text-xs text-muted">{{ scheduleText(lifeOf(row)) }}</span><span v-if="row.announce && stateOf(row) === 'scheduled'" class="block text-[0.65rem] font-semibold text-[#6d5622]">Announced as “Coming soon”</span></template>
+      <template #cell-status="{ row }"><AdminBadge :value="stateOf(row)" /></template>
       <template #cell-actions="{ row }">
         <div v-if="canManage" class="flex justify-end gap-1">
           <button type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="open(row)"><AppIcon name="edit" :size="14" />Edit</button>
-          <button type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="toggle(row)">{{ row.status === 'active' ? 'Pause' : 'Resume' }}</button>
+          <button v-if="stateOf(row) === 'scheduled'" type="button" class="btn-ghost h-8 px-2.5 text-xs whitespace-nowrap text-hela-green" @click="quick(row, 'publish-now')">Publish now</button>
+          <button v-if="stateOf(row) === 'live'" type="button" class="btn-ghost h-8 px-2.5 text-xs whitespace-nowrap" @click="quick(row, 'end-now')">End now</button>
+          <button v-if="stateOf(row) !== 'ended'" type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="toggle(row)">{{ row.status === 'active' ? 'Pause' : 'Resume' }}</button>
           <button type="button" class="btn-ghost h-8 px-2.5 text-xs text-[#8A2E2E]" :aria-label="`Delete ${row.code}`" @click="remove(row)"><AppIcon name="trash" :size="14" /></button>
         </div>
       </template>
@@ -180,7 +233,14 @@ async function remove(o: AdminOffer) {
       <div class="grid gap-5 lg:grid-cols-[1fr_20rem]">
       <form id="offer-form" class="grid content-start gap-3 sm:grid-cols-2" @submit.prevent="save">
         <label><span class="field-label">Code</span><input v-model="f.code" class="field uppercase" maxlength="16" placeholder="e.g. DRINKS10" data-autofocus></label>
-        <label><span class="field-label">Expires on</span><input v-model="f.expires" type="date" class="field"></label>
+        <label><span class="field-label">Ends at</span><input v-model="f.expires" type="datetime-local" class="field" data-testid="offer-ends"></label>
+        <div class="sm:col-span-2 grid gap-3 rounded-xl bg-hela-green-50/60 p-3 sm:grid-cols-2">
+          <label><span class="field-label">Publish at <span class="font-normal text-muted">(empty = straight away)</span></span><input v-model="f.starts" type="datetime-local" class="field" data-testid="offer-starts"></label>
+          <label class="flex items-start gap-2 pt-6 text-sm" :class="{ 'opacity-50': !f.starts }">
+            <input v-model="f.announce" type="checkbox" class="mt-0.5 size-4 accent-hela-green" :disabled="!f.starts" data-testid="offer-announce">
+            <span>Announce as “Coming soon”<span class="block text-xs text-muted">Shoppers see it up to 14 days before it starts; it applies only from the publish time.</span></span>
+          </label>
+        </div>
         <label class="sm:col-span-2"><span class="field-label">Title (shown to customers)</span><input v-model="f.title" class="field" maxlength="80"></label>
         <label class="sm:col-span-2"><span class="field-label">Description</span><input v-model="f.description" class="field" maxlength="200"></label>
         <label class="sm:col-span-2"><span class="field-label">Offer type</span>
@@ -239,7 +299,6 @@ async function remove(o: AdminOffer) {
             <label><span class="field-label">Minimum spend (Rs.)</span><input v-model="f.condMinRs" class="field" inputmode="decimal" placeholder="e.g. 5000" data-testid="cond-min-spend"></label>
             <label><span class="field-label">Minimum items</span><input v-model="f.condMinItems" type="number" min="2" class="field" placeholder="e.g. 3"></label>
             <label><span class="field-label">Uses per customer</span><input v-model="f.limit" type="number" min="1" max="50" class="field" placeholder="Unlimited"></label>
-            <label><span class="field-label">Starts on</span><input v-model="f.starts" type="date" class="field"></label>
             <label><span class="field-label">Order type</span>
               <select v-model="f.fulfilment" class="field"><option value="">Delivery &amp; pickup</option><option value="delivery">Home delivery only</option><option value="pickup">Store pickup only</option></select>
             </label>

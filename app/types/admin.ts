@@ -326,6 +326,8 @@ export interface PlatformBanner {
 
 export interface AdminOffer extends Offer {
   tenantId: string
+  /** Show it to shoppers as "Coming soon" up to 14 days before it starts. */
+  announce?: boolean
   /** Branches the offer runs at. Empty = all branches. */
   branchIds: string[]
   status: 'active' | 'paused'

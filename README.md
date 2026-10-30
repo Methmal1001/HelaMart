@@ -112,6 +112,15 @@ Shoppers (guests included) see the chosen branch's offers:
 
 Offers apply automatically in the cart, and the order API re-prices with the same rules (and counts usage).
 
+**Scheduling (offers and banners):** set a **Publish at** date-time (empty means straight away) and an
+**Ends at** date-time. Lists show **Live / Scheduled / Paused / Ended** tabs, with **Publish now** and
+**End now** buttons. Offers can be **announced as "Coming soon"** up to 14 days before they start
+(shown in a separate section; they apply only from the publish time). Shoppers' pages pick up
+start and end times automatically, without a reload.
+
+Coupons and the Offers drawer use each supermarket's **logo and theme colour**. In-store signage
+(name banner, offer boards, aisle signs) is rendered as true-colour backlit panels.
+
 **HelaMart homepage banners** (*Homepage banners*, head office only): headline, theme or uploaded
 image, an optional featured supermarket and offer, a button ("Shop at …" / "See the offer"),
 schedule and priority. Targeting: everyone, chosen districts, or **only where the featured

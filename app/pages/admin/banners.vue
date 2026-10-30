@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ShopperLocation } from '~/types'
 import type { PlatformBanner } from '~/types/admin'
+import type { ScheduleState } from '~/utils/schedule'
 import type { PublicBanner } from '~/services/bannerService'
 import { BANNER_THEMES, deleteBanner, listBanners, offersForBanner, saveBanner, setBannerStatus, uploadBannerImage, type BannerInput } from '~/services/bannerService'
 import { listTenants, type TenantSummary } from '~/services/admin/platformApi'
@@ -35,10 +36,18 @@ onMounted(load)
 
 const activeTenants = computed(() => tenants.value.filter((t) => t.status === 'active'))
 const tenantName = (id?: string) => tenants.value.find((t) => t.id === id)?.name ?? '—'
-const live = (b: PlatformBanner) => b.status === 'active' && Date.parse(b.startsAt) <= Date.now() && Date.parse(b.endsAt) > Date.now()
-const stateOf = (b: PlatformBanner) => (b.status === 'paused' ? 'paused' : Date.parse(b.endsAt) <= Date.now() ? 'expired' : Date.parse(b.startsAt) > Date.now() ? 'pending' : 'active')
+const stateOf = (b: PlatformBanner) => scheduleState(b)
+const tab = ref<'all' | ScheduleState>('all')
+const TABS: { id: 'all' | ScheduleState; label: string }[] = [
+  { id: 'all', label: 'All' }, { id: 'live', label: 'Live' }, { id: 'scheduled', label: 'Scheduled' }, { id: 'paused', label: 'Paused' }, { id: 'ended', label: 'Ended' },
+]
+const counts = computed(() => {
+  const c: Record<string, number> = { all: banners.value.length, live: 0, scheduled: 0, paused: 0, ended: 0 }
+  for (const b of banners.value) c[stateOf(b)]!++
+  return c
+})
+const shown = computed(() => (tab.value === 'all' ? banners.value : banners.value.filter((b) => stateOf(b) === tab.value)))
 const targetText = (b: PlatformBanner) => (b.target === 'all' ? 'Everyone' : b.target === 'districts' ? b.districts.join(', ') : `Where ${tenantName(b.tenantId)} delivers`)
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-LK', { day: 'numeric', month: 'short', year: 'numeric' })
 
 // ---- "see it as a shopper in…" preview
 const previewTown = ref('Gampaha')
@@ -60,7 +69,11 @@ const imageBusy = ref(false)
 const error = ref('')
 const saving = ref(false)
 
-const toDate = (d: Date) => d.toISOString().slice(0, 10)
+const endOfDay = (offsetDays: number) => {
+  const d = new Date(Date.now() + offsetDays * 864e5)
+  d.setHours(23, 59, 0, 0)
+  return d
+}
 async function open(b: PlatformBanner | 'new') {
   editing.value = b
   error.value = ''
@@ -68,9 +81,9 @@ async function open(b: PlatformBanner | 'new') {
   pendingImage.value = null
   imageUrl.value = null
   if (b === 'new') {
-    Object.assign(f, { title: '', subtitle: '', theme: 'green', tenantId: '', offerId: '', cta: 'none', target: 'all', districts: [], starts: toDate(new Date()), ends: toDate(new Date(Date.now() + 30 * 864e5)), priority: 10, image: '' })
+    Object.assign(f, { title: '', subtitle: '', theme: 'green', tenantId: '', offerId: '', cta: 'none', target: 'all', districts: [], starts: '', ends: toLocalInput(endOfDay(30)), priority: 10, image: '' })
   } else {
-    Object.assign(f, { title: b.title, subtitle: b.subtitle, theme: b.theme, tenantId: b.tenantId ?? '', offerId: b.offerId ?? '', cta: b.cta, target: b.target, districts: [...b.districts], starts: b.startsAt.slice(0, 10), ends: b.endsAt.slice(0, 10), priority: b.priority, image: b.image ?? '' })
+    Object.assign(f, { title: b.title, subtitle: b.subtitle, theme: b.theme, tenantId: b.tenantId ?? '', offerId: b.offerId ?? '', cta: b.cta, target: b.target, districts: [...b.districts], starts: Date.parse(b.startsAt) > Date.now() ? toLocalInput(b.startsAt) : '', ends: toLocalInput(b.endsAt), priority: b.priority, image: b.image ?? '' })
     if (b.image) {
       const { resolveImageUrl } = await import('~/services/mock/mediaStore')
       imageUrl.value = await resolveImageUrl(b.image)
@@ -131,17 +144,35 @@ async function save() {
     }
     const input: BannerInput = {
       title: f.title, subtitle: f.subtitle, theme: f.theme, image: f.image || undefined, tenantId: f.tenantId || undefined, offerId: f.offerId || undefined,
-      cta: f.cta, target: f.target, districts: f.districts, startsAt: `${f.starts}T00:00:00+05:30`, endsAt: `${f.ends}T23:59:59+05:30`, priority: Number(f.priority),
+      cta: f.cta, target: f.target, districts: f.districts, startsAt: fromLocalInput(f.starts) ?? new Date().toISOString(), endsAt: fromLocalInput(f.ends) ?? '', priority: Number(f.priority),
     }
     const id = editing.value === 'new' ? undefined : editing.value?.id
     await auth.call((t) => saveBanner(t, input, id))
-    notify.ok(id ? 'Banner updated' : 'Banner published to the HelaMart homepage')
+    notify.ok(id ? 'Banner updated' : Date.parse(input.startsAt) > Date.now() + 60e3 ? `Banner scheduled for ${formatWhen(input.startsAt)}` : 'Banner published to the HelaMart homepage')
     editing.value = null
     await load()
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     saving.value = false
+  }
+}
+
+/** Publish a scheduled banner now, or take a live one down now. */
+async function quick(b: PlatformBanner, action: 'publish-now' | 'end-now') {
+  const now = new Date().toISOString()
+  const input: BannerInput = {
+    title: b.title, subtitle: b.subtitle, theme: b.theme, image: b.image, tenantId: b.tenantId, offerId: b.offerId, cta: b.cta, target: b.target, districts: b.districts, priority: b.priority,
+    startsAt: action === 'publish-now' ? now : b.startsAt,
+    endsAt: action === 'end-now' ? now : b.endsAt,
+  }
+  try {
+    await auth.call((t) => saveBanner(t, input, b.id))
+    if (action === 'publish-now' && b.status === 'paused') await auth.call((t) => setBannerStatus(t, b.id, 'active'))
+    notify.ok(action === 'publish-now' ? 'Banner is live now' : 'Banner taken down')
+    await load()
+  } catch (e) {
+    notify.error(e)
   }
 }
 
@@ -184,23 +215,30 @@ async function remove(b: PlatformBanner) {
       <p class="mt-2 text-xs text-muted">Nothing shows if no banner targets this area. Shoppers without an area see only “Everyone” banners.</p>
     </section>
 
+    <div class="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Filter banners by schedule">
+      <button v-for="t in TABS" :key="t.id" type="button" role="tab" class="chip ring-1" :class="tab === t.id ? 'bg-hela-green text-white ring-hela-green' : 'bg-white text-ink ring-line'" :aria-selected="tab === t.id" @click="tab = t.id">
+        {{ t.label }} <span class="opacity-70">{{ counts[t.id] }}</span>
+      </button>
+    </div>
     <p v-if="loading" class="text-sm text-muted">Loading banners…</p>
     <div class="grid gap-3 lg:grid-cols-2">
-      <article v-for="b in banners" :key="b.id" class="card overflow-hidden" :data-testid="`admin-banner-${b.id}`">
+      <article v-for="b in shown" :key="b.id" class="card overflow-hidden" :data-testid="`admin-banner-${b.id}`">
         <div class="pointer-events-none origin-top-left">
           <BannerSlide :banner="{ id: b.id, title: b.title, subtitle: b.subtitle, theme: b.theme, cta: 'none', store: b.tenantId ? { id: b.tenantId, name: tenantName(b.tenantId), branding: { primaryColor: '#174D38', slogan: '', promoBanners: [], logoOnFixtures: false }, brandColor: '#174D38' } : undefined }" variant="floating" />
         </div>
         <div class="space-y-1.5 p-4 text-sm">
           <div class="flex items-center justify-between gap-2">
-            <AdminBadge :value="stateOf(b)" :label="stateOf(b) === 'pending' ? 'Scheduled' : undefined" />
+            <AdminBadge :value="stateOf(b)" />
             <span class="text-xs text-muted">Priority {{ b.priority }} · {{ b.views }} views · {{ b.clicks }} clicks</span>
           </div>
           <p><span class="text-muted">Shown to:</span> <b class="text-ink">{{ targetText(b) }}</b></p>
           <p v-if="b.offerId" class="text-xs text-muted">Features offer {{ b.offerId }}</p>
-          <p class="text-xs text-muted">{{ day(b.startsAt) }} → {{ day(b.endsAt) }}{{ live(b) ? ' · live now' : '' }}</p>
+          <p class="text-xs text-muted">{{ scheduleText(b) }}</p>
           <div class="flex gap-1 pt-1">
             <button type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="open(b)"><AppIcon name="edit" :size="14" />Edit</button>
-            <button type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="toggle(b)">{{ b.status === 'active' ? 'Pause' : 'Resume' }}</button>
+            <button v-if="stateOf(b) === 'scheduled'" type="button" class="btn-ghost h-8 px-2.5 text-xs text-hela-green" @click="quick(b, 'publish-now')">Publish now</button>
+            <button v-if="stateOf(b) === 'live'" type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="quick(b, 'end-now')">End now</button>
+            <button v-if="stateOf(b) !== 'ended'" type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="toggle(b)">{{ b.status === 'active' ? 'Pause' : 'Resume' }}</button>
             <button type="button" class="btn-ghost h-8 px-2.5 text-xs text-[#8A2E2E]" :aria-label="`Delete ${b.title}`" @click="remove(b)"><AppIcon name="trash" :size="14" /></button>
           </div>
         </div>
@@ -265,14 +303,14 @@ async function remove(b: PlatformBanner) {
               </label>
             </div>
           </fieldset>
-          <label><span class="field-label">Starts</span><input v-model="f.starts" type="date" class="field"></label>
-          <label><span class="field-label">Ends</span><input v-model="f.ends" type="date" class="field"></label>
+          <label><span class="field-label">Publish at <span class="font-normal text-muted">(empty = straight away)</span></span><input v-model="f.starts" type="datetime-local" class="field" data-testid="banner-starts"></label>
+          <label><span class="field-label">Ends at</span><input v-model="f.ends" type="datetime-local" class="field" data-testid="banner-ends"></label>
           <p v-if="error" class="text-sm text-[#8A2E2E] sm:col-span-2" role="alert">{{ error }}</p>
         </form>
       </div>
       <template #footer>
         <button type="button" class="btn-ghost h-9" @click="editing = null">Cancel</button>
-        <button type="submit" form="banner-form" class="btn-primary h-9" :disabled="saving" data-testid="banner-save">{{ saving ? 'Saving…' : 'Publish banner' }}</button>
+        <button type="submit" form="banner-form" class="btn-primary h-9" :disabled="saving" data-testid="banner-save">{{ saving ? 'Saving…' : f.starts && (fromLocalInput(f.starts) ?? '') > new Date().toISOString() ? 'Schedule banner' : 'Publish banner' }}</button>
       </template>
     </AdminModal>
   </div>

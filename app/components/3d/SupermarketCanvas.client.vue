@@ -94,7 +94,7 @@ function promotions(): { shelf: ShelfPromos; boards: PromoBoards | null } {
     const promo = promoFor(p)
     if (promo) shelf.set(p.id, { badge: promo.badge, nowCents: promo.conditional ? undefined : promo.nowCents })
   }
-  const running = storeOffers.value.filter((o) => !offerTimingProblem(o))
+  const running = storeOffers.value.filter((o) => !o.upcoming && !offerTimingProblem(o))
   const boards = running.length && currentStore.value
     ? {
         storeName: currentStore.value.name,

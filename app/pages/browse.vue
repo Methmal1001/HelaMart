@@ -3,7 +3,8 @@ useHead({ title: 'Browse aisles — HelaMart' })
 
 const xp = useStoreExperience()
 const { openPanel } = useStoreUi()
-const { storeOffers } = useOffers()
+const { storeOffers: allStoreOffers } = useOffers()
+const storeOffers = computed(() => allStoreOffers.value.filter((o) => !o.upcoming))
 
 /** Open the 3D store and walk straight to the product. */
 async function locate(productId: string) {

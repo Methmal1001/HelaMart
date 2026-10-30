@@ -19,6 +19,9 @@ const TONES: Record<string, string> = {
   blocked: 'bg-[#FBEAEA] text-[#8A2E2E]',
   expired: 'bg-[#F1F1EF] text-[#55595C]',
   approved: 'bg-hela-green-50 text-hela-green',
+  live: 'bg-hela-green-50 text-hela-green',
+  scheduled: 'bg-[#E3EEF9] text-[#1F4E7A]',
+  ended: 'bg-[#F1F1EF] text-[#55595C]',
   rejected: 'bg-[#FBEAEA] text-[#8A2E2E]',
   withdrawn: 'bg-[#F1F1EF] text-[#55595C]',
   // tasks

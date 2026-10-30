@@ -31,8 +31,9 @@ const current = computed(() => banners.value[index.value] ?? null)
 
 async function load() {
   const { listHomeBanners } = await import('~/services/bannerService')
+  const keep = current.value?.id
   banners.value = await listHomeBanners(area.value)
-  index.value = 0
+  index.value = Math.max(0, banners.value.findIndex((b) => b.id === keep))
   const { resolveImageUrl } = await import('~/services/mock/mediaStore')
   for (const b of banners.value) if (b.image && !images.value[b.id]) images.value[b.id] = (await resolveImageUrl(b.image)) ?? ''
 }
@@ -85,8 +86,16 @@ function onUp(e: PointerEvent) {
 
 watch(() => [area.value ? `${area.value.lat},${area.value.lng},${area.value.district}` : '', props.reloadKey], load)
 watch(banners, start)
-onMounted(load)
-onBeforeUnmount(() => clearInterval(timer))
+// Scheduled banners appear (and expired ones go) on time without a reload.
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  void load()
+  refreshTimer = setInterval(() => !document.hidden && void load(), 120_000)
+})
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  clearInterval(refreshTimer)
+})
 </script>
 
 <template>

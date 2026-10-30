@@ -13,5 +13,9 @@ export default defineNuxtPlugin(() => {
       },
       { immediate: true },
     )
+    // Scheduled offers start and end on time without a page reload.
+    setInterval(() => {
+      if (!document.hidden && !router.currentRoute.value.path.startsWith('/admin')) void loadStoreOffers(choice.value?.storeId, choice.value?.branchId)
+    }, 60_000)
   })
 })

@@ -270,6 +270,10 @@ export interface Offer {
   storeName?: string
   /** Only for shoppers who haven't ordered from this supermarket yet. */
   forNewCustomers?: boolean
+  /** The supermarket's approved logo and theme colours (for branded coupons). */
+  storeTheme?: { logo?: string; primaryColor: string; accentColor: string }
+  /** Announced before it starts ("Coming soon"); not applied until `conditions.startsAt`. */
+  upcoming?: boolean
 }
 
 export interface PricedLine {

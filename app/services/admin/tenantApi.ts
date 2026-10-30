@@ -461,6 +461,8 @@ export interface OfferInput {
   customerIds: string[]
   branchIds: string[]
   conditions?: OfferConditions
+  /** Show as "Coming soon" before it starts. */
+  announce?: boolean
 }
 
 /** Validates and normalises an offer's conditions (minimum spend, days, hours…). */
@@ -531,7 +533,7 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
       if (!input.customerIds.length) throw new ApiError(422, 'Choose at least one customer.')
       if (input.customerIds.some((cid) => !ctx.db.customers.find((c) => c.id === cid)?.tenantIds.includes(t.id))) throw new ApiError(403, 'You can only target your own customers.')
     }
-    const base = { ...input, conditions, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
+    const base = { ...input, announce: !!input.announce && !!conditions?.startsAt, conditions, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
     if (id) {
       const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
       Object.assign(o, base)
@@ -552,6 +554,21 @@ export function setOfferStatus(token: string, id: string, status: AdminOffer['st
     const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
     o.status = status
     audit(ctx.db, ctx, status === 'paused' ? 'promotion.pause' : 'promotion.resume', o.code)
+    return o
+  })
+}
+
+/** Quick schedule changes: publish a scheduled offer now, or end a live one now. */
+export function setOfferSchedule(token: string, id: string, action: 'publish-now' | 'end-now'): Promise<AdminOffer> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'promotions.manage')
+    requireWritable(ctx)
+    const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+    if (action === 'publish-now') {
+      if (o.conditions) delete o.conditions.startsAt
+      o.status = 'active'
+    } else o.expiresAt = nowIso()
+    audit(ctx.db, ctx, action === 'publish-now' ? 'promotion.publish_now' : 'promotion.end_now', o.code, o.title)
     return o
   })
 }

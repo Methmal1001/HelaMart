@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import type { CategoryId } from '~/types'
+import { textOn } from '~/lib/branding'
 
 /**
  * "Offers" drawer: the chosen branch's running offers as coupons, which ones
  * already apply to the cart, and how close the shopper is to unlocking the rest.
  */
 const { panel, closePanel, openPanel } = useStoreUi()
-const { storeOffers, offers: personal } = useOffers()
+const { storeOffers: allStoreOffers, offers: personal } = useOffers()
+/** Running now vs. announced ("Coming soon"). */
+const storeOffers = computed(() => allStoreOffers.value.filter((o) => !o.upcoming))
+const comingSoon = computed(() => allStoreOffers.value.filter((o) => o.upcoming))
 const { isAuthenticated } = useAuth()
-const { choice } = useStoreSelection()
+const { choice, currentStore } = useStoreSelection()
 const bill = useBill()
 const route = useRoute()
 const xp = useStoreExperience()
@@ -48,6 +52,20 @@ async function shop(o: (typeof storeOffers.value)[number]) {
     <template #subtitle>
       <p class="text-xs text-muted">{{ choice ? `${choice.storeName} · ${choice.branchName}` : 'Choose a supermarket to see its offers' }}</p>
     </template>
+    <!-- The supermarket's own look: logo, theme colour and slogan -->
+    <div
+      v-if="currentStore"
+      class="flex items-center gap-3 px-5 py-3.5"
+      :style="{ background: `linear-gradient(110deg, ${currentStore.branding.primaryColor}, ${currentStore.branding.primaryColor}cc)`, color: textOn(currentStore.branding.primaryColor) }"
+      data-testid="offers-store-header"
+    >
+      <StoreBadge :name="currentStore.name" :branding="currentStore.branding" :color="currentStore.brandColor" size="size-11" class="ring-2 ring-white/60" />
+      <div class="min-w-0">
+        <p class="truncate font-extrabold">{{ currentStore.name }}</p>
+        <p class="truncate text-xs opacity-85">{{ currentStore.branding.slogan || `${choice?.branchName} branch` }}</p>
+      </div>
+      <span class="ml-auto shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold">{{ storeOffers.length }} live</span>
+    </div>
     <div class="space-y-5 px-5 py-5" data-testid="offers-panel">
       <div v-if="bill.totalDiscountCents" class="flex items-center gap-3 rounded-2xl bg-hela-green p-4 text-white">
         <span class="grid size-10 shrink-0 place-items-center rounded-full bg-hela-gold text-hela-green-900"><AppIcon name="gift" :size="19" /></span>
@@ -70,6 +88,13 @@ async function shop(o: (typeof storeOffers.value)[number]) {
         </ul>
       </section>
       <p v-else-if="choice" class="rounded-2xl bg-white p-4 text-sm text-muted ring-1 ring-line">{{ choice.storeName }} has no offers at {{ choice.branchName }} right now.</p>
+
+      <section v-if="comingSoon.length" aria-labelledby="soon-offers-h" data-testid="coming-soon">
+        <h3 id="soon-offers-h" class="mb-3 flex items-center gap-2 text-sm font-bold text-ink"><AppIcon name="history" :size="15" class="text-hela-gold-600" />Coming soon</h3>
+        <ul class="space-y-3">
+          <li v-for="o in comingSoon" :key="o.id"><OfferCard :offer="o" compact /></li>
+        </ul>
+      </section>
 
       <section v-if="personalOnly.length" aria-labelledby="personal-offers-h">
         <h3 id="personal-offers-h" class="mb-3 text-sm font-bold text-ink">Just for you</h3>

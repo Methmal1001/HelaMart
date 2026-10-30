@@ -4,6 +4,10 @@ import { mockAccounts } from '~/data/mockUsers'
 import { isOfferActive } from '~/utils/pricing'
 import { latency, readDb, verifyAccessToken } from './mock/server'
 import { readAdminDb } from './admin/db'
+import { accentFor, liveBranding } from '~/lib/branding'
+
+/** Announced offers appear as "Coming soon" this long before they start. */
+const ANNOUNCE_MS = 14 * 864e5
 
 /** Every newly created customer (registration or first Google sign-in) gets this. */
 const NEW_CUSTOMER_OFFER: Offer = {
@@ -43,10 +47,15 @@ export function storeOffersFor(storeId: string, branchId: string, userId: string
   const db = readAdminDb()
   const store = db.tenants.find((t) => t.id === storeId)
   if (!store || store.status !== 'active') return []
+  const brand = liveBranding(store)
+  const storeTheme = { logo: brand.logo, primaryColor: brand.primaryColor, accentColor: accentFor(brand) }
   const orderedHere = userId ? db.orders.some((o) => o.customerId === userId && o.tenantId === storeId && o.status !== 'cancelled') || readDb().orders.some((o) => o.userId === userId && o.storeId === storeId) : false
   return db.offers
     .filter((o: AdminOffer) => {
-      if (o.tenantId !== storeId || o.status !== 'active' || !isOfferActive(o, now)) return false
+      if (o.tenantId !== storeId || o.status !== 'active' || Date.parse(o.expiresAt) <= now) return false
+      // Scheduled offers stay hidden until they start, unless the supermarket announces them in advance.
+      const startsAt = o.conditions?.startsAt ? Date.parse(o.conditions.startsAt) : 0
+      if (startsAt > now && !(o.announce && startsAt - now <= ANNOUNCE_MS)) return false
       if (o.branchIds.length && !o.branchIds.includes(branchId)) return false
       if (o.audience === 'selected' && !(userId && o.customerIds.includes(userId))) return false
       if (o.audience === 'new' && orderedHere) return false
@@ -54,7 +63,7 @@ export function storeOffersFor(storeId: string, branchId: string, userId: string
       if (limit && userId && timesUsed(userId, o.id) >= limit) return false
       return true
     })
-    .map((o) => ({ id: o.id, code: o.code, title: o.title, description: o.description, rule: o.rule, expiresAt: o.expiresAt, conditions: o.conditions, storeId, storeName: store.name, forNewCustomers: o.audience === 'new' || undefined }))
+    .map((o) => ({ id: o.id, code: o.code, title: o.title, description: o.description, rule: o.rule, expiresAt: o.expiresAt, conditions: o.conditions, storeId, storeName: store.name, forNewCustomers: o.audience === 'new' || undefined, storeTheme, upcoming: !isOfferActive(o, now) || undefined }))
 }
 
 /** GET /stores/:id/offers?branch= — public; personalised when a token is sent. */

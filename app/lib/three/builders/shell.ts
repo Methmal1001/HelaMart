@@ -221,7 +221,8 @@ export function buildInterior(ctx: ShellContext) {
 function hangingSign(ctx: ShellContext, title: string, subtitle: string | undefined, color: string, x: number, y: number, z: number, w: number, doubleSided = true) {
   const tex = sectionSignTexture(title, subtitle, color)
   const h = w / 4
-  const mat = new THREE.MeshStandardMaterial({ map: tex, emissive: '#ffffff', emissiveIntensity: 0.12, emissiveMap: tex, roughness: 0.6 })
+  // Aisle signs are backlit panels: crisp, true-colour text from anywhere in the store.
+  const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
   const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
   front.position.set(x, y, z + 0.02)
   ctx.group.add(front)
