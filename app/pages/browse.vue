@@ -26,7 +26,7 @@ async function locate(productId: string) {
           All products and prices are fictional samples for this prototype.
         </p>
         <div class="mt-4 flex flex-wrap items-start gap-3">
-          <div class="w-full max-w-md"><StorePicker /></div>
+          <div class="w-full max-w-2xl"><StoreChooser /></div>
           <button type="button" class="relative flex h-12 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-ink ring-1 ring-line transition hover:ring-[#E23B3B]" data-testid="browse-offers" @click="openPanel('offers')">
             <AppIcon name="gift" :size="18" class="text-[#C2361A]" />Offers
             <span v-if="storeOffers.length" class="grid min-w-5 place-items-center rounded-full bg-[#E23B3B] px-1 text-[0.7rem] text-white">{{ storeOffers.length }}</span>

@@ -87,7 +87,7 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
       </ol>
 
       <div class="mt-5">
-        <StorePicker />
+        <StoreChooser />
       </div>
 
       <div v-if="xp.pendingLabel.value" class="mt-4 flex items-start gap-3 rounded-2xl bg-[#FFF4F0] p-3.5 ring-2 ring-[#E23B3B]" role="status" data-testid="pending-offer">
