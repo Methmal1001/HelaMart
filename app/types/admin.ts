@@ -26,6 +26,7 @@ export type TenantPermission =
   | 'orders.view'
   | 'orders.manage'
   | 'orders.refund'
+  | 'workflow.manage'
   | 'products.view'
   | 'products.manage'
   | 'inventory.manage'
@@ -109,6 +110,11 @@ export interface Tenant {
   defaultHours: string
   deliveryFeeCents: number
   minOrderCents: number
+  /**
+   * This supermarket's own version of the built-in Branch Manager role: what the
+   * admin lets every branch manager do (at their own branches). Unset = the standard set.
+   */
+  branchManagerPermissions?: TenantPermission[]
   /** Branding shoppers see inside the store — only ever set by a HelaMart-approved request. */
   branding?: BrandingProfile
 }
@@ -255,6 +261,82 @@ export interface Customer {
 
 export type OrderStatus = OrderProgress
 
+// ---- Fulfilment workflow: each supermarket runs its orders through its own sections.
+
+export type StageAppliesTo = 'all' | 'delivery' | 'pickup'
+
+/** One section of a supermarket's order workflow (Cashier, Packing, Verification, Delivery…). */
+export interface WorkflowStage {
+  id: string
+  name: string
+  /** What the officers in this section do. */
+  description: string
+  icon: IconName
+  /** Delivery orders, pickup orders or both pass through it. */
+  appliesTo: StageAppliesTo
+  /** Officers assigned by the supermarket admin (they work it at their own branches). */
+  officerIds: string[]
+  /** Button that finishes the section, e.g. "Approve order", "Packing done". */
+  completeLabel: string
+  /** Shopper's timeline while the order is in this section, e.g. "Packing your items". */
+  customerActiveLabel: string
+  /** …and once it's done, e.g. "Packed". */
+  customerDoneLabel: string
+  customerHint: string
+  /** Print the order slip (customer, delivery details, tracking QR) when this section is finished. */
+  printSlip?: boolean
+}
+
+export interface OrderWorkflow {
+  tenantId: string
+  /** A branch's own workflow; absent = the chain default every other branch follows. */
+  branchId?: string
+  stages: WorkflowStage[]
+  updatedAt: string
+  updatedBy?: string
+}
+
+export type StageState = 'waiting' | 'in_progress' | 'on_hold' | 'done'
+
+export interface StageNote {
+  at: string
+  by: string
+  text: string
+  /** Shown on the customer's tracking timeline. */
+  shared: boolean
+}
+
+/** An order's own copy of a section (the workflow at the time it was placed) and its progress. */
+export interface OrderStage {
+  stageId: string
+  name: string
+  icon: IconName
+  completeLabel: string
+  customerActiveLabel: string
+  customerDoneLabel: string
+  customerHint: string
+  state: StageState
+  assigneeId?: string
+  assigneeName?: string
+  startedAt?: string
+  completedAt?: string
+  completedBy?: string
+  holdReason?: string
+  notes: StageNote[]
+  printSlip?: boolean
+}
+
+/** Proof of delivery / collection. */
+export interface OrderReceipt {
+  at: string
+  /** Who confirmed it: the customer scanning the slip QR, the customer in the app, or the rider / counter. */
+  via: 'customer_qr' | 'customer_app' | 'staff'
+  /** Person who took the order (e.g. "Nimal" or "Neighbour — Mrs. Perera"). */
+  receivedBy?: string
+  /** Officer who handed it over. */
+  staffName?: string
+}
+
 export interface OrderEvent {
   at: string
   status: OrderStatus
@@ -277,6 +359,13 @@ export interface AdminOrder {
   payment: { method: 'cod' | 'card'; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
   status: OrderStatus
   history: OrderEvent[]
+  /** The sections this order goes through, and which one it's in (= stages.length once finished). */
+  stages?: OrderStage[]
+  stageIndex?: number
+  /** Secret in the slip's QR: anyone holding the slip can track the order and confirm receipt. */
+  trackToken?: string
+  received?: OrderReceipt
+  slipPrintedAt?: string
   source: 'storefront' | 'sample'
 }
 
@@ -287,6 +376,12 @@ export interface AdminProduct extends Omit<Product, 'stock'> {
   reorderLevel: number
   status: 'active' | 'hidden'
   updatedAt: string
+  /** Branch price overrides (branchId → cents). Other branches use `priceCents`. */
+  branchPrices?: Record<string, number>
+  /** Branches that don't sell it. */
+  notSoldAt?: string[]
+  /** A branch's own product (added by that branch; sold only there). Absent = chain catalogue. */
+  ownerBranchId?: string
 }
 
 export interface AdminCategory {
@@ -333,6 +428,8 @@ export interface PlatformBanner {
 
 export interface AdminOffer extends Offer {
   tenantId: string
+  /** Set on listing: whether you can change it (branch staff: offers only at their branches). */
+  editable?: boolean
   /** Show it to shoppers as "Coming soon" up to 14 days before it starts. */
   announce?: boolean
   /** Branches the offer runs at. Empty = all branches. */

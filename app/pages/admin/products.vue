@@ -2,7 +2,7 @@
 import type { AdminProduct, TableColumn } from '~/types/admin'
 import type { CategoryId, ProductShape } from '~/types'
 import { getCategory } from '~/data/categories'
-import { adjustStock, branchDirectory, createProduct, listProducts, setProductStatus, updateProduct, uploadProductImage, type ProductInput } from '~/services/admin/tenantApi'
+import { adjustStock, branchDirectory, createProduct, deleteProduct, listProducts, setBranchProduct, setProductStatus, updateProduct, uploadProductImage, type ProductInput } from '~/services/admin/tenantApi'
 import { resolveImageUrl } from '~/services/mock/mediaStore'
 import { ImageRejected, prepareProductImage, type PreparedImage } from '~/utils/imageProcessing'
 
@@ -11,13 +11,24 @@ useHead({ title: 'Products & stock' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
+const { confirm } = useAdminConfirm()
 const route = useRoute()
 const products = ref<AdminProduct[]>([])
 const branches = ref<{ id: string; name: string }[]>([])
 const branch = ref('all')
 const loading = ref(true)
-const filter = ref<'all' | 'low' | 'out' | 'hidden'>(route.query.filter === 'low' ? 'low' : 'all')
+const filter = ref<'all' | 'low' | 'out' | 'hidden' | 'not-sold' | 'branch-own'>(route.query.filter === 'low' ? 'low' : 'all')
 const canEdit = computed(() => auth.can('products.manage') && !auth.readOnly.value)
+const isChain = computed(() => auth.isChainLevel.value)
+/**
+ * Chain-level staff edit the chain catalogue; branch staff with "Edit products"
+ * edit their branch's own products, and set prices / range for their branch.
+ */
+const canEditDetails = (p: AdminProduct) => canEdit.value && (isChain.value || (!!p.ownerBranchId && branches.value.some((b) => b.id === p.ownerBranchId)))
+const branchNameOf = (id?: string) => branches.value.find((b) => b.id === id)?.name ?? 'another branch'
+/** Price at the selected branch (its own price, else the chain price). */
+const priceAt = (p: AdminProduct) => (branch.value !== 'all' ? (p.branchPrices?.[branch.value] ?? p.priceCents) : p.priceCents)
+const soldAt = (p: AdminProduct, b: string) => !p.notSoldAt?.includes(b) && (!p.ownerBranchId || p.ownerBranchId === b)
 const canStock = computed(() => auth.can('inventory.manage') && !auth.readOnly.value)
 
 const { categories, load: loadCategories } = useTenantCategories()
@@ -53,13 +64,18 @@ const stockLabel = (p: AdminProduct) => {
 }
 const rows = computed(() =>
   products.value.filter((p) =>
-    filter.value === 'low' ? stockState(p) !== 'in_stock' : filter.value === 'out' ? levelsOf(p).some((n) => n === 0) : filter.value === 'hidden' ? p.status === 'hidden' : true,
+    filter.value === 'low' ? stockState(p) !== 'in_stock'
+    : filter.value === 'out' ? levelsOf(p).some((n) => n === 0)
+    : filter.value === 'hidden' ? p.status === 'hidden'
+    : filter.value === 'not-sold' ? (branch.value === 'all' ? !!p.notSoldAt?.length : !soldAt(p, branch.value))
+    : filter.value === 'branch-own' ? !!p.ownerBranchId
+    : true,
   ),
 )
 const columns: TableColumn[] = [
   { key: 'name', label: 'Product', sortable: true, value: (p: AdminProduct) => `${p.name} ${p.brand}` },
   { key: 'categoryId', label: 'Category', sortable: true, value: (p: AdminProduct) => getCategory(p.categoryId).shortName },
-  { key: 'priceCents', label: 'Price', sortable: true, align: 'right' },
+  { key: 'priceCents', label: 'Price', sortable: true, align: 'right', value: (p: AdminProduct) => priceAt(p) },
   { key: 'stock', label: 'Stock', sortable: true, align: 'right', value: (p: AdminProduct) => stockOf(p) },
   { key: 'status', label: 'Status', sortable: true },
   { key: 'actions', label: '', align: 'right', value: () => '' },
@@ -68,7 +84,7 @@ const columns: TableColumn[] = [
 // ---- create / edit
 const SHAPES: ProductShape[] = ['box', 'tallBox', 'bottle', 'can', 'jar', 'bag', 'carton', 'tray', 'loaf', 'round', 'long', 'roll']
 const editing = ref<AdminProduct | 'new' | null>(null)
-const form = reactive({ name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: 'box' as ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12 })
+const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: 'box' as ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12 })
 const formError = ref('')
 const saving = ref(false)
 
@@ -135,7 +151,7 @@ function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
   void resetPhoto(p === 'new' ? undefined : p.image)
-  if (p === 'new') Object.assign(form, { name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
+  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
   else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), badge: p.badge ?? '' })
 }
 
@@ -145,6 +161,7 @@ async function save() {
     name: form.name, brand: form.brand, categoryId: form.categoryId, size: form.size, unit: form.unit,
     priceCents: Math.round(Number.parseFloat(form.price) * 100), description: form.description, shape: form.shape,
     color: form.color, accent: form.accent, badge: form.badge || undefined, reorderLevel: Math.floor(Number(form.reorderLevel)),
+    ownerBranchId: editing.value === 'new' ? form.owner || undefined : undefined,
   }
   saving.value = true
   try {
@@ -158,7 +175,7 @@ async function save() {
     if (editing.value === 'new') {
       const p = await auth.call((t) => createProduct(t, input))
       products.value = [p, ...products.value]
-      notify.ok(`${p.name} added to every branch — receive stock to start selling`)
+      notify.ok(p.ownerBranchId ? `${p.name} added for ${branchNameOf(p.ownerBranchId)} only — receive stock to start selling` : `${p.name} added to every branch — receive stock to start selling`)
     } else if (editing.value) {
       const id = editing.value.id
       const p = await auth.call((t) => updateProduct(t, id, input))
@@ -178,6 +195,48 @@ async function toggleStatus(p: AdminProduct) {
     const u = await auth.call((t) => setProductStatus(t, p.id, p.status === 'active' ? 'hidden' : 'active'))
     products.value = products.value.map((x) => (x.id === u.id ? { ...u, stock: x.stock } : x))
     notify.ok(u.status === 'hidden' ? `${u.name} hidden from shoppers` : `${u.name} is visible again`)
+  } catch (e) {
+    notify.error(e)
+  }
+}
+
+// ---- branch price & range
+const branchFor = ref<AdminProduct | null>(null)
+const branchRows = ref<{ id: string; name: string; sold: boolean; price: string; busy: boolean }[]>([])
+function openBranch(p: AdminProduct) {
+  branchFor.value = p
+  const list = p.ownerBranchId ? branches.value.filter((b) => b.id === p.ownerBranchId) : branches.value
+  branchRows.value = list.map((b) => ({ id: b.id, name: b.name, sold: soldAt(p, b.id), price: p.branchPrices?.[b.id] ? (p.branchPrices[b.id]! / 100).toFixed(2) : '', busy: false }))
+}
+async function saveBranchRow(row: (typeof branchRows.value)[number]) {
+  const p = branchFor.value
+  if (!p) return
+  const cents = row.price.trim() ? Math.round(Number.parseFloat(row.price) * 100) : null
+  if (cents !== null && !(cents > 0)) return notify.error(new Error('Enter a valid price, or leave it empty for the chain price.'))
+  row.busy = true
+  try {
+    const u = await auth.call((t) => setBranchProduct(t, p.id, row.id, { priceCents: cents, sold: row.sold }))
+    products.value = products.value.map((x) => (x.id === u.id ? { ...u, stock: x.stock } : x))
+    branchFor.value = { ...u, stock: p.stock }
+    notify.ok(`${u.name} at ${row.name}: ${row.sold ? `sold at ${formatLKR(u.branchPrices?.[row.id] ?? u.priceCents)}` : 'not sold'}`)
+  } catch (e) {
+    notify.error(e)
+  } finally {
+    row.busy = false
+  }
+}
+async function remove(p: AdminProduct) {
+  const r = await confirm({
+    title: `Remove ${p.name}?`,
+    message: p.ownerBranchId ? `It’s taken off ${branchNameOf(p.ownerBranchId)}’s shelves for good. Past orders keep their bills.` : 'It’s removed from every branch for good. Past orders keep their bills; offers drop it. To stop selling it at one branch only, use “Branch”.',
+    confirmLabel: 'Remove product',
+    tone: 'danger',
+  })
+  if (!r.ok) return
+  try {
+    await auth.call((t) => deleteProduct(t, p.id))
+    products.value = products.value.filter((x) => x.id !== p.id)
+    notify.ok(`${p.name} removed`)
   } catch (e) {
     notify.error(e)
   }
@@ -209,7 +268,7 @@ async function saveStock() {
 
 <template>
   <div>
-    <AdminPageHeader title="Products & stock" :description="auth.isChainLevel.value ? 'Chain-wide catalogue and prices, with stock held at each branch.' : 'Your branch’s stock. Prices are set by the chain.'">
+    <AdminPageHeader title="Products & stock" :description="isChain ? 'The chain catalogue, each branch’s own prices and range, and stock at every branch.' : canEdit ? 'Your branch’s range, prices, own products and stock. The chain catalogue is managed by your supermarket admin.' : 'Your branch’s products and stock.'">
       <button v-if="canEdit" type="button" class="btn-primary h-10" @click="openEdit('new')"><AppIcon name="plus" :size="17" />Add product</button>
     </AdminPageHeader>
 
@@ -224,16 +283,22 @@ async function saveStock() {
           <option value="low">Low or out of stock</option>
           <option value="out">Out of stock</option>
           <option value="hidden">Hidden</option>
+          <option value="not-sold">{{ branch === 'all' ? 'Not sold at some branches' : 'Not sold at this branch' }}</option>
+          <option value="branch-own">Branch’s own products</option>
         </select>
       </template>
       <template #cell-name="{ row }">
         <div class="flex items-center gap-3">
           <ProductThumb :product="row" class="size-10 shrink-0" rounded="rounded-lg" />
-          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span></span></span>
+          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span><span v-if="row.ownerBranchId" class="ml-1.5 rounded bg-hela-green-50 px-1 text-[0.65rem] font-semibold text-hela-green" :data-testid="`own-${row.id}`">{{ branchNameOf(row.ownerBranchId) }} only</span><span v-if="branch !== 'all' && !soldAt(row, branch)" class="ml-1.5 rounded bg-[#FBEAEA] px-1 text-[0.65rem] font-semibold text-[#8A2E2E]">Not sold here</span></span></span>
         </div>
       </template>
       <template #cell-categoryId="{ row }"><span class="text-muted">{{ getCategory(row.categoryId).shortName }}</span></template>
-      <template #cell-priceCents="{ row }"><span class="font-semibold tabular-nums">{{ formatLKR(row.priceCents) }}</span></template>
+      <template #cell-priceCents="{ row }">
+        <span class="font-semibold tabular-nums">{{ formatLKR(priceAt(row)) }}</span>
+        <span v-if="branch !== 'all' && row.branchPrices?.[branch]" class="block text-[0.65rem] font-semibold text-hela-gold-600" :title="`Chain price ${formatLKR(row.priceCents)}`">Branch price</span>
+        <span v-else-if="branch === 'all' && row.branchPrices && Object.keys(row.branchPrices).length" class="block text-[0.65rem] text-muted">{{ Object.keys(row.branchPrices).length }} branch price{{ Object.keys(row.branchPrices).length === 1 ? '' : 's' }}</span>
+      </template>
       <template #cell-stock="{ row }">
         <span class="inline-flex items-center gap-2" :title="branches.map((b) => `${b.name}: ${row.stock[b.id] ?? 0}`).join('\n')">
           <span class="tabular-nums">{{ stockOf(row) }}</span>
@@ -244,16 +309,25 @@ async function saveStock() {
       <template #cell-actions="{ row }">
         <div class="flex justify-end gap-1">
           <button v-if="canStock" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Adjust stock for ${row.name}`" @click="openStock(row)"><AppIcon name="package" :size="14" />Stock</button>
-          <button v-if="canEdit" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Edit ${row.name}`" @click="openEdit(row)"><AppIcon name="edit" :size="14" />Edit</button>
-          <button v-if="canEdit" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="row.status === 'active' ? `Hide ${row.name}` : `Show ${row.name}`" @click="toggleStatus(row)">
+          <button v-if="canEdit" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Branch price and range for ${row.name}`" :data-testid="`branch-${row.id}`" @click="openBranch(row)"><AppIcon name="store" :size="14" />Branch</button>
+          <button v-if="canEditDetails(row)" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="`Edit ${row.name}`" @click="openEdit(row)"><AppIcon name="edit" :size="14" />Edit</button>
+          <button v-if="canEditDetails(row)" type="button" class="btn-ghost h-8 px-2.5 text-xs" :aria-label="row.status === 'active' ? `Hide ${row.name}` : `Show ${row.name}`" @click="toggleStatus(row)">
             <AppIcon :name="row.status === 'active' ? 'eye-off' : 'eye'" :size="14" />
           </button>
+          <button v-if="canEditDetails(row)" type="button" class="btn-ghost h-8 px-2 text-xs text-[#8A2E2E]" :aria-label="`Remove ${row.name}`" :data-testid="`remove-${row.id}`" @click="remove(row)"><AppIcon name="trash" :size="14" /></button>
         </div>
       </template>
     </AdminDataTable>
 
-    <AdminModal :open="!!editing" :title="editing === 'new' ? 'Add product' : 'Edit product'" description="Product details and price apply to every branch." size="lg" @close="editing = null">
+    <AdminModal :open="!!editing" :title="editing === 'new' ? 'Add product' : 'Edit product'" :description="editing && editing !== 'new' && editing.ownerBranchId ? `${branchNameOf(editing.ownerBranchId)}’s own product.` : editing === 'new' ? (isChain ? 'Add it to the chain catalogue, or for one branch only.' : 'Added for your branch only.') : 'Details and chain price apply to every branch (branches can set their own price).'" size="lg" @close="editing = null">
       <form id="product-form" class="grid gap-3 sm:grid-cols-2" @submit.prevent="save">
+        <label v-if="editing === 'new' && (isChain || branches.length > 1)" class="sm:col-span-2">
+          <span class="field-label">Sold at</span>
+          <select v-model="form.owner" class="field" data-testid="product-owner">
+            <option v-if="isChain" value="">Every branch (chain catalogue)</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }} branch only</option>
+          </select>
+        </label>
         <label class="sm:col-span-2"><span class="field-label">Name</span><input v-model="form.name" class="field" maxlength="80" data-autofocus required></label>
         <label><span class="field-label">Brand</span><input v-model="form.brand" class="field" maxlength="60"></label>
         <label><span class="field-label">Category</span><select v-model="form.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}{{ c.visible ? '' : ' (hidden)' }}</option></select></label>
@@ -301,6 +375,18 @@ async function saveStock() {
         <button type="button" class="btn-ghost h-9" @click="editing = null">Cancel</button>
         <button type="submit" form="product-form" class="btn-primary h-9" :disabled="saving">{{ saving ? 'Saving…' : 'Save product' }}</button>
       </template>
+    </AdminModal>
+
+    <AdminModal :open="!!branchFor" :title="`Branch price & range — ${branchFor?.name ?? ''}`" :description="branchFor ? `Chain price ${formatLKR(branchFor.priceCents)}. Leave a branch’s price empty to use it.` : ''" size="md" @close="branchFor = null">
+      <ul class="divide-y divide-line rounded-xl ring-1 ring-line" data-testid="branch-rows">
+        <li v-for="r in branchRows" :key="r.id" class="flex flex-wrap items-center gap-3 px-3 py-2.5">
+          <span class="min-w-0 flex-1 font-semibold text-ink">{{ r.name }}</span>
+          <label class="flex items-center gap-2 text-sm"><input v-model="r.sold" type="checkbox" class="size-4 accent-hela-green" :data-testid="`branch-sold-${r.id}`">Sold here</label>
+          <label class="flex items-center gap-1.5 text-sm"><span class="text-muted">Rs.</span><input v-model="r.price" class="field h-9 w-28" inputmode="decimal" :placeholder="branchFor ? (branchFor.priceCents / 100).toFixed(2) : ''" :disabled="!r.sold" :aria-label="`Price at ${r.name}`" :data-testid="`branch-price-${r.id}`"></label>
+          <button type="button" class="btn-primary h-9 px-3 text-sm" :disabled="r.busy" :data-testid="`branch-save-${r.id}`" @click="saveBranchRow(r)">Save</button>
+        </li>
+      </ul>
+      <p class="mt-2 text-xs text-muted">{{ isChain ? 'You can set every branch.' : 'You can set your own branch.' }} Shoppers at each branch see its price; branches that don’t sell it don’t show it on their shelves.</p>
     </AdminModal>
 
     <AdminModal :open="!!stockFor" :title="`Adjust stock — ${stockFor?.name ?? ''}`" size="sm" @close="stockFor = null">

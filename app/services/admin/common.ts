@@ -1,5 +1,5 @@
 import type { AuditEntry, Permission, Role, StaffTask, StaffUser, StaffView, TaskStatus } from '~/types/admin'
-import { ROLE_IDS, permissionsFor } from '~/data/admin/permissions'
+import { BRANCH_MANAGER_PERMISSIONS, DELEGABLE_PERMISSIONS, ROLE_IDS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
 import { EMAIL_RE, isSriLankanMobile } from '~/utils/validation'
 import { ApiError } from '../apiError'
 import { hashPassword, latency, randomId } from '../mock/server'
@@ -14,7 +14,9 @@ import {
   requirePermission,
   requireStepUp,
   requireWritable,
+  requireTenant,
   roleOf,
+  rolePermissions,
   sanitize,
   toStaffView,
   type AdminContext,
@@ -215,8 +217,53 @@ export function listTeamRoles(token: string): Promise<(Role & { members: number 
     if (!ctx.permissions.has(PERM[ctx.scope].roles)) requirePermission(ctx, PERM[ctx.scope].viewStaff)
     const people = ctx.db.staff.filter((s) => s.tenantId === (ctx.tenant?.id ?? null))
     return rolesOf(ctx)
-      .map((r) => ({ ...r, members: people.filter((s) => s.roleId === r.id).length }))
+      .map((r) => ({ ...r, permissions: rolePermissions(ctx.db, r, ctx.tenant?.id ?? null), members: people.filter((s) => s.roleId === r.id).length }))
       .sort((a, b) => b.level - a.level)
+  })
+}
+
+// ---- what this supermarket lets its branch managers do
+
+export function getBranchManagerAccess(token: string): Promise<{ permissions: Permission[]; standard: Permission[]; delegable: Permission[]; managers: number; customised: boolean }> {
+  return run(token, (ctx) => {
+    const t = requireTenant(ctx)
+    if (!ctx.permissions.has('roles.manage')) requirePermission(ctx, 'staff.view')
+    const role = ctx.db.roles.find((r) => r.id === ROLE_IDS.branchManager)!
+    return {
+      permissions: rolePermissions(ctx.db, role, t.id),
+      standard: [...BRANCH_MANAGER_PERMISSIONS],
+      delegable: [...DELEGABLE_PERMISSIONS],
+      managers: ctx.db.staff.filter((s) => s.tenantId === t.id && s.roleId === ROLE_IDS.branchManager).length,
+      customised: !!t.branchManagerPermissions,
+    }
+  })
+}
+
+/**
+ * The supermarket admin chooses what every branch manager can do at their own
+ * branches (add/edit products and prices, offers, officers, the order workflow…).
+ * Chain-wide settings, roles and categories always stay with the admin.
+ */
+export function setBranchManagerAccess(token: string, permissions: Permission[] | null): Promise<Permission[]> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'roles.manage')
+    requireStepUp(ctx)
+    const t = requireWritable(ctx)
+    if (!isChainLevel(ctx)) throw new ApiError(403, 'Only your supermarket’s admin can change what branch managers can do.', 'FORBIDDEN')
+    const role = ctx.db.roles.find((r) => r.id === ROLE_IDS.branchManager)!
+    const before = new Set(rolePermissions(ctx.db, role, t.id))
+    if (permissions === null) {
+      t.branchManagerPermissions = undefined
+    } else {
+      const next = [...new Set(permissions)].filter((p) => (DELEGABLE_PERMISSIONS as Permission[]).includes(p)) as typeof t.branchManagerPermissions & Permission[]
+      assertGrantable(ctx, next)
+      t.branchManagerPermissions = next
+    }
+    const after = new Set(rolePermissions(ctx.db, role, t.id))
+    const added = [...after].filter((p) => !before.has(p)).map(permissionLabel)
+    const removed = [...before].filter((p) => !after.has(p)).map(permissionLabel)
+    audit(ctx.db, ctx, 'role.branch_manager.update', 'Branch Manager', [added.length && `+ ${added.join(', ')}`, removed.length && `− ${removed.join(', ')}`].filter(Boolean).join(' · ') || (permissions === null ? 'Back to the standard set' : 'No change'), 'warning')
+    return [...after]
   })
 }
 

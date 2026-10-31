@@ -122,7 +122,12 @@ export function saveBranch(token: string, input: BranchInput, id?: string): Prom
   return run(token, (ctx) => {
     requirePermission(ctx, 'branches.manage')
     const t = requireWritable(ctx)
-    if (!isChainLevel(ctx)) throw new ApiError(403, 'Only chain-level admins can open or edit branches.', 'FORBIDDEN')
+    // Branch managers keep their own branch's details up to date; opening branches stays with the chain.
+    if (!id && !isChainLevel(ctx)) throw new ApiError(403, 'Only chain-level admins can open new branches.', 'FORBIDDEN')
+    if (id) assertBranchAccess(ctx, id)
+    if (id && !isChainLevel(ctx) && (input.managerId || undefined) !== ctx.db.branches.find((b) => b.id === id)?.managerId) {
+      throw new ApiError(403, 'Only chain-level admins appoint branch heads.', 'FORBIDDEN')
+    }
     const name = sanitize(input.name, 60)
     if (name.length < 2) throw new ApiError(422, 'Enter the branch name.')
     if (!sanitize(input.address, 200)) throw new ApiError(422, 'Enter the branch address.')
@@ -200,18 +205,22 @@ export function listOrders(token: string): Promise<AdminOrder[]> {
   })
 }
 
+/**
+ * Orders move through their sections on the Order desk (orderDeskApi). Here a
+ * supervisor can only cancel an open order or refund a completed one.
+ */
 const NEXT: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['packing', 'cancelled'],
-  packing: ['out_for_delivery', 'ready_for_pickup', 'cancelled'],
-  out_for_delivery: ['delivered'],
-  ready_for_pickup: ['delivered'],
+  pending: ['cancelled'],
+  packing: ['cancelled'],
+  out_for_delivery: ['cancelled'],
+  ready_for_pickup: ['cancelled'],
   delivered: ['refunded'],
   cancelled: [],
   refunded: [],
 }
 
 export function allowedTransitions(order: AdminOrder): OrderStatus[] {
-  return NEXT[order.status].filter((s) => (s === 'out_for_delivery' ? order.delivery.method === 'delivery' : s === 'ready_for_pickup' ? order.delivery.method === 'pickup' : true))
+  return NEXT[order.status]
 }
 
 export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = ''): Promise<AdminOrder> {
@@ -245,7 +254,11 @@ export function listProducts(token: string): Promise<AdminProduct[]> {
     requirePermission(ctx, 'products.view')
     const allowed = allowedBranchIds(ctx)
     // Branch staff only see their own branches' stock figures.
-    return inTenant(ctx, ctx.db.products).map((p) => ({ ...p, stock: Object.fromEntries(Object.entries(p.stock).filter(([b]) => allowed.has(b))) }))
+    const mine = (r?: Record<string, number>) => (r ? Object.fromEntries(Object.entries(r).filter(([b]) => allowed.has(b))) : undefined)
+    return inTenant(ctx, ctx.db.products)
+      // Another branch's own products aren't shown to branch staff.
+      .filter((p) => !p.ownerBranchId || isChainLevel(ctx) || allowed.has(p.ownerBranchId))
+      .map((p) => ({ ...p, stock: mine(p.stock)!, branchPrices: mine(p.branchPrices) }))
   })
 }
 
@@ -264,6 +277,20 @@ export interface ProductInput {
   reorderLevel: number
   /** `media:<id>` from uploadProductImage, or null to remove the photo. */
   image?: string | null
+  /** New products only: make it this branch's own product (branch staff always add to their branch). */
+  ownerBranchId?: string
+}
+
+/**
+ * Who edits what: chain-level staff own the chain catalogue (details, chain
+ * price, every branch's settings). Branch staff with "Edit products" manage
+ * their own branch — its prices and range — and products their branch added.
+ */
+function canEditDetails(ctx: AdminContext, p: AdminProduct) {
+  return isChainLevel(ctx) || (!!p.ownerBranchId && allowedBranchIds(ctx).has(p.ownerBranchId))
+}
+function requireDetails(ctx: AdminContext, p: AdminProduct) {
+  if (!canEditDetails(ctx, p)) throw new ApiError(403, `${p.name} is in the chain catalogue — only chain-level admins change its details. You can set your branch’s price and whether your branch sells it.`, 'CHAIN_CATALOGUE')
 }
 
 function validateProduct(input: ProductInput, ctx?: AdminContext) {
@@ -285,8 +312,15 @@ export function createProduct(token: string, input: ProductInput): Promise<Admin
     requirePermission(ctx, 'products.manage')
     const t = requireWritable(ctx)
     validateProduct(input, ctx)
+    const allowed = allowedBranchIds(ctx)
+    // Branch staff add products for their own branch; chain-level staff may too.
+    const owner = isChainLevel(ctx) ? input.ownerBranchId || undefined : (input.ownerBranchId ?? [...allowed][0])
+    if (owner && !allowed.has(owner)) throw new ApiError(403, 'You can only add products for your own branch.', 'BRANCH_FORBIDDEN')
+    const { ownerBranchId: _o, ...fields } = input
     const product: AdminProduct = {
-      ...input,
+      ...fields,
+      ownerBranchId: owner,
+      notSoldAt: owner ? ctx.db.branches.filter((b) => b.tenantId === t.id && b.id !== owner).map((b) => b.id) : undefined,
       image: input.image || undefined,
       id: `${sanitize(input.name, 40).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomId(2)}`,
       tenantId: t.id,
@@ -298,7 +332,7 @@ export function createProduct(token: string, input: ProductInput): Promise<Admin
       updatedAt: nowIso(),
     }
     ctx.db.products.unshift(product)
-    audit(ctx.db, ctx, 'product.create', product.name, money(product.priceCents))
+    audit(ctx.db, ctx, 'product.create', product.name, `${money(product.priceCents)}${owner ? ` · ${ctx.db.branches.find((b) => b.id === owner)?.name} branch only` : ''}`)
     return product
   })
 }
@@ -309,10 +343,12 @@ export function updateProduct(token: string, id: string, input: ProductInput): P
     requireWritable(ctx)
     validateProduct(input, ctx)
     const p = ownedOrNotFound(ctx, ctx.db.products.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Product')
+    requireDetails(ctx, p)
     const changes: string[] = []
     if (p.priceCents !== input.priceCents) changes.push(`price ${money(p.priceCents)} → ${money(input.priceCents)}`)
     if ((p.image ?? null) !== (input.image ?? null)) changes.push(input.image ? 'new product photo' : 'photo removed')
-    Object.assign(p, { ...input, image: input.image || undefined, name: sanitize(input.name, 80), brand: sanitize(input.brand, 60), description: sanitize(input.description, 300), updatedAt: nowIso() })
+    const { ownerBranchId: _o, ...fields } = input
+    Object.assign(p, { ...fields, image: input.image || undefined, name: sanitize(input.name, 80), brand: sanitize(input.brand, 60), description: sanitize(input.description, 300), updatedAt: nowIso() })
     audit(ctx.db, ctx, 'product.update', p.name, changes.join('; ') || 'Details updated')
     return p
   })
@@ -323,10 +359,71 @@ export function setProductStatus(token: string, id: string, status: AdminProduct
     requirePermission(ctx, 'products.manage')
     requireWritable(ctx)
     const p = ownedOrNotFound(ctx, ctx.db.products.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Product')
+    requireDetails(ctx, p)
     p.status = status
     p.updatedAt = nowIso()
     audit(ctx.db, ctx, status === 'hidden' ? 'product.hide' : 'product.show', p.name)
     return p
+  })
+}
+
+/**
+ * A branch's own price and range for a product: its price (null = the chain
+ * price) and whether the branch sells it. Branch staff for their own
+ * branches; chain-level staff for any branch.
+ */
+export function setBranchProduct(token: string, id: string, branchId: string, input: { priceCents: number | null; sold: boolean }): Promise<AdminProduct> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'products.manage')
+    requireWritable(ctx)
+    assertBranchAccess(ctx, branchId)
+    const p = ownedOrNotFound(ctx, ctx.db.products.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Product')
+    const branch = ctx.db.branches.find((b) => b.id === branchId)!
+    if (p.ownerBranchId && p.ownerBranchId !== branchId) throw new ApiError(422, `${p.name} is ${ctx.db.branches.find((b) => b.id === p.ownerBranchId)?.name ?? 'another'} branch’s own product.`)
+    if (input.priceCents !== null && (!Number.isInteger(input.priceCents) || input.priceCents <= 0 || input.priceCents > 100_000_000)) throw new ApiError(422, 'Enter a valid price.')
+    const changes: string[] = []
+    const was = p.branchPrices?.[branchId] ?? null
+    if (was !== input.priceCents) {
+      p.branchPrices ??= {}
+      if (input.priceCents === null || input.priceCents === p.priceCents) delete p.branchPrices[branchId]
+      else p.branchPrices[branchId] = input.priceCents
+      changes.push(input.priceCents === null ? 'back to the chain price' : `price ${money(input.priceCents)}`)
+    }
+    const notSold = new Set(p.notSoldAt ?? [])
+    if (input.sold === notSold.has(branchId)) {
+      if (input.sold) notSold.delete(branchId)
+      else notSold.add(branchId)
+      changes.push(input.sold ? 'now sold here' : 'no longer sold here')
+    }
+    p.notSoldAt = [...notSold]
+    p.updatedAt = nowIso()
+    audit(ctx.db, ctx, 'product.branch', `${p.name} · ${branch.name}`, changes.join('; ') || 'No change')
+    return p
+  })
+}
+
+/**
+ * Remove a product for good (chain-level for the chain catalogue; branch staff
+ * for their branch's own products). Past orders keep their lines; offers drop it.
+ */
+export function deleteProduct(token: string, id: string): Promise<void> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'products.manage')
+    requireWritable(ctx)
+    const p = ownedOrNotFound(ctx, ctx.db.products.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Product')
+    requireDetails(ctx, p)
+    ctx.db.products = ctx.db.products.filter((x) => x !== p)
+    for (const o of inTenant(ctx, ctx.db.offers)) {
+      const r = o.rule
+      if (r.kind === 'percent-product' && r.productId === id) o.status = 'paused'
+      const t = 'target' in r ? r.target : undefined
+      if (t?.productIds.includes(id)) {
+        t.productIds = t.productIds.filter((x) => x !== id)
+        if (!t.all && !t.categoryIds.length && !t.productIds.length) o.status = 'paused'
+      }
+      if (r.kind === 'bxgy' && r.productIds?.includes(id)) r.productIds = r.productIds.filter((x) => x !== id)
+    }
+    audit(ctx.db, ctx, 'product.delete', p.name, p.ownerBranchId ? `${ctx.db.branches.find((b) => b.id === p.ownerBranchId)?.name} branch product` : 'Chain catalogue', 'warning')
   })
 }
 
@@ -550,8 +647,20 @@ export function listOffers(token: string): Promise<AdminOffer[]> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'promotions.view')
     const allowed = allowedBranchIds(ctx)
-    return inTenant(ctx, ctx.db.offers).filter((o) => !o.branchIds.length || o.branchIds.some((b) => allowed.has(b)))
+    return inTenant(ctx, ctx.db.offers)
+      .filter((o) => !o.branchIds.length || o.branchIds.some((b) => allowed.has(b)))
+      .map((o) => ({ ...o, editable: offerInScope(ctx, o) }))
   })
+}
+
+/** Chain-level staff manage every offer; branch staff only offers that run solely at their branches. */
+function offerInScope(ctx: AdminContext, o: AdminOffer) {
+  if (isChainLevel(ctx)) return true
+  const allowed = allowedBranchIds(ctx)
+  return o.branchIds.length > 0 && o.branchIds.every((b) => allowed.has(b))
+}
+function requireOfferScope(ctx: AdminContext, o: AdminOffer) {
+  if (!offerInScope(ctx, o)) throw new ApiError(403, `${o.code} runs at other branches too — only chain-level admins can change it.`, 'BRANCH_FORBIDDEN')
 }
 
 export interface OfferInput {
@@ -658,6 +767,7 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
     const base = { ...input, announce: !!input.announce && !!conditions?.startsAt, conditions, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
     if (id) {
       const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+      requireOfferScope(ctx, o)
       Object.assign(o, base)
       audit(ctx.db, ctx, 'promotion.update', o.code, o.title)
       return o
@@ -674,6 +784,7 @@ export function setOfferStatus(token: string, id: string, status: AdminOffer['st
     requirePermission(ctx, 'promotions.manage')
     requireWritable(ctx)
     const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+    requireOfferScope(ctx, o)
     o.status = status
     audit(ctx.db, ctx, status === 'paused' ? 'promotion.pause' : 'promotion.resume', o.code)
     return o
@@ -686,6 +797,7 @@ export function setOfferSchedule(token: string, id: string, action: 'publish-now
     requirePermission(ctx, 'promotions.manage')
     requireWritable(ctx)
     const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+    requireOfferScope(ctx, o)
     if (action === 'publish-now') {
       if (o.conditions) delete o.conditions.startsAt
       o.status = 'active'
@@ -700,6 +812,7 @@ export function deleteOffer(token: string, id: string): Promise<void> {
     requirePermission(ctx, 'promotions.manage')
     requireWritable(ctx)
     const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+    requireOfferScope(ctx, o)
     ctx.db.offers = ctx.db.offers.filter((x) => x.id !== id)
     audit(ctx.db, ctx, 'promotion.delete', o.code, o.title, 'warning')
   })

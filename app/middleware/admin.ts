@@ -22,5 +22,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const forScope = raw && !Array.isArray(raw) && typeof raw === 'object' ? raw[myScope] : raw
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && !forScope) return navigateTo({ path: '/admin/forbidden', query: { from: to.fullPath } })
   const list = forScope ? (Array.isArray(forScope) ? forScope : [forScope]) : []
-  if (list.length && !auth.can(...list)) return navigateTo({ path: '/admin/forbidden', query: { from: to.fullPath } })
+  if (list.length && !auth.can(...list)) {
+    // Section officers (packers, riders…) without a dashboard start on their order desk.
+    if (to.path === '/admin' && myScope === 'tenant') return navigateTo('/admin/order-desk', { replace: true })
+    return navigateTo({ path: '/admin/forbidden', query: { from: to.fullPath } })
+  }
 })

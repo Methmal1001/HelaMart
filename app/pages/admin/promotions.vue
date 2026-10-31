@@ -277,7 +277,8 @@ async function remove(o: AdminOffer) {
       <template #cell-expiresAt="{ row }"><span class="text-xs text-muted">{{ scheduleText(lifeOf(row)) }}</span><span v-if="row.announce && stateOf(row) === 'scheduled'" class="block text-[0.65rem] font-semibold text-[#6d5622]">Announced as “Coming soon”</span></template>
       <template #cell-status="{ row }"><AdminBadge :value="stateOf(row)" /></template>
       <template #cell-actions="{ row }">
-        <div v-if="canManage" class="flex justify-end gap-1">
+        <span v-if="canManage && row.editable === false" class="text-xs text-muted" title="Runs at other branches too — managed by chain-level admins">Chain offer</span>
+        <div v-else-if="canManage" class="flex justify-end gap-1">
           <button type="button" class="btn-ghost h-8 px-2.5 text-xs" @click="open(row)"><AppIcon name="edit" :size="14" />Edit</button>
           <button v-if="stateOf(row) === 'scheduled'" type="button" class="btn-ghost h-8 px-2.5 text-xs whitespace-nowrap text-hela-green" @click="quick(row, 'publish-now')">Publish now</button>
           <button v-if="stateOf(row) === 'live'" type="button" class="btn-ghost h-8 px-2.5 text-xs whitespace-nowrap" @click="quick(row, 'end-now')">End now</button>

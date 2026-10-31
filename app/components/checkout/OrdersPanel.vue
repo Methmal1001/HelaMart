@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { progressOf } from '~/composables/useMyOrders'
+import { confirmMyOrderReceived } from '~/services/orderService'
 
 /**
  * "Your orders": every order the customer has placed, newest first. Tap one to
@@ -8,6 +9,22 @@ import { progressOf } from '~/composables/useMyOrders'
 const { panel, closePanel, openPanel } = useStoreUi()
 const { isAuthenticated } = useAuth()
 const { orders, loaded, loading, error, viewingId, load } = useMyOrders()
+const { authorized } = useAuth()
+const { show } = useToasts()
+const confirming = ref(false)
+/** The customer confirms they have the order (same as scanning the slip's QR). */
+async function confirmReceived(id: string) {
+  confirming.value = true
+  try {
+    await authorized((t) => confirmMyOrderReceived(t, id))
+    await load()
+    show('Thanks! The supermarket has been told you received your order.', 'success')
+  } catch (e) {
+    show((e as Error).message, 'error')
+  } finally {
+    confirming.value = false
+  }
+}
 
 const open = computed(() => panel.value === 'orders' && isAuthenticated.value)
 watch(open, (v) => v && load(), { immediate: true })
@@ -52,6 +69,18 @@ function close() {
         <span class="rounded-full px-2.5 py-1 font-bold" :class="progressOf(viewing).tone" data-testid="order-progress">{{ progressOf(viewing).label }}</span>
         <span class="text-muted">{{ viewing.storeName }}<template v-if="viewing.branchName"> · {{ viewing.branchName }}</template></span>
       </div>
+      <div v-if="viewing.canConfirmReceipt" class="mb-3 rounded-2xl bg-white p-4 ring-2 ring-hela-gold" data-testid="confirm-receipt">
+        <p class="font-bold text-ink">{{ viewing.delivery.method === 'pickup' ? 'Collected your order?' : 'Got your order?' }}</p>
+        <p class="mt-0.5 text-xs text-muted">Confirm here, or scan the QR code on the order slip that came with it.</p>
+        <button type="button" class="btn-primary mt-3 h-11 w-full" :disabled="confirming" data-testid="confirm-receipt-btn" @click="confirmReceived(viewing.id)">
+          <AppIcon name="check" :size="17" :stroke-width="3" />{{ confirming ? 'Confirming…' : viewing.delivery.method === 'pickup' ? 'Yes, I’ve collected it' : 'Yes, I’ve received it' }}
+        </button>
+      </div>
+      <p v-else-if="viewing.received" class="mb-3 flex items-center gap-2 rounded-xl bg-hela-green-50 px-3 py-2 text-xs font-semibold text-hela-green" data-testid="receipt-confirmed">
+        <AppIcon name="check" :size="14" :stroke-width="3" />
+        {{ viewing.delivery.method === 'pickup' ? 'Collected' : 'Received' }}<template v-if="viewing.received.receivedBy"> by {{ viewing.received.receivedBy }}</template> · {{ when(viewing.received.at) }}
+        · {{ viewing.received.via === 'customer_qr' ? 'confirmed by QR scan' : viewing.received.via === 'customer_app' ? 'confirmed by you' : 'confirmed by the store' }}
+      </p>
       <OrderTracking :order="viewing" class="mb-3" />
       <OrderReceipt :order="viewing" />
     </div>

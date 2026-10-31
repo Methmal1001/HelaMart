@@ -36,6 +36,7 @@ export function getLocalStoreCatalog(storeId: string, branchId: string): Product
   // Only products in categories that exist and are visible (removed or hidden categories take their products off the shelves).
   const shown = new Set(db.categories.filter((c) => c.tenantId === storeId && c.visible).map((c) => c.id))
   return db.products
-    .filter((p) => p.tenantId === storeId && p.status === 'active' && shown.has(p.categoryId))
-    .map(({ tenantId: _t, stock, reorderLevel: _r, status: _s, updatedAt: _u, ...product }) => ({ ...product, stock: stock[branchId] ?? 0 }))
+    // The branch's own range (not "not sold here", not another branch's own product) at the branch's price.
+    .filter((p) => p.tenantId === storeId && p.status === 'active' && shown.has(p.categoryId) && !p.notSoldAt?.includes(branchId) && (!p.ownerBranchId || p.ownerBranchId === branchId))
+    .map(({ tenantId: _t, stock, reorderLevel: _r, status: _s, updatedAt: _u, branchPrices, notSoldAt: _n, ownerBranchId: _ob, ...product }) => ({ ...product, priceCents: branchPrices?.[branchId] ?? product.priceCents, stock: stock[branchId] ?? 0 }))
 }

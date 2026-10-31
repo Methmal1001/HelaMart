@@ -388,6 +388,45 @@ export interface Order {
   progress?: OrderProgress
   /** Each step the supermarket recorded (packed, out for delivery, delivered…), oldest first. */
   tracking?: { at: string; status: OrderProgress; note?: string }[]
+  /** The supermarket's own fulfilment steps, as the customer sees them. */
+  steps?: TrackingStep[]
+  /** Short label of where the order is now ("Packing your items"). */
+  stageLabel?: string
+  /** Changes whenever the order moves on (used to announce updates). */
+  trackKey?: string
+  /** Delivered / collected — who confirmed it and when. */
+  received?: { at: string; via: 'customer_qr' | 'customer_app' | 'staff'; receivedBy?: string }
+  /** It's with the rider or at the pickup counter: the customer can confirm they have it. */
+  canConfirmReceipt?: boolean
+}
+
+/** What the tracking QR on an order slip shows (public: no phone number or address). */
+export interface PublicTracking {
+  number: string
+  createdAt: string
+  storeName: string
+  branchName: string
+  customerFirstName: string
+  delivery: { method: FulfilmentMethod; city: string }
+  lines: { name: string; size: string; quantity: number }[]
+  itemCount: number
+  totalCents: number
+  progress: OrderProgress
+  stageLabel?: string
+  steps?: TrackingStep[]
+  tracking?: { at: string; status: OrderProgress; note?: string }[]
+  received?: Order['received']
+  canConfirmReceipt: boolean
+}
+
+export interface TrackingStep {
+  label: string
+  hint?: string
+  icon: IconName
+  state: 'done' | 'current' | 'hold' | 'todo'
+  at?: string
+  /** Updates the store chose to share ("Rider is 10 minutes away"). */
+  notes?: { at: string; text: string }[]
 }
 
 export type OrderProgress = 'pending' | 'packing' | 'out_for_delivery' | 'ready_for_pickup' | 'delivered' | 'cancelled' | 'refunded'

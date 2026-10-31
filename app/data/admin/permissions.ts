@@ -73,8 +73,9 @@ export const TENANT_PERMISSION_GROUPS: PermissionGroup<TenantPermission>[] = [
     label: 'Orders',
     permissions: [
       { id: 'orders.view', label: 'View orders', description: 'See orders and delivery details.' },
-      { id: 'orders.manage', label: 'Update orders', description: 'Pack, dispatch, deliver and cancel orders.' },
+      { id: 'orders.manage', label: 'Supervise orders', description: 'Act on every section of the order desk, reassign work and cancel orders. (Officers only need to be assigned to their section.)' },
       { id: 'orders.refund', label: 'Issue refunds', description: 'Refund paid orders.', sensitive: true },
+      { id: 'workflow.manage', label: 'Customise the order workflow', description: 'Set up order sections and assign their officers — the chain default, or a branch’s own workflow for branch staff.' },
     ],
   },
   {
@@ -149,3 +150,12 @@ export const BRANCH_MANAGER_PERMISSIONS: TenantPermission[] = [
   'dashboard.view', 'reports.view', 'branches.view', 'orders.view', 'orders.manage', 'orders.refund', 'products.view',
   'inventory.manage', 'customers.view', 'promotions.view', 'tasks.view', 'tasks.manage', 'staff.view', 'staff.manage', 'audit.view',
 ]
+
+/**
+ * Chain-wide settings no branch can own: given only to chain-level staff (the
+ * supermarket admin), never to people tied to branches.
+ */
+export const CHAIN_ONLY_PERMISSIONS: TenantPermission[] = ['settings.manage', 'roles.manage', 'categories.manage']
+
+/** What a supermarket admin may hand to its branch managers (always limited to their own branches). */
+export const DELEGABLE_PERMISSIONS: TenantPermission[] = TENANT_PERMISSIONS.filter((p) => !CHAIN_ONLY_PERMISSIONS.includes(p))

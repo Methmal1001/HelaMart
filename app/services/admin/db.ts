@@ -6,18 +6,20 @@ import type {
   AuditEntry,
   Branch,
   BrandingRequest,
-  PlatformBanner,
   Customer,
+  OrderWorkflow,
+  PlatformBanner,
   PlatformSettings,
   Role,
   StaffTask,
   StaffUser,
   Tenant,
 } from '~/types/admin'
-import { SAMPLE_STORE_OFFERS, buildSeed, sampleBanners } from '~/data/admin/seed'
-import { PLATFORM_PERMISSIONS, ROLE_IDS } from '~/data/admin/permissions'
+import { LFM_DESK_OFFICERS, SAMPLE_STORE_OFFERS, buildSeed, sampleBanners } from '~/data/admin/seed'
+import { attachStages, defaultWorkflow, snapshotStages } from '~/lib/workflow'
+import { PLATFORM_PERMISSIONS, ROLE_IDS, TENANT_PERMISSIONS } from '~/data/admin/permissions'
 import { STANDARD_CATEGORIES } from '~/data/categories'
-import { hash, hashPassword, readDb as readStoreDb } from '../mock/server'
+import { hash, hashPassword, randomId, readDb as readStoreDb } from '../mock/server'
 
 /**
  * MOCK PLATFORM DATABASE (browser localStorage). Every record that belongs
@@ -77,6 +79,8 @@ export interface AdminDb {
   sessions: AdminSessionRecord[]
   challenges: MfaChallenge[]
   orders: AdminOrder[]
+  /** Each supermarket's order sections (Cashier → Packing → Verification → Delivery…). */
+  workflows: OrderWorkflow[]
   products: AdminProduct[]
   categories: AdminCategory[]
   customers: Customer[]
@@ -100,7 +104,7 @@ function seed(): AdminDb {
 }
 
 /** Bump when the sample data gains something older browser copies should receive. */
-const DATA_VERSION = 5
+const DATA_VERSION = 8
 
 /**
  * One-time upgrade of data saved by an older version of the prototype:
@@ -144,7 +148,53 @@ function upgradeSampleData(db: AdminDb) {
     order.set(c.tenantId, n + 1)
     Object.assign(c, { icon: c.icon ?? std?.icon ?? 'tag', area: c.area ?? std?.area ?? 'household', order: c.order ?? n, standard: c.standard ?? !!std })
   }
+  // v6: order desk — every supermarket gets the standard sections; Lanka Fresh Mart's sample team works them.
+  db.workflows ??= []
+  for (const r of fresh.roles) if (!db.roles.some((x) => x.id === r.id)) db.roles.push(r)
+  const cashier = db.roles.find((r) => r.id === 'role_lfm_cashier')
+  if (cashier) cashier.permissions = cashier.permissions.filter((p) => p !== 'orders.manage')
+  for (const x of fresh.staff) if (x.tenantId === 'tnt_lfm' && !db.staff.some((y) => y.id === x.id || y.email === x.email)) db.staff.push(x)
+  for (const t of db.tenants) if (!db.workflows.some((w) => w.tenantId === t.id)) db.workflows.push(defaultWorkflow(t.id, t.id === 'tnt_lfm' ? LFM_DESK_OFFICERS : {}))
+  for (const o of db.orders) attachStages(o, workflowFor(db, o.tenantId, o.branchId))
+  // v7: order slips with a tracking QR; the delivery section finishes with "Customer received".
+  const RENAME: Record<string, string> = { 'Mark delivered': 'Customer received', 'Handed over': 'Customer collected' }
+  for (const w of db.workflows) {
+    for (const s of w.stages) {
+      if (s.id === 'stg_cashier' && s.printSlip === undefined) s.printSlip = true
+      s.completeLabel = RENAME[s.completeLabel] ?? s.completeLabel
+    }
+  }
+  for (const o of db.orders) {
+    ensureTrackToken(o)
+    for (const s of o.stages ?? []) {
+      s.completeLabel = RENAME[s.completeLabel] ?? s.completeLabel
+      if (s.stageId === 'stg_cashier' && s.printSlip === undefined) s.printSlip = true
+    }
+  }
+  // v8: branch-wise management — the chain admin holds every supermarket permission (incl. the order workflow).
+  const chainAdmin = db.roles.find((r) => r.id === ROLE_IDS.chainAdmin)
+  if (chainAdmin) chainAdmin.permissions = [...TENANT_PERMISSIONS]
   db.dataVersion = DATA_VERSION
+}
+
+/** The secret in an order slip's QR code (anyone holding the slip can track it and confirm receipt). */
+export function ensureTrackToken(o: AdminOrder) {
+  o.trackToken ??= randomId(12)
+  return o.trackToken
+}
+
+/** A supermarket's order workflow (created with the standard sections the first time it's needed). */
+export function workflowFor(db: AdminDb, tenantId: string, branchId?: string): OrderWorkflow {
+  db.workflows ??= []
+  // A branch's own workflow, when it has one; otherwise the chain default.
+  const own = branchId ? db.workflows.find((x) => x.tenantId === tenantId && x.branchId === branchId) : undefined
+  if (own) return own
+  let w = db.workflows.find((x) => x.tenantId === tenantId && !x.branchId)
+  if (!w) {
+    w = defaultWorkflow(tenantId)
+    db.workflows.push(w)
+  }
+  return w
 }
 
 /** Bring in shoppers who registered and orders placed through the live storefront. */
@@ -170,6 +220,10 @@ function syncStorefront(db: AdminDb) {
       status: 'pending',
       history: [{ at: o.createdAt, status: 'pending', by: 'Customer (storefront)' }],
       source: 'storefront',
+      // Straight into the supermarket's first section (usually the cashier).
+      stages: snapshotStages(workflowFor(db, branch.tenantId, branch.id), o.delivery.method),
+      stageIndex: 0,
+      trackToken: randomId(12),
     })
   }
   for (const u of store.extraUsers) {

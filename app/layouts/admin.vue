@@ -55,6 +55,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin', label: 'Dashboard', icon: 'grid', perm: 'dashboard.view' },
       { to: '/admin/branches', label: 'Branches', icon: 'store', perm: 'branches.view' },
+      { to: '/admin/order-desk', label: 'Order desk', icon: 'clipboard' },
       { to: '/admin/orders', label: 'Orders', icon: 'receipt', perm: 'orders.view' },
       { to: '/admin/products', label: 'Products & stock', icon: 'package', perm: 'products.view' },
       { to: '/admin/categories', label: 'Categories', icon: 'list', perm: 'products.view' },
@@ -75,13 +76,14 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'audit.view' },
       { to: '/admin/branding', label: 'Store branding', icon: 'sparkle', perm: 'settings.manage' },
+      { to: '/admin/order-workflow', label: 'Order workflow', icon: 'list', perm: 'workflow.manage' },
       { to: '/admin/settings', label: 'Supermarket settings', icon: 'settings', perm: 'settings.manage' },
     ],
   },
 ]
 const nav = computed(() =>
   (auth.isPlatform.value ? PLATFORM_NAV : TENANT_NAV)
-    .map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || auth.can(i.perm)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => (!i.perm || auth.can(i.perm))) }))
     .filter((g) => g.items.length),
 )
 const isActive = (to: string) => (to === '/admin' ? route.path === '/admin' : route.path.startsWith(to))

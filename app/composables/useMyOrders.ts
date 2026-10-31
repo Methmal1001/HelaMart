@@ -54,5 +54,7 @@ export const PROGRESS: Record<OrderProgress, { label: string; tone: string }> = 
 /** Status chip text for an order ("Collected" for store pickups). */
 export function progressOf(o: Order) {
   const p = PROGRESS[o.progress ?? 'pending']
-  return o.progress === 'delivered' && o.delivery.method === 'pickup' ? { ...p, label: 'Collected' } : p
+  if (o.progress === 'delivered') return o.delivery.method === 'pickup' ? { ...p, label: 'Collected' } : p
+  // Where it is in the supermarket's own sections ("Packing your items", "Waiting for verification"…).
+  return o.stageLabel && o.progress !== 'cancelled' && o.progress !== 'refunded' ? { ...p, label: o.stageLabel } : p
 }

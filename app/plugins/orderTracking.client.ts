@@ -21,10 +21,17 @@ export default defineNuxtPlugin(() => {
   const { isAuthenticated } = useAuth()
   const { show } = useToasts()
 
-  /** The last status each order was announced at — every change is announced once. */
-  const announced = new Map<string, OrderProgress | undefined>()
+  /** The last state each order was announced at — every change is announced once. */
+  const keyOf = (o: Order) => o.trackKey ?? o.progress
+  const announced = new Map<string, string | undefined>()
+  /** Shared store updates already shown, per order. */
+  const noteCount = new Map<string, number>()
   watch(orders, (list) => {
-    for (const o of list) if (!announced.has(o.id)) announced.set(o.id, o.progress)
+    for (const o of list) {
+      if (announced.has(o.id)) continue
+      announced.set(o.id, keyOf(o))
+      noteCount.set(o.id, o.steps?.reduce((n, s) => n + (s.notes?.length ?? 0), 0) ?? 0)
+    }
   })
 
   let running: Promise<void> | null = null
@@ -41,10 +48,18 @@ export default defineNuxtPlugin(() => {
         await load()
         for (const o of orders.value) {
           const was = announced.get(o.id)
-          if (!o.progress || was === o.progress) continue
-          announced.set(o.id, o.progress)
+          const key = keyOf(o)
+          if (!o.progress || was === key) continue
+          announced.set(o.id, key)
           if (was === undefined) continue
-          show(`Order ${o.number} ${NEWS[o.progress](o)}`, o.progress === 'cancelled' || o.progress === 'refunded' ? 'error' : 'success', 6000)
+          const bad = o.progress === 'cancelled' || o.progress === 'refunded'
+          // Section by section: "Order HM-… · Packing your items", plus an update the store has just shared.
+          const notes = o.steps?.flatMap((s) => s.notes ?? []).sort((a, b) => a.at.localeCompare(b.at)) ?? []
+          const seen = noteCount.get(o.id) ?? 0
+          noteCount.set(o.id, notes.length)
+          const fresh = notes.length > seen ? ` — “${notes.at(-1)!.text}”` : ''
+          const text = bad || o.progress === 'delivered' || !o.stageLabel ? NEWS[o.progress](o) : `· ${o.stageLabel}`
+          show(`Order ${o.number} ${text}${fresh}`, bad ? 'error' : 'success', 6000)
         }
       } while (again)
     })().finally(() => (running = null))
@@ -54,7 +69,10 @@ export default defineNuxtPlugin(() => {
   // Know the shopper's orders once they're signed in, so changes can be announced.
   watch(isAuthenticated, (v) => {
     if (v && !loaded.value) void load()
-    if (!v) announced.clear()
+    if (!v) {
+      announced.clear()
+      noteCount.clear()
+    }
   }, { immediate: true })
 
   window.addEventListener('storage', (e) => {

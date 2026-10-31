@@ -1,5 +1,5 @@
 import type { AuditSeverity, Branch, Permission, Role, Scope, StaffUser, StaffView, Tenant } from '~/types/admin'
-import { ROLE_IDS, TENANT_PERMISSIONS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
+import { CHAIN_ONLY_PERMISSIONS, ROLE_IDS, TENANT_PERMISSIONS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
 import { base64UrlEncode, decodeJwt } from '~/utils/jwt'
 import { ApiError } from '../apiError'
 import { hash, randomId } from '../mock/server'
@@ -49,8 +49,19 @@ export function roleOf(db: AdminDb, staff: StaffUser): Role {
 /** Role + individual grants, limited to the permissions valid for the person's scope. */
 export function effectivePermissions(db: AdminDb, staff: StaffUser): Permission[] {
   const scope: Scope = staff.tenantId ? 'tenant' : 'platform'
-  const set = new Set<Permission>([...roleOf(db, staff).permissions, ...staff.extraPermissions])
-  return permissionsFor(scope).filter((p) => set.has(p))
+  const set = new Set<Permission>([...rolePermissions(db, roleOf(db, staff), staff.tenantId), ...staff.extraPermissions])
+  const list = permissionsFor(scope).filter((p) => set.has(p))
+  // Branch staff never hold chain-wide settings, whatever they were granted.
+  return staff.tenantId && staff.branchIds.length ? list.filter((p) => !CHAIN_ONLY_PERMISSIONS.includes(p as never)) : list
+}
+
+/** A role's permissions in one supermarket (its admin can tailor the built-in Branch Manager role). */
+export function rolePermissions(db: AdminDb, role: Role, tenantId: string | null): Permission[] {
+  if (role.id === ROLE_IDS.branchManager && tenantId) {
+    const own = db.tenants.find((t) => t.id === tenantId)?.branchManagerPermissions
+    if (own) return own
+  }
+  return role.permissions
 }
 
 export function toStaffView(db: AdminDb, s: StaffUser, session?: AdminSessionRecord): StaffView {
