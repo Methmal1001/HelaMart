@@ -8,6 +8,9 @@ import { audit, sanitize } from './admin/security'
 import { liveBranding } from '~/lib/branding'
 import { locateBranch } from '~/data/places'
 import { api, backendEnabled } from './http'
+import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
+import { circlePolygon } from '~/lib/geo'
+import { townsInside } from '~/lib/coverage'
 
 const pick = (p: { lat: number; lng: number }) => ({ lat: p.lat, lng: p.lng })
 
@@ -37,8 +40,12 @@ export interface ApplicationInput {
 const MAX_PER_HOUR = 3
 const ALLOWED_FILE = /\.(pdf|jpe?g|png)$/i
 
+/** POST /partners/applications — only file metadata is sent, never the files. */
 export async function submitApplication(input: ApplicationInput): Promise<{ reference: string }> {
-  if (backendEnabled()) return api<{ reference: string }>('/partners/applications', { method: 'POST', body: input })
+  if (backendEnabled()) {
+    const body: ApplicationRequest = { ...input, vatNumber: input.vatNumber.trim() || undefined }
+    return api<ApplicationReceiptDto>('/partners/applications', { method: 'POST', body })
+  }
   await latency(600, 1000)
   const db = readAdminDb()
   if (!db.settings.applicationsOpen) throw new ApiError(503, 'HelaMart is not accepting new supermarket applications right now.')
@@ -110,13 +117,7 @@ export async function submitApplication(input: ApplicationInput): Promise<{ refe
 }
 
 /** Status lookup needs both the reference and the email used — no enumeration of applicants. */
-export interface ApplicationStatus {
-  name: string
-  reference: string
-  status: TenantStatus
-  reason?: string
-  submittedAt: string
-}
+export type ApplicationStatus = ApplicationStatusDto & { status: TenantStatus }
 
 export async function applicationStatus(reference: string, email: string): Promise<ApplicationStatus> {
   if (backendEnabled()) return api<ApplicationStatus>('/partners/applications/status', { query: { reference, email } })
@@ -151,8 +152,42 @@ export interface PublicBranch {
 
 /** GET /stores — only approved, active supermarkets. Restricted or banned ones disappear. */
 export async function listStores(): Promise<PublicStore[]> {
-  if (backendEnabled()) return api<PublicStore[]>('/stores')
+  if (backendEnabled()) return (await api<PublicStoreDto[]>('/stores')).map(fromStoreDto).filter((s) => s.branches.length)
   return listLocalStores()
+}
+
+/**
+ * The API's store → the storefront's. The API gives each branch a pin and a
+ * delivery radius; the area shoppers are matched against is that circle, with
+ * the towns inside it as the branch's named delivery places.
+ */
+function fromStoreDto(s: PublicStoreDto): PublicStore {
+  const primary = s.branding?.primaryColor || s.brandColor
+  return {
+    id: s.id,
+    name: s.name,
+    brandColor: s.brandColor,
+    branding: {
+      logo: s.branding?.logo,
+      banner: s.branding?.banner,
+      primaryColor: primary,
+      slogan: s.branding?.slogan ?? '',
+      accentColor: s.branding?.accentColor,
+      promoBanners: s.branding?.promoBanners ?? [],
+      welcomeMessage: s.branding?.welcomeMessage,
+      logoOnFixtures: !!s.branding?.logoOnFixtures,
+    },
+    branches: s.branches.filter((b) => b.status !== 'closed' && Number.isFinite(b.lat) && Number.isFinite(b.lng)).map(fromBranchDto),
+  }
+}
+function fromBranchDto(b: PublicBranchDto): PublicBranch {
+  const polygon = circlePolygon(b.lat, b.lng, Math.max(1, b.deliveryRadiusKm), 24)
+  return {
+    id: b.id, name: b.name, city: b.city, district: b.district,
+    status: b.status === 'open' ? 'open' : 'temporarily_closed',
+    hours: b.hours, lat: b.lat, lng: b.lng, deliveryRadiusKm: b.deliveryRadiusKm,
+    coverage: { polygon, places: [...new Set([b.city, ...townsInside(polygon)])] },
+  }
 }
 
 /** The in-browser store list (sample data). Also used by in-browser services such as banners. */

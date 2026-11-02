@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ApiError } from '~/services/apiError'
+import { backendEnabled } from '~/services/http'
 
 /**
  * Every signed-in customer needs a mobile number (delivery calls, order
@@ -13,7 +14,8 @@ const route = useRoute()
 const phone = ref('')
 const error = ref('')
 const busy = ref(false)
-const open = computed(() => status.value === 'authenticated' && !!user.value && !user.value.phone && !route.path.startsWith('/admin'))
+// The HelaMart API can't store a number after sign-up yet; there the phone is given with each order instead.
+const open = computed(() => !backendEnabled() && status.value === 'authenticated' && !!user.value && !user.value.phone && !route.path.startsWith('/admin'))
 
 watch(open, (v) => {
   if (v) {

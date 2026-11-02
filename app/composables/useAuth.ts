@@ -2,6 +2,11 @@ import type { Ref } from 'vue'
 import type { AuthResult, AuthTokens, ShopperLocation, User } from '~/types'
 import * as authApi from '~/services/authService'
 import { isUnauthorized, ApiError } from '~/services/apiError'
+import { SESSION_ENDED_CODES } from '~/services/apiTypes'
+import { AUTH_STORAGE_KEY } from '~/utils/authStorage'
+
+/** The server ended the session (revoked, expired, suspended…): sign in again, don't try to refresh. */
+const sessionEnded = (e: unknown) => e instanceof ApiError && (SESSION_ENDED_CODES as readonly string[]).includes(e.code ?? '')
 
 export type AuthStatus = 'unknown' | 'anonymous' | 'authenticated'
 
@@ -45,7 +50,7 @@ function schedule() {
 function applySession(result: AuthResult, event: 'login' | 'refresh' | null) {
   const s = bind()
   tokens = result.tokens
-  writeAuthCookie(result.tokens)
+  writeAuthTokens(result.tokens)
   s.user.value = result.user
   s.status.value = 'authenticated'
   schedule()
@@ -58,7 +63,7 @@ function clearSession(reason: 'logout' | 'expired' | 'remote') {
   tokens = null
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = null
-  clearAuthCookie()
+  clearAuthTokens()
   s.user.value = null
   s.status.value = 'anonymous'
   if (reason === 'logout') broadcast('logout')
@@ -76,7 +81,7 @@ function refreshTokens(): Promise<boolean> {
   if (inflight) return inflight
   inflight = withLock(async () => {
     // Another tab may already have rotated the tokens — adopt them instead of reusing ours.
-    const shared = readAuthCookie()
+    const shared = readAuthTokens()
     if (shared && tokens && shared.refreshToken !== tokens.refreshToken && shared.accessExpiresAt - Date.now() > REFRESH_SKEW_MS) {
       tokens = shared
       schedule()
@@ -101,12 +106,12 @@ function refreshTokens(): Promise<boolean> {
   return inflight
 }
 
-/** Re-establish the session from the cookie on page load / tab sync. */
+/** Re-establish the session from saved tokens on page load / tab sync (GET /auth/me). */
 async function restore() {
   const s = bind()
-  const saved = readAuthCookie()
+  const saved = readAuthTokens()
   if (!saved || saved.refreshExpiresAt <= Date.now()) {
-    if (saved) clearAuthCookie()
+    if (saved) clearAuthTokens()
     tokens = null
     s.user.value = null
     s.status.value = 'anonymous'
@@ -122,7 +127,15 @@ async function restore() {
       s.status.value = 'anonymous'
     }
   } catch (e) {
-    if (isUnauthorized(e) && (await refreshTokens())) return
+    if (isUnauthorized(e) && !sessionEnded(e) && (await refreshTokens())) {
+      if (tokens) s.user.value = await authApi.me(tokens.accessToken).catch(() => s.user.value)
+      return
+    }
+    // The API is unreachable: keep the saved session and try again later instead of signing out.
+    if (e instanceof ApiError && e.status === 0) {
+      s.status.value = 'anonymous'
+      return
+    }
     clearSession('remote')
   }
 }
@@ -138,6 +151,10 @@ export function initAuth(expiredHandler: () => void) {
       else void restore()
     }
   }
+  // Another tab signed in or out ("Keep me signed in" sessions live in localStorage).
+  window.addEventListener('storage', (e) => {
+    if (e.key === AUTH_STORAGE_KEY) void restore()
+  })
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !tokens) return
     // Timers are throttled in background tabs — catch up when the user returns.
@@ -180,13 +197,21 @@ export function useAuth() {
     return tokens?.accessToken ?? null
   }
 
-  /** Call an authenticated API; on 401 refresh once and retry (standard bearer-token flow). */
+  /**
+   * Call a protected endpoint with `Authorization: Bearer …`. A 401 (e.g. TOKEN_EXPIRED)
+   * refreshes once — shared with any other request doing the same — and retries;
+   * if the server says the session itself has ended (SESSION_*), the customer is signed out.
+   */
   async function authorized<T>(call: (accessToken: string) => Promise<T>): Promise<T> {
     const token = await getAccessToken()
     if (!token) throw new ApiError(401, 'Please log in to continue.', 'NO_SESSION')
     try {
       return await call(token)
     } catch (e) {
+      if (sessionEnded(e)) {
+        clearSession('expired')
+        throw e
+      }
       if (!isUnauthorized(e) || !(await refreshTokens()) || !tokens) throw e
       return call(tokens.accessToken)
     }

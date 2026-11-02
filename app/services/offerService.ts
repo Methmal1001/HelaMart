@@ -6,6 +6,7 @@ import { latency, readDb, verifyAccessToken } from './mock/server'
 import { readAdminDb } from './admin/db'
 import { accentFor, liveBranding } from '~/lib/branding'
 import { api, backendEnabled } from './http'
+import type { OfferDto } from './apiTypes'
 
 /** Announced offers appear as "Coming soon" this long before they start. */
 const ANNOUNCE_MS = 14 * 864e5
@@ -31,7 +32,7 @@ export function offersForUser(userId: string): Offer[] {
  * (the API scopes them to the chosen supermarket and branch).
  */
 export async function listMyOffers(accessToken: string, store?: { storeId: string; branchId: string } | null): Promise<Offer[]> {
-  if (backendEnabled()) return api<Offer[]>('/me/offers', { token: accessToken, query: { storeId: store?.storeId, branchId: store?.branchId } })
+  if (backendEnabled()) return api<OfferDto[]>('/me/offers', { token: accessToken, query: { storeId: store?.storeId, branchId: store?.branchId } })
   await latency(150, 350)
   return offersForUser(verifyAccessToken(accessToken))
 }
@@ -73,6 +74,9 @@ export function storeOffersFor(storeId: string, branchId: string, userId: string
 
 /** GET /stores/:id/offers?branch= — public; personalised when a token is sent. */
 export async function listStoreOffers(storeId: string, branchId: string, accessToken?: string | null): Promise<Offer[]> {
+  // With the API, /me/offers already returns this branch's running offers for the signed-in
+  // customer, and the server applies them at checkout — nothing extra to show from the browser.
+  if (backendEnabled()) return []
   await latency(80, 200)
   let userId: string | null = null
   try {

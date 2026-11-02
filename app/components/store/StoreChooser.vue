@@ -8,7 +8,13 @@ import { formatKm, rankStores, type RankedStore } from '~/lib/area'
  * several deliver. Others can be revealed by searching, greyed out with the
  * reason. Used on the welcome screen and the Browse page.
  */
-const { choice, stores, refresh, select } = useStoreSelection()
+const { choice, stores, storeError, refresh, select } = useStoreSelection()
+const retrying = ref(false)
+async function retry() {
+  retrying.value = true
+  await refresh()
+  retrying.value = false
+}
 const { area, openFinder } = useShoppingArea()
 const { show } = useToasts()
 const loaded = ref(false)
@@ -69,6 +75,13 @@ watch([() => choice.value?.storeId, loaded], async () => {
     </div>
 
     <div v-if="!loaded" class="mt-2 h-28 animate-pulse rounded-2xl bg-hela-green-50" aria-hidden="true" />
+
+    <!-- The store list couldn't load: show why (the API's message) and let the shopper retry -->
+    <div v-else-if="storeError && !stores.length" class="mt-2 flex items-start gap-3 rounded-2xl bg-[#FBEAEA] p-3.5 text-sm text-[#8A2E2E]" role="alert" data-testid="store-error">
+      <AppIcon name="alert" :size="18" class="mt-0.5 shrink-0" />
+      <span class="min-w-0 flex-1">{{ storeError }}</span>
+      <button type="button" class="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#8A2E2E] ring-1 ring-[#E8A0A0] hover:bg-[#fff5f5]" :disabled="retrying" @click="retry">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
+    </div>
 
     <!-- No area yet: the first step is finding supermarkets nearby -->
     <button v-else-if="!area" type="button" class="mt-2 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-hela-green to-[#0E3426] p-4 text-left text-white shadow-card transition hover:brightness-110" data-testid="find-near-me" @click="openFinder()">

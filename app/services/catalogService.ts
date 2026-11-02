@@ -3,6 +3,7 @@ import type { AdminCategory } from '~/types/admin'
 import { readAdminDb } from './admin/db'
 import { STANDARD_CATEGORIES } from '~/data/categories'
 import { api, backendEnabled } from './http'
+import type { ProductDto } from './apiTypes'
 
 /**
  * GET /stores/:id/catalog?branch= — what a shopper sees at one branch:
@@ -26,7 +27,7 @@ export function getStoreCategories(storeId: string): Category[] {
 }
 
 export async function getStoreCatalog(storeId: string, branchId: string): Promise<Product[]> {
-  if (backendEnabled()) return api<Product[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
+  if (backendEnabled()) return api<ProductDto[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
   return getLocalStoreCatalog(storeId, branchId)
 }
 

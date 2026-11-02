@@ -8,6 +8,7 @@ import { DISTRICTS } from '~/data/sriLanka'
 import { inSriLanka } from '~/data/places'
 import { TOKEN_POLICY, hash, hashPassword, latency, randomId, readDb, signAccessToken, verifyAccessToken, writeDb } from './mock/server'
 import { api, backendEnabled } from './http'
+import type { AuthResultDto, GoogleLoginRequest, LoginRequest, RegisterRequest } from './apiTypes'
 
 /**
  * Auth API. With NUXT_PUBLIC_API_BASE set, each call goes to the HelaMart API;
@@ -57,7 +58,8 @@ function cleanPhone(raw: string | undefined, userId?: string): string {
 
 /** PUT /me/phone — add or change the customer's mobile number. */
 export async function savePhone(accessToken: string, raw: string): Promise<User> {
-  if (backendEnabled()) return api<User>('/me/phone', { method: 'PUT', body: { phone: raw }, token: accessToken })
+  // The HelaMart API has no endpoint for this yet: the number is given at sign-up and with each order.
+  if (backendEnabled()) throw new ApiError(501, 'Changing your mobile number isn’t available yet. Use the number you want on each order’s delivery details.', 'NOT_SUPPORTED')
   await latency(150, 350)
   const user = findUserById(verifyAccessToken(accessToken))
   if (!user) throw new ApiError(401, 'Account not found.')
@@ -118,7 +120,7 @@ function issueSession(user: User, remember: boolean, familyId = randomId(8), abs
 
 /** POST /auth/login */
 export async function login(email: string, password: string, remember: boolean): Promise<AuthResult> {
-  if (backendEnabled()) return api<AuthResult>('/auth/login', { method: 'POST', body: { email, password, remember } })
+  if (backendEnabled()) return api<AuthResultDto>('/auth/login', { method: 'POST', body: { email, password, remember } satisfies LoginRequest })
   await latency()
   const key = email.trim().toLowerCase()
   const db = readDb()
@@ -159,7 +161,7 @@ export interface RegisterInput {
 
 /** POST /auth/register — creates a customer account and signs it in. */
 export async function register(input: RegisterInput, remember: boolean): Promise<AuthResult> {
-  if (backendEnabled()) return api<AuthResult>('/auth/register', { method: 'POST', body: { ...input, remember } })
+  if (backendEnabled()) return api<AuthResultDto>('/auth/register', { method: 'POST', body: { ...input, remember } satisfies RegisterRequest })
   await latency(400, 800)
   const email = input.email.trim().toLowerCase()
   const name = input.name.trim().replace(/\s+/g, ' ')
@@ -206,7 +208,7 @@ export async function loginWithGoogle(
   input: { idToken: string } | { email: string; name?: string },
   remember: boolean,
 ): Promise<AuthResult> {
-  if (backendEnabled()) return api<AuthResult>('/auth/google', { method: 'POST', body: { ...input, remember } })
+  if (backendEnabled()) return api<AuthResultDto>('/auth/google', { method: 'POST', body: { ...input, remember } satisfies GoogleLoginRequest })
   await latency()
   let email: string
   let name: string | undefined

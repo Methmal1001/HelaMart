@@ -5,6 +5,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
   devtools: { enabled: false },
 
+  // The API's CORS policy allows only http://localhost:3000 and http://127.0.0.1:3000.
+  devServer: { port: 3000 },
+
   css: ['~/assets/css/main.css'],
 
   // `components/3d/*` would otherwise be prefixed "3d…", which is not a valid component name.
@@ -40,9 +43,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // HelaMart API (ASP.NET Core, H:\HelaMart_API). Empty = the storefront runs on in-browser sample data.
-      // To use the API: NUXT_PUBLIC_API_BASE=http://localhost:5206/api (sign-in, stores, catalogue, orders, offers).
-      apiBase: '',
+      // HelaMart API (ASP.NET Core 8 + SQL Server). Sign-in, shopping area, stores, catalogue, offers,
+      // checkout and partner applications use it. Override with NUXT_PUBLIC_API_BASE=https://…/api.
+      // (An empty value runs the storefront offline on in-browser sample data — for demos only.)
+      apiBase: 'http://localhost:5206/api',
       // Google OAuth Web client ID. Empty → simulated Google sign-in for testing.
       // Set via env: NUXT_PUBLIC_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
       googleClientId: '',

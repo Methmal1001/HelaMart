@@ -1,28 +1,38 @@
 import { ApiError } from './apiError'
+import type { ApiErrorBody } from './apiTypes'
 
 /**
- * True when the storefront should use the HelaMart API (NUXT_PUBLIC_API_BASE is set).
- * Off by default: everything runs on the in-browser sample data. Parts the API doesn't
- * serve yet (delivery areas, branding, store offers, categories, banners…) always use
- * the in-browser data.
+ * HelaMart API client. The base URL is `runtimeConfig.public.apiBase`
+ * (http://localhost:5206/api by default; override with NUXT_PUBLIC_API_BASE).
+ *
+ * Every non-2xx response `{ status, message, code }` is thrown as an ApiError,
+ * so the UI shows `message` and branches on `code`. Bearer tokens are added by
+ * the caller (useAuth().authorized handles refresh-and-retry and the single
+ * in-flight refresh).
  */
+
+/** True when the storefront talks to the HelaMart API (the default). An empty apiBase runs the offline demo data. */
 export function backendEnabled() {
   return !!useRuntimeConfig().public.apiBase
 }
 
-/**
- * Calls the HelaMart API (`runtimeConfig.public.apiBase`, e.g. http://localhost:5206/api).
- * Error responses are `{ status, message, code }`; they're thrown as ApiError so callers
- * keep handling failures exactly as they did with the mock backend.
- */
-export async function api<T>(
-  path: string,
-  options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; token?: string | null; query?: Record<string, string | undefined> } = {},
-): Promise<T> {
+export interface ApiOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  body?: unknown
+  /** Access token for protected endpoints (`Authorization: Bearer …`). */
+  token?: string | null
+  query?: Record<string, string | number | undefined | null>
+  /** Abort after this long (default 15 s). */
+  timeoutMs?: number
+}
+
+export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const base = useRuntimeConfig().public.apiBase.replace(/\/+$/, '')
   const url = new URL(`${base}${path}`, typeof window === 'undefined' ? 'http://localhost' : window.location.href)
-  for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined) url.searchParams.set(k, v)
+  for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v))
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000)
   let res: Response
   try {
     res = await fetch(url, {
@@ -33,11 +43,16 @@ export async function api<T>(
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
     })
   } catch {
-    // Status 0: network failure. Not a 401, so a signed-in session is kept and retried later.
+    reportReachable(false)
+    // Status 0: the API couldn't be reached. Not a 401, so a signed-in session is kept and retried later.
     throw new ApiError(0, 'Can’t reach HelaMart right now. Check your connection and try again.', 'NETWORK')
+  } finally {
+    clearTimeout(timer)
   }
+  reportReachable(true)
 
   const text = await res.text()
   let data: unknown = null
@@ -47,8 +62,36 @@ export async function api<T>(
     /* non-JSON body (e.g. a proxy error page) */
   }
   if (!res.ok) {
-    const err = (data ?? {}) as { message?: string; code?: string }
-    throw new ApiError(res.status, err.message ?? `Request failed (${res.status}).`, err.code)
+    const err = (data ?? {}) as Partial<ApiErrorBody>
+    const fallback = res.status >= 500 ? 'Something went wrong on our side. Please try again in a moment.' : `Request failed (${res.status}).`
+    throw new ApiError(err.status ?? res.status, err.message || fallback, err.code ?? (res.status >= 500 ? 'SERVER_ERROR' : undefined))
   }
   return data as T
+}
+
+// ------------------------------------------------------------------ API health ("API offline" banner)
+
+/** Shared reachability flag: false after a request can't reach the API, true again on the next success. */
+export function useApiStatus() {
+  return useState<'unknown' | 'online' | 'offline'>('api-status', () => 'unknown')
+}
+function reportReachable(ok: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    useApiStatus().value = ok ? 'online' : 'offline'
+  } catch {
+    /* outside a Nuxt context */
+  }
+}
+
+/** GET /health — `{ status: "ok" }`, or 503 when the database is down. */
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const r = await api<{ status: string }>('/health', { timeoutMs: 5000 })
+    return r?.status === 'ok'
+  } catch (e) {
+    // 503: the API answers but its database is down — still "offline" for shoppers.
+    if (e instanceof ApiError && e.status !== 0) useApiStatus().value = 'offline'
+    return false
+  }
 }

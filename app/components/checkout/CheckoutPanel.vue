@@ -6,7 +6,7 @@ import { ApiError, isUnauthorized } from '~/services/apiError'
 
 type Step = 'review' | 'delivery' | 'payment' | 'done'
 
-const { panel, closePanel } = useStoreUi()
+const { panel, closePanel, openPanel } = useStoreUi()
 const { user, authorized, isAuthenticated } = useAuth()
 const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
@@ -137,7 +137,8 @@ async function pay() {
     payment: { method: paymentMethod.value, card: paymentMethod.value === 'card' ? { ...card } : undefined },
   }
   try {
-    order.value = await authorized((token) => placeOrder(token, request, user.value!))
+    const labels = { storeName: storeChoice.value.storeName, branchName: storeChoice.value.branchName }
+    order.value = await authorized((token) => placeOrder(token, request, user.value!, labels))
     clear()
     step.value = 'done'
     show(`Order ${order.value.number} confirmed. Thank you!`, 'success', 4000)
@@ -151,10 +152,21 @@ async function pay() {
       if (await requestLogin('Your session expired — log in again to complete payment.')) error.value = ''
     } else {
       error.value = e instanceof ApiError ? e.message : 'Payment could not be completed. Please try again.'
+      // Stock changed or an item stopped selling: reload the branch's shelves so the cart can be fixed.
+      cartProblem.value = e instanceof ApiError && ['OUT_OF_STOCK', 'PRODUCT_UNAVAILABLE', 'CART_EMPTY', 'CART_TOO_LARGE'].includes(e.code ?? '')
+      if (cartProblem.value) void refreshStores()
     }
   } finally {
     placing.value = false
   }
+}
+
+/** The server rejected the cart (out of stock, item no longer sold…): let the shopper fix it. */
+const cartProblem = ref(false)
+function fixCart() {
+  cartProblem.value = false
+  error.value = ''
+  openPanel('cart')
 }
 
 function printBill() {
@@ -347,7 +359,8 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
 
       <p v-if="error" class="mt-4 flex items-start gap-2 rounded-xl bg-[#fbeaea] px-3.5 py-2.5 text-sm text-[#8A2E2E]" role="alert">
         <AppIcon name="alert" :size="16" class="mt-0.5 shrink-0" />
-        {{ error }}
+        <span class="min-w-0 flex-1">{{ error }}</span>
+        <button v-if="cartProblem" type="button" class="shrink-0 font-bold underline" data-testid="fix-cart" @click="fixCart">Edit cart</button>
       </p>
     </div>
 
