@@ -2,16 +2,19 @@ import { ApiError } from './apiError'
 
 /**
  * Calls the HelaMart API (`runtimeConfig.public.apiBase`, e.g. http://localhost:5206/api).
+ * `body` is sent as JSON, or as multipart form data when it is a FormData (image uploads).
  * Error responses are `{ status, message, code }`; they're thrown as ApiError so callers
  * keep handling failures exactly as they did with the mock backend.
  */
 export async function api<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; token?: string | null; query?: Record<string, string | undefined> } = {},
+  options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; token?: string | null; query?: Record<string, string | number | undefined> } = {},
 ): Promise<T> {
   const base = useRuntimeConfig().public.apiBase.replace(/\/+$/, '')
   const url = new URL(`${base}${path}`, typeof window === 'undefined' ? 'http://localhost' : window.location.href)
-  for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined) url.searchParams.set(k, v)
+  for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v))
+  // File uploads go as multipart form data (the browser sets the boundary).
+  const form = options.body instanceof FormData
 
   let res: Response
   try {
@@ -19,10 +22,10 @@ export async function api<T>(
       method: options.method ?? 'GET',
       headers: {
         Accept: 'application/json',
-        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
       },
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: form ? (options.body as FormData) : options.body !== undefined ? JSON.stringify(options.body) : undefined,
     })
   } catch {
     // Status 0: network failure. Not a 401, so a signed-in session is kept and retried later.
