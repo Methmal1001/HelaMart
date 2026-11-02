@@ -109,9 +109,10 @@ function gondola(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4, L
   }
 }
 
-function nextProduceId(cursor: { i: number }) {
+/** The next produce item for a crate; none when the supermarket sells no produce (the crate stays empty). */
+function nextProduceId(cursor: { i: number }): string | undefined {
   const list = productsInArea('produce')
-  return list[cursor.i++ % list.length]!.id
+  return list.length ? list[cursor.i++ % list.length]!.id : undefined
 }
 
 function crateRow(
