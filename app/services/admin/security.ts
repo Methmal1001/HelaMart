@@ -1,5 +1,5 @@
 import type { AuditSeverity, Branch, Permission, Role, Scope, StaffUser, StaffView, Tenant } from '~/types/admin'
-import { ROLE_IDS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
+import { ROLE_IDS, TENANT_PERMISSIONS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
 import { base64UrlEncode, decodeJwt } from '~/utils/jwt'
 import { ApiError } from '../apiError'
 import { hash, randomId } from '../mock/server'
@@ -53,11 +53,29 @@ export function effectivePermissions(db: AdminDb, staff: StaffUser): Permission[
   return permissionsFor(scope).filter((p) => set.has(p))
 }
 
-export function toStaffView(db: AdminDb, s: StaffUser): StaffView {
+export function toStaffView(db: AdminDb, s: StaffUser, session?: AdminSessionRecord): StaffView {
   const { mfaSecret: _s, passwordHash: _p, ...safe } = s
   const now = Date.now()
-  const tenant = s.tenantId ? db.tenants.find((t) => t.id === s.tenantId) : null
   const role = roleOf(db, s)
+  // A Super Admin managing a supermarket sees that supermarket's portal with chain-admin access.
+  const acting = !s.tenantId && session?.actingTenantId ? db.tenants.find((t) => t.id === session.actingTenantId) : undefined
+  if (acting) {
+    return {
+      ...safe,
+      tenantId: acting.id,
+      branchIds: [],
+      roleName: `${role.name} · managing`,
+      roleLevel: role.level,
+      effectivePermissions: [...TENANT_PERMISSIONS],
+      activeSessions: db.sessions.filter((x) => x.staffId === s.id && !x.revoked && x.expiresAt > now).length,
+      tenantName: acting.name,
+      tenantStatus: acting.status,
+      tenantStatusReason: acting.statusReason,
+      branchNames: [],
+      acting: { tenantId: acting.id, tenantName: acting.name, homeRoleName: role.name },
+    }
+  }
+  const tenant = s.tenantId ? db.tenants.find((t) => t.id === s.tenantId) : null
   return {
     ...safe,
     roleName: role.name,
@@ -103,6 +121,7 @@ export function issueSession(db: AdminDb, staff: StaffUser, userAgent: string, f
     revoked: false,
     familyId,
     userAgent: userAgent.slice(0, 160),
+    actingTenantId: keep?.actingTenantId,
   }
   db.sessions.push(session)
   const access = signAccess(staff, session.id, now)
@@ -117,6 +136,8 @@ export interface AdminContext {
   permissions: Set<Permission>
   scope: Scope
   tenant: Tenant | null
+  /** HelaMart Super Admin working inside a supermarket's portal. */
+  acting: boolean
 }
 
 function endSession(db: AdminDb, session: AdminSessionRecord, err: ApiError): never {
@@ -151,9 +172,23 @@ export function authenticate(token: string | null | undefined): AdminContext {
       endSession(db, session, new ApiError(401, (e as ApiError).message, (e as ApiError).code))
     }
   }
+  const role = roleOf(db, staff)
+  let scope: Scope = staff.tenantId ? 'tenant' : 'platform'
+  let permissions = new Set(effectivePermissions(db, staff))
+  let acting = false
+  if (!staff.tenantId && session.actingTenantId) {
+    const t = db.tenants.find((x) => x.id === session.actingTenantId)
+    if (role.id === ROLE_IDS.superAdmin && t && t.status !== 'banned') {
+      // Full chain-admin access to that one supermarket, for as long as the mode is on.
+      tenant = t
+      scope = 'tenant'
+      permissions = new Set(TENANT_PERMISSIONS)
+      acting = true
+    } else session.actingTenantId = undefined
+  }
   session.lastSeenAt = now
   writeAdminDb(db)
-  return { db, staff, session, role: roleOf(db, staff), permissions: new Set(effectivePermissions(db, staff)), scope: staff.tenantId ? 'tenant' : 'platform', tenant }
+  return { db, staff, session, role, permissions, scope, tenant, acting }
 }
 
 export function requirePermission(ctx: AdminContext, ...perms: Permission[]) {
@@ -235,12 +270,14 @@ export function audit(
   tenantId?: string | null,
 ) {
   const actor = ctx && ctx.staff ? ctx.staff : null
+  // While a Super Admin manages a supermarket, their actions land in that supermarket's log, clearly labelled.
+  const actingTenant = ctx && 'acting' in ctx && (ctx as AdminContext).acting ? (ctx as AdminContext).tenant : null
   db.audit.push({
     id: `aud_${randomId(6)}`,
     at: new Date().toISOString(),
-    tenantId: tenantId !== undefined ? tenantId : actor ? actor.tenantId : ctx && 'tenantId' in ctx ? ctx.tenantId ?? null : null,
+    tenantId: tenantId !== undefined ? tenantId : actingTenant ? actingTenant.id : actor ? actor.tenantId : ctx && 'tenantId' in ctx ? ctx.tenantId ?? null : null,
     actorId: actor?.id ?? null,
-    actorName: actor?.name ?? (ctx && 'name' in ctx ? ctx.name : 'System'),
+    actorName: actor ? (actingTenant ? `${actor.name} (HelaMart Super Admin)` : actor.name) : ctx && 'name' in ctx ? ctx.name : 'System',
     action,
     target,
     details,

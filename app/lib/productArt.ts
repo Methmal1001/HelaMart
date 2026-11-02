@@ -383,6 +383,40 @@ export function productArtUrl(p: Product): string {
   return url
 }
 
+/** Red "special offer" shelf tag: badge, promo price and the old price struck through. */
+export function promoTagCanvas(p: Product, badge: string, priceText: string, wasText?: string): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = 256
+  c.height = 96
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#E23B3B'
+  ctx.fillRect(0, 0, 256, 96)
+  ctx.fillStyle = '#FFE45C'
+  ctx.fillRect(0, 0, 256, 26)
+  ctx.fillStyle = '#B3162B'
+  ctx.textBaseline = 'middle'
+  ctx.font = `900 19px ${FONT}`
+  ctx.fillText(badge, 8, 14, 150)
+  ctx.textAlign = 'right'
+  ctx.font = `700 14px ${FONT}`
+  ctx.fillText('SPECIAL', 248, 14)
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `800 36px ${FONT}`
+  ctx.fillText(priceText, 8, 58, 170)
+  ctx.font = `600 14px ${FONT}`
+  ctx.fillText(wrap(ctx, p.name, 240, 1)[0] ?? p.name, 8, 84, 240)
+  if (wasText) {
+    ctx.textAlign = 'right'
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+    ctx.font = `600 16px ${FONT}`
+    ctx.fillText(wasText, 248, 58, 76)
+    const w = Math.min(76, ctx.measureText(wasText).width)
+    ctx.fillRect(248 - w, 57, w, 2)
+  }
+  return c
+}
+
 /** Yellow shelf-edge price tag. */
 export function priceTagCanvas(p: Product, priceText: string): HTMLCanvasElement {
   const c = document.createElement('canvas')

@@ -1,5 +1,6 @@
 import type { Branch, Customer, PlatformDashboard, PlatformSettings, StaffView, Tenant, TenantStatus } from '~/types/admin'
 import { ROLE_IDS } from '~/data/admin/permissions'
+import { standardCategoriesFor } from '~/data/admin/seed'
 import { PROVINCE_OF, type District } from '~/data/sriLanka'
 import { EMAIL_RE, isSriLankanMobile } from '~/utils/validation'
 import { ApiError } from '../apiError'
@@ -160,7 +161,8 @@ export function approveTenant(token: string, id: string, input: { commissionPerc
       id: `br_${randomId(5)}`, tenantId: t.id, name: t.firstBranch.name, code: `${code}-001`, district: t.firstBranch.district, city: t.firstBranch.city,
       address: t.hqAddress, phone: t.phone, openingHours: t.defaultHours, status: 'open', deliveryRadiusKm: 8, createdAt: nowIso(),
     })
-    for (const c of ctx.db.categories.filter((x) => x.tenantId === 'tnt_lfm')) ctx.db.categories.push({ ...c, tenantId: t.id })
+    // Every new supermarket starts with HelaMart's standard categories (it can customise them).
+    ctx.db.categories.push(...standardCategoriesFor(t.id))
     const { staff, tempPassword } = createChainAdminAccount(ctx, t, { name: t.ownerName, email: t.email, phone: '' })
     audit(ctx.db, ctx, 'tenant.approve', t.name, `Approved · ${input.plan} plan · ${input.commissionPercent}% commission · chain admin ${staff.email}`, 'warning', t.id)
     return { tenant: t, admin: staff, tempPassword }
@@ -333,6 +335,35 @@ export function updatePlatformSettings(token: string, next: PlatformSettings): P
     ctx.db.settings = { ...next, platformName: sanitize(next.platformName, 40), supportEmail: sanitize(next.supportEmail, 80), supportHotline: sanitize(next.supportHotline, 30) }
     audit(ctx.db, ctx, 'platform.settings', 'Platform settings', changed.length ? `Security policy changed: ${changed.join(', ')}` : 'Platform details updated', changed.length ? 'critical' : 'info', null)
     return ctx.db.settings
+  })
+}
+
+/**
+ * Super Admin: open a supermarket's portal with full chain-admin access
+ * (promotions, products, branches, staff…). Password confirmation required;
+ * logged in both the HelaMart and the supermarket audit logs.
+ */
+export function startManagingTenant(token: string, tenantId: string): Promise<void> {
+  return run(token, (raw) => {
+    const ctx = platform(raw)
+    if (!isSuperAdmin(ctx)) throw new ApiError(403, 'Only a HelaMart Super Admin can manage a supermarket directly.', 'FORBIDDEN')
+    requireStepUp(ctx)
+    const t = ctx.db.tenants.find((x) => x.id === tenantId)
+    if (!t) throw new ApiError(404, 'Supermarket not found.')
+    if (t.status !== 'active' && t.status !== 'restricted') throw new ApiError(409, `${t.name} is ${t.status} — approve it before managing its portal.`)
+    ctx.session.actingTenantId = t.id
+    audit(ctx.db, ctx, 'platform.manage_start', t.name, 'Super Admin started managing this supermarket', 'warning', null)
+    audit(ctx.db, ctx, 'platform.manage_start', t.name, `${ctx.staff.name} (HelaMart Super Admin) started managing this supermarket`, 'warning', t.id)
+  })
+}
+
+/** Leave "manage supermarket" mode and return to HelaMart control. */
+export function stopManagingTenant(token: string): Promise<void> {
+  return run(token, (ctx) => {
+    if (!ctx.acting || !ctx.tenant) return
+    audit(ctx.db, ctx, 'platform.manage_stop', ctx.tenant.name, 'Super Admin stopped managing this supermarket', 'info', ctx.tenant.id)
+    audit(ctx.db, ctx, 'platform.manage_stop', ctx.tenant.name, 'Super Admin stopped managing this supermarket', 'info', null)
+    ctx.session.actingTenantId = undefined
   })
 }
 

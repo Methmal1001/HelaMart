@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { fixtures, sections, STORE } from '~/data/storeLayout'
+import { fixtures, sections, sectionColor, sectionTitle, STORE } from '~/data/storeLayout'
+import { catalogVersion } from '~/data/products'
 
 const xp = useStoreExperience()
 const { minimapOpen, closePanel } = useStoreUi()
@@ -20,9 +21,14 @@ const player = computed(() => {
   return { x: mx(p.x), y: mz(p.z), deg: (-p.yaw * 180) / Math.PI }
 })
 
+/** Section names and colours follow the supermarket's own categories. */
+const looks = computed(() => {
+  void catalogVersion.value
+  return Object.fromEntries(sections.map((s) => [s.id, { title: sectionTitle(s), color: sectionColor(s) }]))
+})
 function label(id: string) {
   const s = sections.find((x) => x.id === id)
-  return s ? (s.aisle ? `${s.aisle} · ${s.name}` : s.name) : ''
+  return s ? (s.aisle ? `${s.aisle} · ${looks.value[id]!.title}` : looks.value[id]!.title) : ''
 }
 
 function onKey(e: KeyboardEvent, id: string) {
@@ -70,9 +76,9 @@ function onKey(e: KeyboardEvent, id: string) {
             :width="s.area.w - 0.4"
             :height="s.area.d - 0.4"
             rx="0.6"
-            :fill="s.color"
+            :fill="looks[s.id]!.color"
             :fill-opacity="xp.player.value?.sectionId === s.id ? 0.42 : 0.16"
-            :stroke="xp.player.value?.sectionId === s.id ? s.color : 'transparent'"
+            :stroke="xp.player.value?.sectionId === s.id ? looks[s.id]!.color : 'transparent'"
             stroke-width="0.4"
             class="transition-[fill-opacity]"
           />

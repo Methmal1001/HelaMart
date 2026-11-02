@@ -73,6 +73,7 @@ export class AreaMap {
   private pinMeshes: THREE.Mesh[] = []
   private pinData = new Map<THREE.Object3D, MapPin>()
   private areaGroup = new THREE.Group()
+  private coverageGroup = new THREE.Group()
   private ring!: THREE.Mesh
   private pulse!: THREE.Mesh
   private disc!: THREE.Mesh
@@ -112,7 +113,7 @@ export class AreaMap {
     this.controls.screenSpacePanning = false
 
     this.buildWorld()
-    this.scene.add(this.pins, this.areaGroup)
+    this.scene.add(this.coverageGroup, this.pins, this.areaGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointerup', this.onUp)
@@ -259,6 +260,30 @@ export class AreaMap {
       mat.opacity = on ? 1 : 0.35
       mat.emissiveIntensity = on ? 0.35 : 0.05
       h.parent!.userData.base = on ? 1.15 : 0.75
+    }
+  }
+
+  // ---------------------------------------------------------------- delivery areas
+
+  /** Supermarkets' delivery areas, shaded on the island in their colours. */
+  setCoverage(list: { polygon: [number, number][]; color: string; strong: boolean }[]) {
+    for (const c of this.coverageGroup.children as (THREE.Mesh | THREE.LineLoop)[]) {
+      c.geometry.dispose()
+      ;(c.material as THREE.Material).dispose()
+    }
+    this.coverageGroup.clear()
+    for (const { polygon, color, strong } of list) {
+      if (polygon.length < 3) continue
+      const pts = polygon.map(([lat, lng]) => toWorld(lat, lng))
+      const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.z)))
+      const fillGeo = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2)
+      const fill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: strong ? 0.32 : 0.14, depthWrite: false, depthTest: false }))
+      fill.position.y = LAND_TOP + 0.02
+      fill.renderOrder = 1
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(pts.map((p) => p.clone().setY(LAND_TOP + 0.04)))
+      const line = new THREE.LineLoop(lineGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: strong ? 0.95 : 0.5, depthTest: false }))
+      line.renderOrder = 1
+      this.coverageGroup.add(fill, line)
     }
   }
 
@@ -419,6 +444,7 @@ export class AreaMap {
     canvas.removeEventListener('pointerleave', this.onLeave)
     this.controls.dispose()
     for (const m of this.pinMeshes) (m.material as THREE.Material).dispose()
+    this.setCoverage([])
     this.setArea(null)
     for (const d of this.disposables) d.dispose()
     this.renderer.dispose()

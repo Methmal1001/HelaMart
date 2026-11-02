@@ -1,10 +1,13 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
-import type { CategoryId, OfferRule, ProductShape } from '~/types'
+import type { CategoryId, IconName, OfferConditions, OfferRule, ProductShape } from '~/types'
+import { STANDARD_CATEGORIES, STORE_AREAS } from '~/data/categories'
 import { ApiError } from '../apiError'
 import { latency, randomId } from '../mock/server'
 import { putMedia } from '../mock/mediaStore'
 import { sniffImageType } from '~/utils/imageProcessing'
 import { locateBranch } from '~/data/places'
+import { cleanPlaces, coverageProblems } from '~/lib/coverage'
+import { maxReachKm, polygonAreaKm2 } from '~/lib/geo'
 import { readAdminDb, writeAdminDb, type MediaRecord } from './db'
 import {
   allowedBranches,
@@ -150,6 +153,30 @@ export function saveBranch(token: string, input: BranchInput, id?: string): Prom
   })
 }
 
+/**
+ * PUT /branches/:id/coverage — the branch's home-delivery area (map polygon +
+ * named cities/villages). Required before shoppers can see the branch.
+ */
+export function saveBranchCoverage(token: string, branchId: string, input: { polygon: [number, number][]; places: string[] }): Promise<Branch> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'branches.manage')
+    requireWritable(ctx)
+    const b = ownedOrNotFound(ctx, ctx.db.branches.find((x) => x.id === branchId), 'Branch')
+    assertBranchAccess(ctx, b.id)
+    const polygon = (Array.isArray(input.polygon) ? input.polygon : []).map((p) => [Math.round(Number(p?.[0]) * 1e5) / 1e5, Math.round(Number(p?.[1]) * 1e5) / 1e5] as [number, number])
+    const places = cleanPlaces(Array.isArray(input.places) ? input.places : [])
+    const pin = locateBranch(b)
+    const problems = coverageProblems(polygon, places, pin)
+    if (problems.length) throw new ApiError(422, problems[0]!)
+    const areaKm2 = Math.round(polygonAreaKm2(polygon) * 10) / 10
+    b.coverage = { polygon, places, areaKm2, updatedAt: nowIso(), updatedBy: ctx.staff.name }
+    // Keep the legacy radius in step (used for display only).
+    b.deliveryRadiusKm = Math.min(50, Math.round(maxReachKm(pin.lat, pin.lng, polygon)))
+    audit(ctx.db, ctx, 'branch.coverage', b.name, `${areaKm2} km² · ${places.length} places: ${places.slice(0, 6).join(', ')}${places.length > 6 ? '…' : ''}`, 'warning')
+    return b
+  })
+}
+
 export function setBranchStatus(token: string, id: string, status: Branch['status'], reason: string): Promise<Branch> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'branches.manage')
@@ -250,6 +277,7 @@ function validateProduct(input: ProductInput, ctx?: AdminContext) {
   if (!Number.isInteger(input.priceCents) || input.priceCents <= 0 || input.priceCents > 100_000_000) throw new ApiError(422, 'Enter a valid price.')
   if (!/^#[0-9a-f]{6}$/i.test(input.color) || !/^#[0-9a-f]{6}$/i.test(input.accent)) throw new ApiError(422, 'Pick valid package colours.')
   if (!Number.isInteger(input.reorderLevel) || input.reorderLevel < 0) throw new ApiError(422, 'Reorder level must be 0 or more.')
+  if (ctx && !ctx.db.categories.some((c) => c.tenantId === ctx.tenant?.id && c.id === input.categoryId)) throw new ApiError(422, 'Choose one of your categories.')
 }
 
 export function createProduct(token: string, input: ProductInput): Promise<AdminProduct> {
@@ -359,19 +387,115 @@ export async function storeUpload(
 export function listCategories(token: string): Promise<AdminCategory[]> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'products.view')
-    return inTenant(ctx, ctx.db.categories)
+    return inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order)
   })
 }
 
-export function updateCategory(token: string, id: CategoryId, input: Pick<AdminCategory, 'name' | 'description' | 'color' | 'visible'>): Promise<AdminCategory> {
+export type CategoryInput = Pick<AdminCategory, 'name' | 'description' | 'color' | 'visible' | 'icon' | 'area'>
+
+const CATEGORY_ICONS: IconName[] = ['apple', 'bread', 'milk', 'snowflake', 'bottle', 'cookie', 'wheat', 'spray', 'sparkle', 'home', 'basket', 'gift', 'tag', 'package', 'cart', 'store']
+export const categoryIconChoices = CATEGORY_ICONS
+
+function cleanCategory(ctx: AdminContext, input: CategoryInput, id?: string) {
+  const name = sanitize(input.name, 40)
+  if (name.length < 2) throw new ApiError(422, 'Enter a category name.')
+  if (inTenant(ctx, ctx.db.categories).some((c) => c.id !== id && c.name.toLowerCase() === name.toLowerCase())) throw new ApiError(409, 'You already have a category with that name.')
+  if (!/^#[0-9a-f]{6}$/i.test(input.color)) throw new ApiError(422, 'Pick a valid colour.')
+  if (!CATEGORY_ICONS.includes(input.icon)) throw new ApiError(422, 'Choose an icon.')
+  if (!STORE_AREAS.includes(input.area)) throw new ApiError(422, 'Choose where it’s shelved in the store.')
+  return { name, description: sanitize(input.description, 200), color: input.color.toLowerCase(), icon: input.icon, area: input.area, visible: !!input.visible }
+}
+
+/** Add one of the supermarket's own categories. */
+export function createCategory(token: string, input: CategoryInput): Promise<AdminCategory> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    const t = requireWritable(ctx)
+    const fields = cleanCategory(ctx, input)
+    const mine = inTenant(ctx, ctx.db.categories)
+    if (mine.length >= 40) throw new ApiError(422, 'You can have up to 40 categories.')
+    const c: AdminCategory = { ...fields, id: `cat_${randomId(4)}`, tenantId: t.id, order: Math.max(-1, ...mine.map((x) => x.order)) + 1, standard: false }
+    ctx.db.categories.push(c)
+    audit(ctx.db, ctx, 'category.create', c.name, `Shelved in the ${STANDARD_CATEGORIES.find((s) => s.area === c.area)?.name} area`)
+    return c
+  })
+}
+
+export function updateCategory(token: string, id: CategoryId, input: CategoryInput): Promise<AdminCategory> {
   return run(token, (ctx) => {
     requirePermission(ctx, 'categories.manage')
     requireWritable(ctx)
     const c = ownedOrNotFound(ctx, ctx.db.categories.find((x) => x.id === id && x.tenantId === ctx.tenant?.id), 'Category')
-    if (sanitize(input.name, 60).length < 2) throw new ApiError(422, 'Enter a category name.')
-    if (!/^#[0-9a-f]{6}$/i.test(input.color)) throw new ApiError(422, 'Pick a valid colour.')
-    Object.assign(c, { ...input, name: sanitize(input.name, 60), description: sanitize(input.description, 200) })
+    Object.assign(c, cleanCategory(ctx, input, id))
     audit(ctx.db, ctx, 'category.update', c.name, c.visible ? 'Visible' : 'Hidden from store')
+    return c
+  })
+}
+
+/** Move a category up or down the shop's list. */
+export function moveCategory(token: string, id: CategoryId, dir: -1 | 1): Promise<AdminCategory[]> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    requireWritable(ctx)
+    const list = inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order)
+    const i = list.findIndex((c) => c.id === id)
+    const j = i + dir
+    if (i < 0) throw new ApiError(404, 'Category not found.')
+    if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j]!, list[i]!]
+    list.forEach((c, k) => (c.order = k))
+    return list
+  })
+}
+
+/**
+ * Remove a category. Its products (and any offers on it) move to another of
+ * the supermarket's categories, or the products are hidden from the shop.
+ */
+export function deleteCategory(token: string, id: CategoryId, opts: { moveTo?: CategoryId; hideProducts?: boolean }): Promise<{ moved: number; hidden: number }> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    requireStepUp(ctx)
+    const t = requireWritable(ctx)
+    const c = ownedOrNotFound(ctx, ctx.db.categories.find((x) => x.id === id && x.tenantId === t.id), 'Category')
+    const target = opts.moveTo ? ctx.db.categories.find((x) => x.id === opts.moveTo && x.tenantId === t.id && x.id !== id) : undefined
+    if (opts.moveTo && !target) throw new ApiError(422, 'Choose another of your categories to move the products to.')
+    const items = inTenant(ctx, ctx.db.products).filter((p) => p.categoryId === id)
+    if (items.length && !target && !opts.hideProducts) throw new ApiError(409, `${c.name} still has ${items.length} products — move them to another category first.`)
+    let hidden = 0
+    for (const p of items) {
+      if (target) p.categoryId = target.id
+      else {
+        p.status = 'hidden'
+        hidden++
+      }
+    }
+    // Offers on this category follow its products (or are paused).
+    for (const o of inTenant(ctx, ctx.db.offers)) {
+      const r = o.rule
+      if ((r.kind === 'percent-category' || r.kind === 'bxgy') && r.categoryId === id) {
+        if (target) r.categoryId = target.id
+        else o.status = 'paused'
+      }
+    }
+    ctx.db.categories = ctx.db.categories.filter((x) => x !== c)
+    inTenant(ctx, ctx.db.categories).sort((a, b) => a.order - b.order).forEach((x, k) => (x.order = k))
+    audit(ctx.db, ctx, 'category.delete', c.name, target ? `${items.length} products moved to ${target.name}` : `${hidden} products hidden`, 'warning')
+    return { moved: target ? items.length : 0, hidden }
+  })
+}
+
+/** Bring back one of HelaMart's standard categories that was removed. */
+export function restoreStandardCategory(token: string, id: CategoryId): Promise<AdminCategory> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'categories.manage')
+    const t = requireWritable(ctx)
+    const std = STANDARD_CATEGORIES.find((s) => s.id === id)
+    if (!std) throw new ApiError(404, 'Not a standard category.')
+    if (ctx.db.categories.some((c) => c.tenantId === t.id && c.id === id)) throw new ApiError(409, `${std.name} is already in your store.`)
+    const mine = inTenant(ctx, ctx.db.categories)
+    const c: AdminCategory = { id: std.id, tenantId: t.id, name: std.name, description: std.description, color: std.color, icon: std.icon, area: std.area, visible: true, order: Math.max(-1, ...mine.map((x) => x.order)) + 1, standard: true }
+    ctx.db.categories.push(c)
+    audit(ctx.db, ctx, 'category.restore', c.name)
     return c
   })
 }
@@ -434,6 +558,54 @@ export interface OfferInput {
   audience: AdminOffer['audience']
   customerIds: string[]
   branchIds: string[]
+  conditions?: OfferConditions
+  /** Show as "Coming soon" before it starts. */
+  announce?: boolean
+}
+
+/** Validates and normalises an offer's conditions (minimum spend, days, hours…). */
+function cleanConditions(c: OfferConditions | undefined, expiresAt: string): OfferConditions | undefined {
+  if (!c) return undefined
+  const out: OfferConditions = {}
+  const int = (v: unknown) => (v === undefined || v === null || v === '' ? undefined : Math.floor(Number(v)))
+  const minSpend = int(c.minSpendCents)
+  if (minSpend !== undefined) {
+    if (!(minSpend >= 0 && minSpend <= 10_000_000_00)) throw new ApiError(422, 'Enter a valid minimum spend.')
+    if (minSpend > 0) out.minSpendCents = minSpend
+  }
+  const minItems = int(c.minItems)
+  if (minItems !== undefined) {
+    if (!(minItems >= 1 && minItems <= 200)) throw new ApiError(422, 'Minimum items must be 1–200.')
+    if (minItems > 1) out.minItems = minItems
+  }
+  if (c.days?.length) {
+    const days = [...new Set(c.days.map(Number))].filter((d) => d >= 0 && d <= 6).sort()
+    if (!days.length) throw new ApiError(422, 'Choose valid days.')
+    if (days.length < 7) out.days = days
+  }
+  const from = int(c.fromHour)
+  const to = int(c.toHour)
+  if (from !== undefined || to !== undefined) {
+    if (from === undefined || to === undefined || !(from >= 0 && from <= 23) || !(to >= 1 && to <= 24) || from === to) throw new ApiError(422, 'Choose a valid time window (start and end hour).')
+    out.fromHour = from
+    out.toHour = to
+  }
+  if (c.startsAt) {
+    const t = Date.parse(c.startsAt)
+    if (Number.isNaN(t)) throw new ApiError(422, 'Choose a valid start date.')
+    if (t >= Date.parse(expiresAt)) throw new ApiError(422, 'The offer must start before it expires.')
+    out.startsAt = new Date(t).toISOString()
+  }
+  if (c.fulfilment) {
+    if (c.fulfilment !== 'delivery' && c.fulfilment !== 'pickup') throw new ApiError(422, 'Choose delivery or pickup.')
+    out.fulfilment = c.fulfilment
+  }
+  const limit = int(c.perCustomerLimit)
+  if (limit !== undefined) {
+    if (!(limit >= 1 && limit <= 50)) throw new ApiError(422, 'Uses per customer must be 1–50.')
+    out.perCustomerLimit = limit
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 export function saveOffer(token: string, input: OfferInput, id?: string): Promise<AdminOffer> {
@@ -449,6 +621,9 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
     if ((r.kind === 'percent-category' || r.kind === 'percent-product') && !(r.percent > 0 && r.percent <= 90)) throw new ApiError(422, 'Percentage must be between 1 and 90.')
     if (r.kind === 'fixed-off' && !(r.amountCents > 0 && r.minSpendCents >= 0)) throw new ApiError(422, 'Enter a valid discount and minimum spend.')
     if (r.kind === 'bxgy' && !(r.buy >= 1 && r.get >= 1)) throw new ApiError(422, 'Buy and get quantities must be at least 1.')
+    if (r.kind === 'percent-order' && !(r.percent > 0 && r.percent <= 90 && r.minSpendCents >= 0 && (r.maxDiscountCents ?? 1) > 0)) throw new ApiError(422, 'Enter a valid basket percentage, minimum spend and cap.')
+    if (r.kind === 'free-delivery' && !(r.minSpendCents >= 0)) throw new ApiError(422, 'Enter a valid minimum spend.')
+    const conditions = cleanConditions(input.conditions, input.expiresAt)
     const allowed = allowedBranchIds(ctx)
     if (input.branchIds.some((b) => !allowed.has(b))) throw new ApiError(403, 'You can only run offers at your own branches.', 'BRANCH_FORBIDDEN')
     if (!isChainLevel(ctx) && !input.branchIds.length) throw new ApiError(422, 'Choose the branches this offer runs at.')
@@ -456,7 +631,7 @@ export function saveOffer(token: string, input: OfferInput, id?: string): Promis
       if (!input.customerIds.length) throw new ApiError(422, 'Choose at least one customer.')
       if (input.customerIds.some((cid) => !ctx.db.customers.find((c) => c.id === cid)?.tenantIds.includes(t.id))) throw new ApiError(403, 'You can only target your own customers.')
     }
-    const base = { ...input, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
+    const base = { ...input, announce: !!input.announce && !!conditions?.startsAt, conditions, code, title: sanitize(input.title, 80), description: sanitize(input.description, 200), customerIds: input.audience === 'selected' ? input.customerIds : [] }
     if (id) {
       const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
       Object.assign(o, base)
@@ -477,6 +652,21 @@ export function setOfferStatus(token: string, id: string, status: AdminOffer['st
     const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
     o.status = status
     audit(ctx.db, ctx, status === 'paused' ? 'promotion.pause' : 'promotion.resume', o.code)
+    return o
+  })
+}
+
+/** Quick schedule changes: publish a scheduled offer now, or end a live one now. */
+export function setOfferSchedule(token: string, id: string, action: 'publish-now' | 'end-now'): Promise<AdminOffer> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'promotions.manage')
+    requireWritable(ctx)
+    const o = ownedOrNotFound(ctx, ctx.db.offers.find((x) => x.id === id), 'Offer')
+    if (action === 'publish-now') {
+      if (o.conditions) delete o.conditions.startsAt
+      o.status = 'active'
+    } else o.expiresAt = nowIso()
+    audit(ctx.db, ctx, action === 'publish-now' ? 'promotion.publish_now' : 'promotion.end_now', o.code, o.title)
     return o
   })
 }

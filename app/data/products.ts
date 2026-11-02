@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import type { CategoryId, Product, ProductShape } from '~/types'
+import { getCategory } from './categories'
+import type { CategoryId, Product, ProductShape, StoreAreaId } from '~/types'
 
 /**
  * SAMPLE CATALOGUE — fictional brands and illustrative prices for the
@@ -166,4 +167,9 @@ export function getProduct(id: string): Product | undefined {
 
 export function productsInCategory(categoryId: CategoryId): Product[] {
   return products.filter((p) => p.categoryId === categoryId)
+}
+
+/** Products shelved in one store area — its standard category plus any of the supermarket's own categories placed there. */
+export function productsInArea(area: StoreAreaId): Product[] {
+  return products.filter((p) => getCategory(p.categoryId).area === area)
 }

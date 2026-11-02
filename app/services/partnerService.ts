@@ -53,6 +53,8 @@ export interface PublicBranch {
   lat: number
   lng: number
   deliveryRadiusKm: number
+  /** Where this branch delivers (map area + named places). */
+  coverage: { polygon: [number, number][]; places: string[] }
 }
 
 /** GET /stores — only approved, active supermarkets. Restricted or banned ones disappear. */

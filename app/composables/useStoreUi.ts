@@ -1,4 +1,4 @@
-export type Panel = 'cart' | 'browse' | 'help' | 'settings' | 'checkout' | 'account' | null
+export type Panel = 'cart' | 'browse' | 'help' | 'settings' | 'checkout' | 'account' | 'offers' | null
 
 /** Open/closed state for overlays shared across the app. */
 export function useStoreUi() {

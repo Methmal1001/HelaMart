@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Product } from '~/types'
-import { priceTagCanvas, productArtCanvas } from '../../productArt'
+import { priceTagCanvas, productArtCanvas, promoTagCanvas } from '../../productArt'
 import { loadImageSource } from '~/services/mock/mediaStore'
 import { formatLKR } from '~/utils/currency'
 
@@ -57,14 +57,23 @@ function pack(items: { key: string; w: number; h: number }[], size: number) {
   return out
 }
 
-export async function buildProductAtlas(products: Product[], maxAnisotropy: number): Promise<ProductAtlas> {
+/** Products on promotion get a red "special" shelf tag instead of the yellow one. */
+export type ShelfPromos = Map<string, { badge: string; nowCents?: number }>
+
+export async function buildProductAtlas(products: Product[], maxAnisotropy: number, promos?: ShelfPromos): Promise<ProductAtlas> {
   const sources = new Map<string, Source>()
   await Promise.all(
     products.map(async (p) => {
       sources.set(p.id, (await pictureFor(p)).src)
     }),
   )
-  const tagCanvases = new Map(products.map((p) => [p.id, priceTagCanvas(p, formatLKR(p.priceCents))]))
+  const tagCanvases = new Map(
+    products.map((p) => {
+      const promo = promos?.get(p.id)
+      if (!promo) return [p.id, priceTagCanvas(p, formatLKR(p.priceCents))] as const
+      return [p.id, promo.nowCents ? promoTagCanvas(p, promo.badge, formatLKR(promo.nowCents), formatLKR(p.priceCents)) : promoTagCanvas(p, promo.badge, formatLKR(p.priceCents))] as const
+    }),
+  )
 
   // Try progressively smaller cells until everything fits a 2048² (or 4096²) atlas.
   const size = products.length > 140 ? 4096 : 2048

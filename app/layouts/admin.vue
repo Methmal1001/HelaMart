@@ -9,6 +9,14 @@ useHead({
 
 const auth = useAdminAuth()
 const route = useRoute()
+const notify = useAdminNotify()
+async function stopManaging() {
+  try {
+    await auth.stopManaging()
+  } catch (e) {
+    notify.error(e)
+  }
+}
 const mobileOpen = ref(false)
 watch(() => route.fullPath, () => (mobileOpen.value = false))
 
@@ -21,6 +29,7 @@ const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/supermarkets', label: 'Supermarkets', icon: 'store', perm: 'tenants.view' },
       { to: '/admin/supermarket-admins', label: 'Supermarket admins', icon: 'shield', perm: 'tenants.view' },
       { to: '/admin/branding-approvals', label: 'Branding approvals', icon: 'sparkle', perm: 'tenants.view' },
+      { to: '/admin/banners', label: 'Homepage banners', icon: 'gift', perm: 'platform.banners.manage' },
       { to: '/admin/customers', label: 'Customers (all Sri Lanka)', icon: 'users', perm: 'customers.all.view' },
     ],
   },
@@ -147,6 +156,11 @@ const orgLabel = computed(() => {
           </NuxtLink>
         </div>
       </header>
+      <div v-if="auth.acting.value" class="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 bg-[#4E1C6B] px-6 py-2.5 text-sm text-white" role="status" data-testid="acting-banner">
+        <AppIcon name="shield" :size="16" class="shrink-0 text-hela-gold" />
+        <span class="min-w-0 flex-1">You’re managing <b>{{ auth.acting.value.tenantName }}</b> as HelaMart {{ auth.acting.value.homeRoleName }}. You have full chain-admin access here — every action is recorded in their audit log.</span>
+        <button type="button" class="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25" data-testid="stop-managing" @click="stopManaging">Back to HelaMart control</button>
+      </div>
       <div v-if="auth.readOnly.value" class="flex gap-2 border-b border-[#f0d9a8] bg-[#FFF4D6] px-6 py-2.5 text-sm text-[#7A5600]" role="alert">
         <AppIcon name="alert" :size="17" class="mt-0.5 shrink-0" />
         <span><b>{{ auth.user.value?.tenantName }} is restricted by HelaMart.</b> {{ auth.user.value?.tenantStatusReason }} You can view your data, but changes are disabled and shoppers can’t see your stores until the restriction is lifted.</span>

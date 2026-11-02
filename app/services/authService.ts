@@ -4,10 +4,15 @@ import { api } from './http'
 /**
  * Auth API (HelaMart backend):
  *   POST /auth/register · POST /auth/login · POST /auth/google · POST /auth/refresh · POST /auth/logout · GET /auth/me
- *   PUT /me/location
+ *   PUT /me/location · PUT /me/phone
  * The server hashes passwords, signs short-lived JWT access tokens, rotates refresh tokens
  * (re-using a rotated one revokes the session family) and locks an email after repeated failures.
  */
+
+/** PUT /me/phone — add or change the customer's mobile number. */
+export function savePhone(accessToken: string, phone: string): Promise<User> {
+  return api<User>('/me/phone', { method: 'PUT', body: { phone }, token: accessToken })
+}
 
 /** PUT /me/location — save (or change) the customer's shopping area. */
 export function savePreferredLocation(accessToken: string, location: ShopperLocation): Promise<User> {

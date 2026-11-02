@@ -6,7 +6,9 @@
     <CartDrawer />
     <CheckoutPanel />
     <AccountPanel />
+    <OffersPanel />
     <AuthDialog />
     <AreaFinder />
+    <PhoneRequiredDialog />
   </div>
 </template>

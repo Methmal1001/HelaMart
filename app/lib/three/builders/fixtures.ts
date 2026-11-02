@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { CategoryId } from '~/types'
 import { fixtures, GONDOLA, type FixturePlan } from '~/data/storeLayout'
 import { getCategory } from '~/data/categories'
-import { productsInCategory } from '~/data/products'
+import { productsInArea } from '~/data/products'
 import { StaticBatch, frameMatrix } from '../batch'
 import type { CollisionWorld } from '../colliders'
 import type { MaterialLibrary } from '../materials'
@@ -110,7 +110,7 @@ function gondola(ctx: FixtureContext, plan: FixturePlan, frame: THREE.Matrix4, L
 }
 
 function nextProduceId(cursor: { i: number }) {
-  const list = productsInCategory('produce')
+  const list = productsInArea('produce')
   return list[cursor.i++ % list.length]!.id
 }
 
@@ -351,7 +351,7 @@ function checkout(ctx: FixtureContext, frame: THREE.Matrix4, L: number, D: numbe
   const poleX = L / 2 - 0.12
   b.box(steel, 0.05, 2.2, 0.05, poleX, 1.1, -D * 0.3, frame)
   const tex = smallLabelTexture(`Lane ${lane}`)
-  const face = new THREE.MeshStandardMaterial({ map: tex, emissive: '#ffffff', emissiveIntensity: 0.3, emissiveMap: tex })
+  const face = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
   const side = m.brand('primary')
   const label = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.06), [side, side, side, side, face, face])
   label.applyMatrix4(mul(frame.clone(), tr(poleX, 2.3, -D * 0.3), rotY(Math.PI / 2)))

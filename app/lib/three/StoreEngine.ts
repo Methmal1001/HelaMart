@@ -6,8 +6,11 @@ import { StaticBatch } from './batch'
 import { CollisionWorld } from './colliders'
 import { MaterialLibrary } from './materials'
 import { BrandingLayer, type StoreBranding } from './branding'
+import { OfferSignsLayer, type PromoBoards } from './offerSigns'
+import type { ShelfPromos } from './products/atlas'
 import { skyTexture } from './textures'
-import { buildExterior, buildInterior } from './builders/shell'
+import { buildExterior, buildInterior, type SignSpot } from './builders/shell'
+import { SectionSignsLayer } from './sectionSigns'
 import { buildFixtures } from './builders/fixtures'
 import { AutoDoors } from './builders/doors'
 import { Avatar } from './builders/avatar'
@@ -63,6 +66,11 @@ export class StoreEngine {
   private slots: ProductSlot[] = []
   private doors!: AutoDoors
   private branding: BrandingLayer | null = null
+  private offerSigns: OfferSignsLayer | null = null
+  private signSpots: SignSpot[] = []
+  private sectionSigns: SectionSignsLayer | null = null
+  private shelfPromos: ShelfPromos = new Map()
+  private boardsWanted: PromoBoards | null = null
   private brandingWanted: StoreBranding | null = null
   private avatars = {} as Record<AvatarKind, Avatar>
   private cart!: THREE.Group
@@ -156,7 +164,7 @@ export class StoreEngine {
     const batch = new StaticBatch()
     const glassBatch = new StaticBatch()
     const lightBatch = new StaticBatch()
-    const shellCtx = { batch, glassBatch, lightBatch, materials: this.materials, world: this.world, group }
+    const shellCtx = { batch, glassBatch, lightBatch, materials: this.materials, world: this.world, group, signs: this.signSpots }
     buildExterior(shellCtx)
     buildInterior(shellCtx)
     await nextTick()
@@ -170,11 +178,17 @@ export class StoreEngine {
     await nextTick()
 
     this.progress(0.7, 'Arranging products')
-    await this.products.build(this.slots, preset.depthRows, this.renderer.capabilities.getMaxAnisotropy())
+    await this.products.build(this.slots, preset.depthRows, this.renderer.capabilities.getMaxAnisotropy(), this.shelfPromos)
     this.scene.add(this.products.group)
     this.branding = new BrandingLayer(this.materials, this.renderer.capabilities.getMaxAnisotropy())
     this.scene.add(this.branding.group)
     await this.branding.apply(this.brandingWanted)
+    this.sectionSigns = new SectionSignsLayer(this.signSpots, this.renderer.capabilities.getMaxAnisotropy())
+    this.scene.add(this.sectionSigns.group)
+    this.sectionSigns.apply()
+    this.offerSigns = new OfferSignsLayer(this.renderer.capabilities.getMaxAnisotropy())
+    this.scene.add(this.offerSigns.group)
+    this.offerSigns.apply(this.boardsWanted)
     await nextTick()
 
     this.progress(0.85, 'Opening the doors')
@@ -478,6 +492,20 @@ export class StoreEngine {
     this.welcomeOffset = { x, y }
   }
 
+  /**
+   * The chosen branch's promotions: red "special" shelf tags, promo boards on
+   * the end-caps of discounted aisles and the "Offers this week" board.
+   */
+  setPromotions(shelf: ShelfPromos, boards: PromoBoards | null) {
+    const key = (m: ShelfPromos) => [...m].map(([k, v]) => `${k}:${v.badge}:${v.nowCents ?? ''}`).sort().join('|')
+    const shelfChanged = key(shelf) !== key(this.shelfPromos)
+    this.shelfPromos = shelf
+    this.boardsWanted = boards
+    if (this.disposed) return
+    this.offerSigns?.apply(boards)
+    if (shelfChanged && this.renderer) void this.rebuildProducts()
+  }
+
   /** Theme the store for the chosen supermarket (approved branding only). */
   setBranding(b: StoreBranding | null) {
     this.brandingWanted = b
@@ -487,8 +515,10 @@ export class StoreEngine {
   /** Restock the shelves, e.g. after the shopper switches supermarket/branch or photos change. */
   async rebuildProducts() {
     if (this.disposed || !this.renderer) return
+    // Category names/colours may have changed with the catalogue.
+    this.sectionSigns?.apply()
     this.products.setHighlight(null)
-    await this.products.build(this.slots, QUALITY_PRESETS[this.quality].depthRows, this.renderer.capabilities.getMaxAnisotropy())
+    await this.products.build(this.slots, QUALITY_PRESETS[this.quality].depthRows, this.renderer.capabilities.getMaxAnisotropy(), this.shelfPromos)
   }
 
   setQuality(q: QualityLevel) {
@@ -514,6 +544,8 @@ export class StoreEngine {
     if (this.disposed) return
     this.disposed = true
     this.branding?.dispose()
+    this.offerSigns?.dispose()
+    this.sectionSigns?.dispose()
     this.renderer?.setAnimationLoop(null)
     this.resizeObserver?.disconnect()
     this.input?.dispose()

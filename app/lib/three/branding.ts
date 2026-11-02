@@ -109,7 +109,8 @@ export class BrandingLayer {
   }
 
   private plane(texture: THREE.Texture, w: number, h: number, pos: THREE.Vector3, rotY: number, sharedTexture = false) {
-    const material = new THREE.MeshStandardMaterial({ map: texture, emissive: '#ffffff', emissiveMap: texture, emissiveIntensity: 0.2, roughness: 0.55 })
+    // Backlit signage: unlit and not tone-mapped, so the supermarket's colours show exactly as designed.
+    const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
     const geometry = new THREE.PlaneGeometry(w, h)
     const mesh = new THREE.Mesh(geometry, material)
     mesh.position.copy(pos)

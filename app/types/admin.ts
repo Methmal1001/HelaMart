@@ -1,4 +1,4 @@
-import type { CategoryId, DeliveryDetails, Offer, OrderLine, PriceBreakdown, Product } from './index'
+import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, PriceBreakdown, Product, StoreAreaId } from './index'
 
 // ================================================================== permissions
 
@@ -15,6 +15,7 @@ export type PlatformPermission =
   | 'platform.roles.manage'
   | 'platform.audit.view'
   | 'platform.settings.manage'
+  | 'platform.banners.manage'
 
 /** Supermarket-level permissions (inside one chain). */
 export type TenantPermission =
@@ -152,6 +153,17 @@ export interface BrandingRequest {
   reviewNote?: string
 }
 
+/** A branch's delivery area: drawn on a map plus the named cities / villages it serves. */
+export interface DeliveryCoverage {
+  /** Polygon corners as [lat, lng]. */
+  polygon: [number, number][]
+  /** Cities and villages inside the area (matched against the shopper's town). */
+  places: string[]
+  areaKm2: number
+  updatedAt: string
+  updatedBy: string
+}
+
 export type BranchStatus = 'open' | 'temporarily_closed' | 'closed'
 
 export interface Branch {
@@ -170,6 +182,11 @@ export interface Branch {
   /** Map pin (resolved from the town when the branch is saved). */
   lat?: number
   lng?: number
+  /**
+   * Home-delivery area, set by the supermarket on a map. Shoppers outside it
+   * can't choose this branch, and branches without one aren't shown at all.
+   */
+  coverage?: DeliveryCoverage
   createdAt: string
 }
 
@@ -202,6 +219,8 @@ export interface StaffUser {
 
 /** Safe view of a staff member (never includes secrets). */
 export type StaffView = Omit<StaffUser, 'mfaSecret' | 'passwordHash'> & {
+  /** Set while a HelaMart Super Admin is managing a supermarket's portal. */
+  acting?: { tenantId: string; tenantName: string; homeRoleName: string }
   roleName: string
   roleLevel: number
   effectivePermissions: Permission[]
@@ -277,10 +296,45 @@ export interface AdminCategory {
   description: string
   color: string
   visible: boolean
+  icon: IconName
+  /** Store area it's shelved in (3D aisle / section). */
+  area: StoreAreaId
+  /** Display order in the shop (aisle list, filters). */
+  order: number
+  /** One of HelaMart's standard categories. */
+  standard: boolean
+}
+
+/** HelaMart homepage promotion banner — managed by HelaMart head office only. */
+export interface PlatformBanner {
+  id: string
+  title: string
+  subtitle: string
+  /** `media:<id>` 3:1 image; without it a themed design is drawn. */
+  image?: string
+  theme: 'green' | 'gold' | 'sunset' | 'ocean' | 'berry'
+  /** Supermarket being promoted (optional) and one of its offers (optional). */
+  tenantId?: string
+  offerId?: string
+  cta: 'shop' | 'offers' | 'none'
+  /** Who sees it: everyone, shoppers in chosen districts, or only where the featured supermarket delivers. */
+  target: 'all' | 'districts' | 'deliverable'
+  districts: string[]
+  startsAt: string
+  endsAt: string
+  /** Higher shows first. */
+  priority: number
+  status: 'active' | 'paused'
+  views: number
+  clicks: number
+  createdAt: string
+  createdBy: string
 }
 
 export interface AdminOffer extends Offer {
   tenantId: string
+  /** Show it to shoppers as "Coming soon" up to 14 days before it starts. */
+  announce?: boolean
   /** Branches the offer runs at. Empty = all branches. */
   branchIds: string[]
   status: 'active' | 'paused'

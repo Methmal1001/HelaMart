@@ -6,7 +6,11 @@
 
 export type AvatarKind = 'male' | 'female'
 
-export type CategoryId =
+/**
+ * The 10 physical areas of the HelaMart 3D store (each standard category owns
+ * one). A supermarket's own categories are shelved in one of these areas.
+ */
+export type StoreAreaId =
   | 'produce'
   | 'bakery'
   | 'dairy'
@@ -17,6 +21,9 @@ export type CategoryId =
   | 'cleaning'
   | 'personal-care'
   | 'household'
+
+/** A category id: one of the standard ones (= its store area) or a supermarket's own, e.g. "cat_k3x9q". */
+export type CategoryId = string
 
 /** Procedural 3D placeholder used until a real product model/image exists. */
 export type ProductShape =
@@ -41,6 +48,10 @@ export interface Category {
   /** Accent colour used on signage, minimap and UI chips for this section. */
   color: string
   icon: IconName
+  /** Where it's shelved in the 3D store. */
+  area: StoreAreaId
+  /** One of HelaMart's standard categories (every new supermarket starts with these). */
+  standard?: boolean
 }
 
 export interface Product {
@@ -231,6 +242,30 @@ export type OfferRule =
   | { kind: 'fixed-off'; amountCents: number; minSpendCents: number }
   /** Delivery fee waived above a minimum spend. */
   | { kind: 'free-delivery'; minSpendCents: number }
+  /** % off the whole basket above a minimum spend (optionally capped). */
+  | { kind: 'percent-order'; percent: number; minSpendCents: number; maxDiscountCents?: number }
+
+/**
+ * Extra conditions a supermarket can put on an offer ("over Rs. 5,000",
+ * "weekends only", "6–9 pm", "pickup orders"…). All set conditions must hold.
+ */
+export interface OfferConditions {
+  /** Basket value (before discounts) must reach this. */
+  minSpendCents?: number
+  /** At least this many items in the basket. */
+  minItems?: number
+  /** Days of the week it runs (0 = Sunday … 6 = Saturday). Empty/absent = every day. */
+  days?: number[]
+  /** Daily time window, 24h clock, e.g. 18 → 21 for a 6–9 pm happy hour. */
+  fromHour?: number
+  toHour?: number
+  /** Not before this date-time (scheduled offers). */
+  startsAt?: string
+  /** Only for home delivery or only for store pickup. */
+  fulfilment?: FulfilmentMethod
+  /** How many orders each customer can use it on. */
+  perCustomerLimit?: number
+}
 
 export interface Offer {
   id: string
@@ -240,6 +275,16 @@ export interface Offer {
   rule: OfferRule
   /** ISO date-time. */
   expiresAt: string
+  conditions?: OfferConditions
+  /** Supermarket running the offer (absent = a personal HelaMart offer). */
+  storeId?: string
+  storeName?: string
+  /** Only for shoppers who haven't ordered from this supermarket yet. */
+  forNewCustomers?: boolean
+  /** The supermarket's approved logo and theme colours (for branded coupons). */
+  storeTheme?: { logo?: string; primaryColor: string; accentColor: string }
+  /** Announced before it starts ("Coming soon"); not applied until `conditions.startsAt`. */
+  upcoming?: boolean
 }
 
 export interface PricedLine {

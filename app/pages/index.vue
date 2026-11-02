@@ -49,6 +49,13 @@ onBeforeUnmount(() => {
       <WelcomePanel v-if="showWelcome && phase !== 'loading'" />
     </Transition>
 
+    <!-- HelaMart offers for the shopper's area (head-office banners), clear of the welcome panel. -->
+    <Transition enter-active-class="transition duration-700 delay-300" enter-from-class="opacity-0 translate-y-4" leave-active-class="pointer-events-none transition duration-200" leave-to-class="opacity-0">
+      <div v-if="phase === 'welcome'" class="absolute right-6 bottom-6 z-20 hidden lg:block">
+        <HomeBanners variant="floating" />
+      </div>
+    </Transition>
+
     <Transition enter-active-class="transition duration-500" enter-from-class="opacity-0" leave-active-class="pointer-events-none transition duration-300" leave-to-class="opacity-0">
       <div v-if="phase === 'entering'" class="absolute inset-x-0 bottom-8 z-20 flex justify-center px-4" role="status">
         <span class="hud-surface flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-ink">

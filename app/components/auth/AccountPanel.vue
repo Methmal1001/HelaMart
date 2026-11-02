@@ -1,9 +1,30 @@
 <script setup lang="ts">
 const { panel, closePanel } = useStoreUi()
-const { user, logout, sessionInfo, isAuthenticated } = useAuth()
+const { user, logout, sessionInfo, isAuthenticated, savePhone } = useAuth()
 const { offers, loading } = useOffers()
 const { show } = useToasts()
 const { openFinder } = useShoppingArea()
+
+// ---- mobile number (required; shown to the supermarket for deliveries)
+const editingPhone = ref(false)
+const phoneDraft = ref('')
+const phoneError = ref('')
+function startPhone() {
+  phoneDraft.value = user.value?.phone ?? ''
+  phoneError.value = ''
+  editingPhone.value = true
+}
+async function submitPhone() {
+  phoneError.value = ''
+  if (!isSriLankanMobile(phoneDraft.value)) return (phoneError.value = 'Enter a Sri Lankan mobile number, e.g. 077 123 4567.')
+  try {
+    const u = await savePhone(phoneDraft.value)
+    editingPhone.value = false
+    show(`Mobile number updated to ${u.phone}`, 'success')
+  } catch (e) {
+    phoneError.value = (e as Error).message
+  }
+}
 
 function changeArea() {
   closePanel()
@@ -32,6 +53,16 @@ async function signOut() {
         <div class="min-w-0">
           <p class="truncate text-lg font-extrabold tracking-tight text-ink">{{ user.name }}</p>
           <p class="truncate text-sm text-muted">{{ user.email }}</p>
+          <p v-if="!editingPhone" class="flex items-center gap-2 text-sm text-muted" data-testid="account-phone">
+            <span>{{ user.phone ?? 'No mobile number' }}</span>
+            <button type="button" class="text-xs font-bold text-hela-green hover:underline" @click="startPhone">Change</button>
+          </p>
+          <form v-else class="mt-1 flex items-center gap-2" @submit.prevent="submitPhone">
+            <input v-model="phoneDraft" type="tel" autocomplete="tel" class="h-9 w-36 rounded-lg bg-white px-2.5 text-sm ring-1 ring-line focus:ring-2 focus:ring-hela-green focus:outline-none" aria-label="Mobile number">
+            <button type="submit" class="text-xs font-bold text-hela-green">Save</button>
+            <button type="button" class="text-xs text-muted" @click="editingPhone = false">Cancel</button>
+          </form>
+          <p v-if="phoneError" class="text-xs text-[#8A2E2E]" role="alert">{{ phoneError }}</p>
           <span class="chip mt-1.5 bg-hela-green-50 text-hela-green">
             {{ user.provider === 'google' ? 'Signed in with Google' : 'Email & password' }}
           </span>

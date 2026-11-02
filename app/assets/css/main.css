@@ -112,3 +112,29 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Delivery-area editor (Leaflet): draggable corners and "add a corner" midpoints. */
+.hm-cov-corner {
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #174d38;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: grab;
+}
+.hm-cov-mid {
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.75);
+  border: 2px dashed #174d38;
+  cursor: copy;
+}
+.hm-cov-offline {
+  position: absolute;
+  inset: auto 0.5rem 1.6rem 0.5rem;
+  z-index: 500;
+  border-radius: 0.6rem;
+  background: rgb(255 244 214 / 0.95);
+  color: #7a5600;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
