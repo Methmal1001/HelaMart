@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<{ offer: Offer; compact?: boolean; applie
 const BY_KIND: Record<string, { bg: string; fg: string }> = {
   'percent-category': { bg: 'linear-gradient(135deg,#E23B3B,#B3162B)', fg: '#FFF4D6' },
   'percent-product': { bg: 'linear-gradient(135deg,#F25C2A,#C2361A)', fg: '#FFF4D6' },
+  'percent-items': { bg: 'linear-gradient(135deg,#E23B3B,#B3162B)', fg: '#FFF4D6' },
+  'amount-items': { bg: 'linear-gradient(135deg,#C2185B,#880E4F)', fg: '#FFF4D6' },
   'percent-order': { bg: 'linear-gradient(135deg,#7A2E8E,#4E1C6B)', fg: '#FFE9A8' },
   'fixed-off': { bg: 'linear-gradient(135deg,#174D38,#0E3426)', fg: '#E1C987' },
   bxgy: { bg: 'linear-gradient(135deg,#F2B33D,#D88A12)', fg: '#3A2400' },

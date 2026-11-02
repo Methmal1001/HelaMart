@@ -99,7 +99,7 @@ function promotions(): { shelf: ShelfPromos; boards: PromoBoards | null } {
   const boards = running.length && currentStore.value
     ? {
         storeName: currentStore.value.name,
-        offers: running.map((o) => ({ headline: offerHeadline(o.rule), subject: offerSubject(o.rule), categoryId: o.rule.kind === 'percent-category' || o.rule.kind === 'bxgy' ? o.rule.categoryId : undefined })),
+        offers: running.map((o) => ({ headline: offerHeadline(o.rule), subject: offerSubject(o.rule), categoryId: ruleTarget(o.rule)?.categoryIds[0] })),
       }
     : null
   return { shelf, boards }

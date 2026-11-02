@@ -13,7 +13,9 @@ const notify = useAdminNotify()
 const { confirm } = useAdminConfirm()
 const branches = ref<(Branch & { managerName: string | null; staffCount: number })[]>([])
 const team = ref<StaffView[]>([])
+/** Opening branches and appointing their heads is chain-level; a branch's own staff keep its details up to date. */
 const canManage = computed(() => auth.can('branches.manage') && auth.isChainLevel.value && !auth.readOnly.value)
+const canEditBranch = (b: Branch) => auth.can('branches.manage') && !auth.readOnly.value && (auth.isChainLevel.value || !!auth.user.value?.branchIds.includes(b.id))
 
 async function load() {
   try {
@@ -103,8 +105,8 @@ async function changeStatus(b: Branch, status: Branch['status']) {
           <dd v-if="b.coverage" class="text-ink" :title="b.coverage.places.join(', ')">{{ b.coverage.places.length }} places · {{ b.coverage.areaKm2 }} km²<span class="block truncate text-xs text-muted">{{ b.coverage.places.slice(0, 4).join(', ') }}{{ b.coverage.places.length > 4 ? '…' : '' }}</span></dd>
           <dd v-else class="font-semibold text-[#8A2E2E]" data-testid="coverage-missing">Not set — hidden from shoppers</dd>
         </dl>
-        <div v-if="auth.can('branches.manage') && !auth.readOnly.value" class="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
-          <button v-if="canManage" type="button" class="btn-ghost h-8 px-3 text-xs" @click="open(b)"><AppIcon name="edit" :size="14" />Edit</button>
+        <div v-if="canEditBranch(b)" class="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
+          <button type="button" class="btn-ghost h-8 px-3 text-xs" :data-testid="`edit-branch-${b.id}`" @click="open(b)"><AppIcon name="edit" :size="14" />Edit</button>
           <button type="button" class="btn-ghost h-8 px-3 text-xs" :class="b.coverage ? '' : 'bg-[#FBEAEA] text-[#8A2E2E]'" :data-testid="`coverage-${b.id}`" @click="coverageFor = b"><AppIcon name="map" :size="14" />Delivery area</button>
           <button v-if="b.status !== 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'open')">Re-open</button>
           <button v-if="b.status === 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'temporarily_closed')">Close temporarily</button>
@@ -131,11 +133,12 @@ async function changeStatus(b: Branch, status: Branch['status']) {
         <label class="sm:col-span-2"><span class="field-label">Address</span><input v-model="f.address" class="field" maxlength="200"></label>
         <label><span class="field-label">Opening hours</span><input v-model="f.openingHours" class="field" maxlength="80"></label>
         <label class="sm:col-span-2"><span class="field-label">Branch head</span>
-          <select v-model="f.managerId" class="field">
+          <select v-model="f.managerId" class="field" :disabled="!auth.isChainLevel.value">
             <option value="">Not appointed yet</option>
             <option v-for="s in team.filter((x) => x.status === 'active')" :key="s.id" :value="s.id">{{ s.name }} — {{ s.roleName }}</option>
           </select>
-          <span class="mt-1 block text-xs text-muted">To create a new branch head, add them under Officers & staff with the “Branch Manager” role.</span>
+          <span v-if="!auth.isChainLevel.value" class="mt-1 block text-xs text-muted">Branch heads are appointed by your supermarket admin.</span>
+          <span v-else class="mt-1 block text-xs text-muted">To create a new branch head, add them under Officers & staff with the “Branch Manager” role.</span>
         </label>
         <p v-if="error" class="text-sm text-[#8A2E2E] sm:col-span-2" role="alert">{{ error }}</p>
       </form>

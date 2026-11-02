@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Role } from '~/types/admin'
-import { ROLE_IDS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
-import { deleteTeamRole, listTeamRoles, saveTeamRole, type RoleInput } from '~/services/admin/common'
+import type { Permission } from '~/types/admin'
+import { CHAIN_ONLY_PERMISSIONS, ROLE_IDS, permissionLabel, permissionsFor } from '~/data/admin/permissions'
+import { deleteTeamRole, getBranchManagerAccess, listTeamRoles, saveTeamRole, setBranchManagerAccess, type RoleInput } from '~/services/admin/common'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: 'platform.roles.manage', tenant: 'roles.manage' } })
 useHead({ title: 'Roles & permissions' })
@@ -16,11 +17,44 @@ const total = computed(() => permissionsFor(scope.value).length)
 async function load() {
   try {
     roles.value = await auth.call(listTeamRoles)
+    if (scope.value === 'tenant') bm.value = await auth.call(getBranchManagerAccess)
   } catch (e) {
     notify.error(e)
   }
 }
 onMounted(load)
+
+// ---- what this supermarket's branch managers can do (at their own branches)
+const bm = ref<Awaited<ReturnType<typeof getBranchManagerAccess>> | null>(null)
+const bmEditing = ref(false)
+const bmDraft = ref<Permission[]>([])
+const canSetBranchManagers = computed(() => scope.value === 'tenant' && auth.can('roles.manage') && auth.isChainLevel.value && !auth.readOnly.value)
+/** Headline capabilities for the summary card. */
+const BM_HIGHLIGHTS: { perm: Permission; label: string }[] = [
+  { perm: 'products.manage', label: 'Branch products & prices' },
+  { perm: 'inventory.manage', label: 'Stock' },
+  { perm: 'promotions.manage', label: 'Branch offers' },
+  { perm: 'workflow.manage', label: 'Order workflow' },
+  { perm: 'orders.manage', label: 'Supervise orders' },
+  { perm: 'branches.manage', label: 'Branch details' },
+  { perm: 'staff.manage', label: 'Officers' },
+  { perm: 'customers.manage', label: 'Block customers' },
+]
+const bmCount = computed(() => bmDraft.value.filter((p) => !(CHAIN_ONLY_PERMISSIONS as Permission[]).includes(p)).length)
+function editBranchManagers() {
+  bmDraft.value = [...(bm.value?.permissions ?? [])]
+  bmEditing.value = true
+}
+async function saveBranchManagers(standard = false) {
+  try {
+    await auth.call((t) => setBranchManagerAccess(t, standard ? null : bmDraft.value), 'Changing what branch managers can do needs your password confirmed.')
+    notify.ok(standard ? 'Branch managers are back to the standard permissions' : 'Branch manager permissions saved — they apply straight away')
+    bmEditing.value = false
+    await load()
+  } catch (e) {
+    notify.error(e)
+  }
+}
 
 const iAmSuper = computed(() => auth.user.value?.roleId === ROLE_IDS.superAdmin)
 const myLevel = computed(() => auth.user.value?.roleLevel ?? 0)
@@ -77,8 +111,38 @@ async function remove(r: Role & { members: number }) {
 
     <div class="mb-4 flex gap-2 rounded-xl bg-white p-3 text-xs text-muted ring-1 ring-line">
       <AppIcon name="shield" :size="16" class="shrink-0 text-hela-green" />
-      <span><b class="text-ink">Seniority</b> decides who can manage whom: you can only edit roles and people below your level, and only grant permissions you hold. Built-in roles (Chain Admin, Branch Manager{{ scope === 'platform' ? ', Super Admin' : '' }}) can’t be changed. <b class="text-ink">Branch roles</b> are tied to specific branches.</span>
+      <span><b class="text-ink">Seniority</b> decides who can manage whom: you can only edit roles and people below your level, and only grant permissions you hold. Built-in roles (Chain Admin, Branch Manager{{ scope === 'platform' ? ', Super Admin' : '' }}) can’t be renamed or deleted{{ scope === 'tenant' ? ' — but you choose what your branch managers can do above' : '' }}. <b class="text-ink">Branch roles</b> are tied to specific branches.</span>
     </div>
+
+    <!-- Branch managers -->
+    <section v-if="bm" class="card mb-4 p-4" data-testid="bm-access">
+      <div class="flex flex-wrap items-start gap-3">
+        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-hela-green text-hela-gold"><AppIcon name="store" :size="19" /></span>
+        <div class="min-w-0 flex-1">
+          <h2 class="flex flex-wrap items-center gap-2 font-bold text-ink">
+            What branch managers can do
+            <span class="chip" :class="bm.customised ? 'bg-hela-gold-100 text-[#6d5622]' : 'bg-cream text-ink'">{{ bm.customised ? 'Customised' : 'Standard' }}</span>
+          </h2>
+          <p class="text-sm text-muted">Applies to all {{ bm.managers }} branch manager{{ bm.managers === 1 ? '' : 's' }}, always limited to their own branch. Supermarket settings, branding, roles and categories stay with you. For one person only, add extra permissions under Officers &amp; staff.</p>
+          <ul class="mt-2 flex flex-wrap gap-1.5" data-testid="bm-highlights">
+            <li v-for="h in BM_HIGHLIGHTS" :key="h.perm" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold" :class="bm.permissions.includes(h.perm) ? 'bg-hela-green-50 text-hela-green' : 'bg-cream text-muted line-through'">
+              <AppIcon :name="bm.permissions.includes(h.perm) ? 'check' : 'close'" :size="11" />{{ h.label }}
+            </li>
+          </ul>
+        </div>
+        <button v-if="canSetBranchManagers" type="button" class="btn-primary h-9 text-sm" data-testid="bm-edit" @click="editBranchManagers"><AppIcon name="edit" :size="14" />Change</button>
+      </div>
+    </section>
+
+    <AdminModal :open="bmEditing" title="What branch managers can do" description="Everything here works only at each manager’s own branch." size="xl" @close="bmEditing = false">
+      <PermissionMatrix v-model="bmDraft" scope="tenant" :grantable="auth.permissions.value" :chain-only="CHAIN_ONLY_PERMISSIONS" />
+      <template #footer>
+        <button type="button" class="btn-ghost mr-auto h-9" data-testid="bm-standard" @click="saveBranchManagers(true)">Use the standard set</button>
+        <span class="text-xs text-muted">{{ bmCount }} permissions</span>
+        <button type="button" class="btn-ghost h-9" @click="bmEditing = false">Cancel</button>
+        <button type="button" class="btn-primary h-9" data-testid="bm-save" @click="saveBranchManagers()">Save for all branch managers</button>
+      </template>
+    </AdminModal>
 
     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <article v-for="r in roles" :key="r.id" class="card flex flex-col p-4">

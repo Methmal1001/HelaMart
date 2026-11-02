@@ -231,13 +231,27 @@ export interface AuthResult {
 
 // ------------------------------------------------------------------ offers & pricing
 
+/**
+ * What an item offer applies to: everything, and/or any mix of categories and
+ * hand-picked products (a product matches if it's listed or in a listed category).
+ */
+export interface ItemTarget {
+  all?: boolean
+  categoryIds: CategoryId[]
+  productIds: string[]
+}
+
 export type OfferRule =
-  /** % off every product in a category. */
+  /** % off the selected items (categories and/or products, or everything), optionally capped. */
+  | { kind: 'percent-items'; percent: number; target: ItemTarget; maxDiscountCents?: number }
+  /** A fixed amount off each selected item (never below zero). */
+  | { kind: 'amount-items'; amountCents: number; target: ItemTarget }
+  /** % off every product in a category (older offers; new ones use percent-items). */
   | { kind: 'percent-category'; categoryId: CategoryId; percent: number; maxDiscountCents?: number }
   /** % off one specific product. */
   | { kind: 'percent-product'; productId: string; percent: number }
-  /** Buy N, get M free (per product line). */
-  | { kind: 'bxgy'; categoryId?: CategoryId; productIds?: string[]; buy: number; get: number }
+  /** Buy N, get M free (per product line). `target` picks the items; older offers use categoryId/productIds. */
+  | { kind: 'bxgy'; categoryId?: CategoryId; productIds?: string[]; target?: ItemTarget; buy: number; get: number }
   /** Fixed amount off the order above a minimum spend. */
   | { kind: 'fixed-off'; amountCents: number; minSpendCents: number }
   /** Delivery fee waived above a minimum spend. */
@@ -365,6 +379,54 @@ export interface Order {
   lines: OrderLine[]
   breakdown: PriceBreakdown
   delivery: DeliveryDetails
-  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' }
+  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
   status: 'confirmed'
+  /** Supermarket and branch names at the time of the order (for the bill). */
+  storeName?: string
+  branchName?: string
+  /** Where the supermarket has got to with it (from its order desk). */
+  progress?: OrderProgress
+  /** Each step the supermarket recorded (packed, out for delivery, delivered…), oldest first. */
+  tracking?: { at: string; status: OrderProgress; note?: string }[]
+  /** The supermarket's own fulfilment steps, as the customer sees them. */
+  steps?: TrackingStep[]
+  /** Short label of where the order is now ("Packing your items"). */
+  stageLabel?: string
+  /** Changes whenever the order moves on (used to announce updates). */
+  trackKey?: string
+  /** Delivered / collected — who confirmed it and when. */
+  received?: { at: string; via: 'customer_qr' | 'customer_app' | 'staff'; receivedBy?: string }
+  /** It's with the rider or at the pickup counter: the customer can confirm they have it. */
+  canConfirmReceipt?: boolean
 }
+
+/** What the tracking QR on an order slip shows (public: no phone number or address). */
+export interface PublicTracking {
+  number: string
+  createdAt: string
+  storeName: string
+  branchName: string
+  customerFirstName: string
+  delivery: { method: FulfilmentMethod; city: string }
+  lines: { name: string; size: string; quantity: number }[]
+  itemCount: number
+  totalCents: number
+  progress: OrderProgress
+  stageLabel?: string
+  steps?: TrackingStep[]
+  tracking?: { at: string; status: OrderProgress; note?: string }[]
+  received?: Order['received']
+  canConfirmReceipt: boolean
+}
+
+export interface TrackingStep {
+  label: string
+  hint?: string
+  icon: IconName
+  state: 'done' | 'current' | 'hold' | 'todo'
+  at?: string
+  /** Updates the store chose to share ("Rider is 10 minutes away"). */
+  notes?: { at: string; text: string }[]
+}
+
+export type OrderProgress = 'pending' | 'packing' | 'out_for_delivery' | 'ready_for_pickup' | 'delivered' | 'cancelled' | 'refunded'

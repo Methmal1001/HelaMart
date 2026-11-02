@@ -6,7 +6,16 @@ import { groupsFor } from '~/data/admin/permissions'
  * Grouped permission checkboxes for one organisation type. Permissions the
  * current admin doesn't hold are disabled — you can never grant more than you have.
  */
-const props = defineProps<{ modelValue: Permission[]; grantable: Set<Permission>; scope: Scope; locked?: Permission[]; disabled?: boolean }>()
+const props = defineProps<{
+  modelValue: Permission[]
+  grantable: Set<Permission>
+  scope: Scope
+  locked?: Permission[]
+  disabled?: boolean
+  /** Chain-wide permissions that can't go to people tied to branches (shown, but off). */
+  chainOnly?: Permission[]
+}>()
+const blocked = (p: Permission) => !props.grantable.has(p) || !!props.chainOnly?.includes(p)
 const emit = defineEmits<{ 'update:modelValue': [value: Permission[]] }>()
 const groups = computed(() => groupsFor(props.scope))
 
@@ -19,7 +28,7 @@ function toggle(p: Permission) {
 
 function toggleGroup(ids: Permission[], on: boolean) {
   const set = new Set(props.modelValue)
-  for (const id of ids) if (props.grantable.has(id) && !props.locked?.includes(id)) on ? set.add(id) : set.delete(id)
+  for (const id of ids) if (!blocked(id) && !props.locked?.includes(id)) on ? set.add(id) : set.delete(id)
   emit('update:modelValue', [...set])
 }
 </script>
@@ -40,14 +49,14 @@ function toggleGroup(ids: Permission[], on: boolean) {
           v-for="p in g.permissions"
           :key="p.id"
           class="flex items-start gap-2.5 rounded-lg p-2 text-sm"
-          :class="grantable.has(p.id) && !disabled && !locked?.includes(p.id) ? 'cursor-pointer hover:bg-hela-green-50' : 'opacity-60'"
-          :title="!grantable.has(p.id) ? 'You can’t grant a permission you don’t have' : undefined"
+          :class="!blocked(p.id) && !disabled && !locked?.includes(p.id) ? 'cursor-pointer hover:bg-hela-green-50' : 'opacity-60'"
+          :title="chainOnly?.includes(p.id) ? 'Chain-wide: stays with your supermarket admin' : !grantable.has(p.id) ? 'You can’t grant a permission you don’t have' : undefined"
         >
           <input
             type="checkbox"
             class="mt-0.5 size-4 accent-hela-green"
-            :checked="modelValue.includes(p.id) || locked?.includes(p.id)"
-            :disabled="disabled || !grantable.has(p.id) || locked?.includes(p.id)"
+            :checked="(modelValue.includes(p.id) || locked?.includes(p.id)) && !chainOnly?.includes(p.id)"
+            :disabled="disabled || blocked(p.id) || locked?.includes(p.id)"
             @change="toggle(p.id)"
           >
           <span>
@@ -57,7 +66,8 @@ function toggleGroup(ids: Permission[], on: boolean) {
               <span v-if="p.sensitive" class="sr-only">(sensitive)</span>
             </span>
             <span class="block text-xs text-muted">{{ p.description }}</span>
-            <span v-if="locked?.includes(p.id)" class="block text-[0.7rem] text-hela-green">Included in role</span>
+            <span v-if="chainOnly?.includes(p.id)" class="block text-[0.7rem] text-muted">Chain-wide — stays with the admin</span>
+            <span v-else-if="locked?.includes(p.id)" class="block text-[0.7rem] text-hela-green">Included in role</span>
           </span>
         </label>
       </div>

@@ -1,6 +1,16 @@
 import { ApiError } from './apiError'
 
 /**
+ * True when the storefront should use the HelaMart API (NUXT_PUBLIC_API_BASE is set).
+ * Off by default: everything runs on the in-browser sample data. Parts the API doesn't
+ * serve yet (delivery areas, branding, store offers, categories, banners…) always use
+ * the in-browser data.
+ */
+export function backendEnabled() {
+  return !!useRuntimeConfig().public.apiBase
+}
+
+/**
  * Calls the HelaMart API (`runtimeConfig.public.apiBase`, e.g. http://localhost:5206/api).
  * `body` is sent as JSON, or as multipart form data when it is a FormData (image uploads).
  * Error responses are `{ status, message, code }`; they're thrown as ApiError so callers
@@ -44,4 +54,12 @@ export async function api<T>(
     throw new ApiError(res.status, err.message ?? `Request failed (${res.status}).`, err.code)
   }
   return data as T
+}
+
+/**
+ * For features that change data the HelaMart API owns (products, permissions) but that it
+ * doesn't serve yet: fail clearly rather than change only this browser's copy.
+ */
+export function notOnApiYet(what: string): never {
+  throw new ApiError(501, `${what} isn’t available yet — it needs a HelaMart API update.`, 'NOT_IMPLEMENTED')
 }

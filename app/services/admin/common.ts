@@ -1,5 +1,9 @@
 import type { AuditEntry, Permission, Role, StaffTask, StaffView, TaskStatus } from '~/types/admin'
-import { api } from '../http'
+import { BRANCH_MANAGER_PERMISSIONS, DELEGABLE_PERMISSIONS, ROLE_IDS } from '~/data/admin/permissions'
+import { api, notOnApiYet } from '../http'
+import { latency } from '../mock/server'
+import { writeAdminDb } from './db'
+import { authenticate, requirePermission, requireTenant, rolePermissions, type AdminContext } from './security'
 
 /**
  * Team API shared by HelaMart head office and supermarkets (HelaMart backend, /admin/team/*).
@@ -14,6 +18,19 @@ const get = <T>(token: string, path: string, query?: Record<string, string | num
 const send = <T>(token: string, method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown) => api<T>(path, { method, token, body })
 const id = (v: string) => encodeURIComponent(v)
 export { get as apiGet, send as apiSend, id as encodeId }
+
+/**
+ * For back-office features the HelaMart API doesn't serve yet (order desk, order workflow):
+ * runs `fn` on the in-browser data as the signed-in staff member and saves the result.
+ */
+export async function run<T>(token: string, fn: (ctx: AdminContext) => T, ms: [number, number] = [120, 320]): Promise<T> {
+  await latency(...ms)
+  const ctx = authenticate(token)
+  const result = fn(ctx)
+  writeAdminDb(ctx.db)
+  // Serialise like a real HTTP response (also strips any Vue proxies passed in).
+  return result === undefined ? result : (JSON.parse(JSON.stringify(result)) as T)
+}
 
 // ================================================================== staff
 
@@ -55,6 +72,33 @@ export async function revokeTeamSessions(token: string, staffId: string): Promis
 
 export function listTeamRoles(token: string): Promise<(Role & { members: number })[]> {
   return get(token, '/admin/team/roles')
+}
+
+// ---- what this supermarket lets its branch managers do
+
+export function getBranchManagerAccess(token: string): Promise<{ permissions: Permission[]; standard: Permission[]; delegable: Permission[]; managers: number; customised: boolean }> {
+  return run(token, (ctx) => {
+    const t = requireTenant(ctx)
+    if (!ctx.permissions.has('roles.manage')) requirePermission(ctx, 'staff.view')
+    const role = ctx.db.roles.find((r) => r.id === ROLE_IDS.branchManager)!
+    return {
+      permissions: rolePermissions(ctx.db, role, t.id),
+      standard: [...BRANCH_MANAGER_PERMISSIONS],
+      delegable: [...DELEGABLE_PERMISSIONS],
+      managers: ctx.db.staff.filter((s) => s.tenantId === t.id && s.roleId === ROLE_IDS.branchManager).length,
+      customised: !!t.branchManagerPermissions,
+    }
+  })
+}
+
+/**
+ * The supermarket admin chooses what every branch manager can do at their own
+ * branches (add/edit products and prices, offers, officers, the order workflow…).
+ * Chain-wide settings, roles and categories always stay with the admin.
+ */
+export async function setBranchManagerAccess(_token: string, _permissions: Permission[] | null): Promise<Permission[]> {
+  // Permissions are enforced by the HelaMart API, so a change kept only in this browser wouldn't take effect.
+  notOnApiYet('Changing what branch managers can do')
 }
 
 export interface RoleInput {

@@ -1,6 +1,7 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
 import type { CategoryId, IconName, OfferConditions, OfferRule, ProductShape } from '~/types'
 import { locateBranch } from '~/data/places'
+import { notOnApiYet } from '../http'
 import { apiGet as get, apiSend as send, encodeId as id } from './common'
 
 /**
@@ -102,6 +103,8 @@ export interface ProductInput {
   reorderLevel: number
   /** `media:<id>` from uploadProductImage, or null to remove the photo. */
   image?: string | null
+  /** New products only: make it this branch's own product (branch staff always add to their branch). */
+  ownerBranchId?: string
 }
 
 export function createProduct(token: string, input: ProductInput): Promise<AdminProduct> {
@@ -118,6 +121,16 @@ export function setProductStatus(token: string, productId: string, status: Admin
 
 export function adjustStock(token: string, productId: string, branchId: string, delta: number, reason: string): Promise<AdminProduct> {
   return send(token, 'POST', `/admin/store/products/${id(productId)}/stock`, { branchId, delta, reason })
+}
+
+/** A branch's own price and range for a product (null price = the chain price). Not served by the HelaMart API yet. */
+export async function setBranchProduct(_token: string, _productId: string, _branchId: string, _input: { priceCents: number | null; sold: boolean }): Promise<AdminProduct> {
+  notOnApiYet('Branch prices and ranges')
+}
+
+/** Remove a product for good. Not served by the HelaMart API yet (hide it instead). */
+export async function deleteProduct(_token: string, _productId: string): Promise<void> {
+  notOnApiYet('Deleting products')
 }
 
 /**
@@ -235,6 +248,12 @@ export function setOfferSchedule(token: string, offerId: string, action: 'publis
 
 export async function deleteOffer(token: string, offerId: string): Promise<void> {
   await send(token, 'DELETE', `/admin/store/offers/${id(offerId)}`)
+}
+
+/** The chain's products, for picking what an offer applies to (no stock or prices needed). */
+export async function listOfferProducts(token: string): Promise<{ id: string; name: string; brand: string; size: string; categoryId: CategoryId; hidden: boolean }[]> {
+  const products = await listProducts(token)
+  return products.map((p) => ({ id: p.id, name: p.name, brand: p.brand, size: p.size, categoryId: p.categoryId, hidden: p.status === 'hidden' }))
 }
 
 // ================================================================== chain settings

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Permission, Role, StaffView, TableColumn } from '~/types/admin'
-import { ROLE_IDS } from '~/data/admin/permissions'
+import { CHAIN_ONLY_PERMISSIONS, ROLE_IDS } from '~/data/admin/permissions'
 import { createTeamMember, listTeam, listTeamRoles, resetTeamPassword, revokeTeamSessions, setTeamMemberStatus, updateTeamMember, type StaffInput } from '~/services/admin/common'
 import { branchDirectory } from '~/services/admin/tenantApi'
 
@@ -191,7 +191,7 @@ async function toggleStatus(s: StaffView) {
         <div>
           <p class="field-label">Permissions</p>
           <p class="mb-2 text-xs text-muted">Ticked and greyed = included in the role. Tick more to give this person extra permissions. You can only grant permissions you have.</p>
-          <PermissionMatrix v-model="f.extraPermissions" :scope="tenant ? 'tenant' : 'platform'" :grantable="auth.permissions.value" :locked="lockedPerms" />
+          <PermissionMatrix v-model="f.extraPermissions" :scope="tenant ? 'tenant' : 'platform'" :grantable="auth.permissions.value" :locked="lockedPerms" :chain-only="tenant && f.branchIds.length ? CHAIN_ONLY_PERMISSIONS : undefined" />
         </div>
       </form>
       <template #footer>

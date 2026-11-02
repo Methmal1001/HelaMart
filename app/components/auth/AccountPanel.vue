@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { progressOf } from '~/composables/useMyOrders'
+
 const { panel, closePanel } = useStoreUi()
 const { user, logout, sessionInfo, isAuthenticated, savePhone } = useAuth()
 const { offers, loading } = useOffers()
 const { show } = useToasts()
 const { openFinder } = useShoppingArea()
+const { orders, loaded: ordersLoaded, load: loadOrders, openOrders } = useMyOrders()
+const recent = computed(() => orders.value.slice(0, 3))
 
 // ---- mobile number (required; shown to the supermarket for deliveries)
 const editingPhone = ref(false)
@@ -34,6 +38,7 @@ function changeArea() {
 const open = computed(() => panel.value === 'account' && isAuthenticated.value)
 const info = ref<ReturnType<typeof sessionInfo>>(null)
 watch(open, (v) => v && (info.value = sessionInfo()), { immediate: true })
+watch(open, (v) => v && loadOrders(), { immediate: true })
 
 const dateFmt = new Intl.DateTimeFormat('en-LK', { dateStyle: 'medium' })
 const timeFmt = new Intl.DateTimeFormat('en-LK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -80,6 +85,30 @@ async function signOut() {
         </p>
         <p v-else class="text-sm text-muted">Not set yet.</p>
         <button type="button" class="mt-2 text-sm font-bold text-hela-green hover:underline" @click="changeArea">{{ user.preferredLocation ? 'Change area' : 'Set your area' }}</button>
+      </section>
+
+      <section aria-labelledby="orders-h" data-testid="account-orders">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 id="orders-h" class="flex items-center gap-2 text-sm font-bold text-ink">
+            <AppIcon name="receipt" :size="16" class="text-hela-green" />
+            Your orders &amp; bills
+          </h3>
+          <button v-if="orders.length" type="button" class="text-xs font-bold text-hela-green hover:underline" data-testid="account-all-orders" @click="openOrders()">See all ({{ orders.length }})</button>
+        </div>
+        <p v-if="!ordersLoaded" class="text-sm text-muted">Loading orders…</p>
+        <p v-else-if="!orders.length" class="rounded-xl bg-white p-4 text-sm text-muted ring-1 ring-line">No orders yet — your bills will be kept here.</p>
+        <ul v-else class="space-y-2">
+          <li v-for="o in recent" :key="o.id">
+            <button type="button" class="flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left ring-1 ring-line transition hover:ring-hela-green/50" :data-testid="`account-order-${o.number}`" @click="openOrders(o.id)">
+              <span class="min-w-0 flex-1">
+                <b class="block truncate text-sm text-ink">{{ o.number }}</b>
+                <span class="block truncate text-xs text-muted">{{ dateFmt.format(new Date(o.createdAt)) }}<template v-if="o.storeName"> · {{ o.storeName }}</template></span>
+              </span>
+              <span class="shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold" :class="progressOf(o).tone">{{ progressOf(o).label }}</span>
+              <b class="shrink-0 text-sm text-ink tabular-nums">{{ formatLKR(o.breakdown.totalCents) }}</b>
+            </button>
+          </li>
+        </ul>
       </section>
 
       <section aria-labelledby="offers-h">

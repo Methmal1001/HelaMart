@@ -25,12 +25,32 @@ import { priceCart } from '~/utils/pricing'
 import { locateBranch } from '~/data/places'
 import { circlePolygon, polygonAreaKm2 } from '~/lib/geo'
 import { townsInside } from '~/lib/coverage'
+import { attachStages, defaultWorkflow } from '~/lib/workflow'
 import { BRANCH_MANAGER_PERMISSIONS, PLATFORM_PERMISSIONS, ROLE_IDS, TENANT_PERMISSIONS } from './permissions'
 
 /**
  * SAMPLE PLATFORM DATA — fictional supermarket chains, staff and customers,
  * generated deterministically. Replaced by the real database later.
  */
+
+/** Lanka Fresh Mart's order-desk team at Divulapitiya (one officer per section). */
+export const LFM_DESK_ROLES = [
+  { id: 'role_lfm_packer', name: 'Packing Officer', description: 'Picks and packs online orders.' },
+  { id: 'role_lfm_verifier', name: 'Verification Officer', description: 'Checks packed orders against the bill and seals them.' },
+  { id: 'role_lfm_rider', name: 'Delivery Rider', description: 'Delivers orders and collects cash on delivery.' },
+]
+export const LFM_DESK_STAFF = [
+  { id: 'stf_lfm_pack', name: 'Ruwan Jayalath', email: 'packing.div@lankafresh.test', title: 'Packing Officer — Divulapitiya', roleId: 'role_lfm_packer' },
+  { id: 'stf_lfm_qc', name: 'Sachini Fonseka', email: 'verify.div@lankafresh.test', title: 'Verification Officer — Divulapitiya', roleId: 'role_lfm_verifier' },
+  { id: 'stf_lfm_ride', name: 'Pradeep Kumara', email: 'rider.div@lankafresh.test', title: 'Delivery Rider — Divulapitiya', roleId: 'role_lfm_rider' },
+]
+export const LFM_DESK_OFFICERS: Record<string, string[]> = {
+  stg_cashier: ['stf_lfm_cash'],
+  stg_packing: ['stf_lfm_pack'],
+  stg_verify: ['stf_lfm_qc'],
+  stg_delivery: ['stf_lfm_ride'],
+  stg_pickup: ['stf_lfm_cash'],
+}
 
 export const SEED_PASSWORDS = {
   superAdmin: 'Super@HelaMart2026',
@@ -298,7 +318,8 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     role('role_platform_support', 'Platform Support', 'Helps supermarkets and customers; read-only access to supermarkets.', ['platform.dashboard', 'tenants.view', 'customers.all.view', 'platform.audit.view'], 'platform', null, 40, false),
     role(ROLE_IDS.chainAdmin, 'Chain Admin', 'Head of a supermarket chain. Runs every branch, team member, product and setting.', [...TENANT_PERMISSIONS], 'tenant', null, 80, true),
     role(ROLE_IDS.branchManager, 'Branch Manager', 'Head of one branch. Runs its orders, stock and officers.', [...BRANCH_MANAGER_PERMISSIONS], 'tenant', null, 60, true, true),
-    role('role_lfm_cashier', 'Cashier', 'Handles checkout counter and online orders at a branch.', ['dashboard.view', 'orders.view', 'orders.manage', 'customers.view', 'tasks.view'], 'tenant', 'tnt_lfm', 20, false, true),
+    role('role_lfm_cashier', 'Cashier', 'Handles the checkout counter and approves online orders at a branch.', ['dashboard.view', 'orders.view', 'customers.view', 'tasks.view'], 'tenant', 'tnt_lfm', 20, false, true),
+    ...LFM_DESK_ROLES.map((x) => role(x.id, x.name, x.description, ['orders.view', 'tasks.view'], 'tenant', 'tnt_lfm', 15, false, true)),
     role('role_lfm_stock', 'Stock Officer', 'Receives deliveries and keeps shelves stocked.', ['dashboard.view', 'products.view', 'inventory.manage', 'tasks.view'], 'tenant', 'tnt_lfm', 20, false, true),
     role('role_cds_supervisor', 'Floor Supervisor', 'Supervises the shop floor and stock across branches.', ['dashboard.view', 'orders.view', 'orders.manage', 'products.view', 'inventory.manage', 'tasks.view', 'tasks.manage', 'staff.view'], 'tenant', 'tnt_cds', 40, false),
   ]
@@ -329,6 +350,7 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     staffMember('stf_lfm_kdy', 'Sajith Ekanayake', 'kandy@lankafresh.test', 'Branch Manager — Kandy City', ROLE_IDS.branchManager, 'tnt_lfm', ['br_lfm_kdy'], P.staff, { createdBy: 'stf_lfm_owner' }),
     staffMember('stf_lfm_cash', 'Thilini Ranasinghe', 'cashier.div@lankafresh.test', 'Cashier — Divulapitiya', 'role_lfm_cashier', 'tnt_lfm', ['br_lfm_div'], P.staff, { createdBy: 'stf_lfm_div' }),
     staffMember('stf_lfm_stock', 'Nadeesha Herath', 'stock.div@lankafresh.test', 'Stock Officer — Divulapitiya', 'role_lfm_stock', 'tnt_lfm', ['br_lfm_div'], P.staff, { createdBy: 'stf_lfm_div' }),
+    ...LFM_DESK_STAFF.map((x) => staffMember(x.id, x.name, x.email, x.title, x.roleId, 'tnt_lfm', ['br_lfm_div'], P.staff, { createdBy: 'stf_lfm_div' })),
     staffMember('stf_lfm_former', 'Kasun Peris', 'kasun.p@lankafresh.test', 'Cashier (former) — Negombo', 'role_lfm_cashier', 'tnt_lfm', ['br_lfm_neg'], P.staff, { status: 'suspended', createdBy: 'stf_lfm_neg' }),
 
     staffMember('stf_cds_owner', 'Ishara Wijesinghe', 'admin@ceylondaily.test', 'Chief Executive', ROLE_IDS.chainAdmin, 'tnt_cds', [], P.chainAdmin, { createdBy: 'stf_super' }),
@@ -534,5 +556,9 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
     },
   ]
 
-  return { tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings, brandingRequests, banners: sampleBanners(now) }
+  // ------------------------------------------------------------------ order workflows
+  const workflows = tenants.map((t) => (t.id === 'tnt_lfm' ? defaultWorkflow(t.id, LFM_DESK_OFFICERS) : defaultWorkflow(t.id)))
+  for (const o of orders) attachStages(o, workflows.find((w) => w.tenantId === o.tenantId)!)
+
+  return { workflows, tenants, branches, roles, staff, products: adminProducts, categories: adminCategories, customers, orders, offers, tasks, audit, settings, brandingRequests, banners: sampleBanners(now) }
 }

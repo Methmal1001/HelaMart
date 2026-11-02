@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AdminOrder, OrderStatus, TableColumn } from '~/types/admin'
 import { allowedTransitions, branchDirectory, listOrders, updateOrderStatus } from '~/services/admin/tenantApi'
+import { currentStage, isClosed } from '~/lib/workflow'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'orders.view' })
 useHead({ title: 'Orders' })
@@ -53,7 +54,10 @@ const columns: TableColumn[] = [
   { key: 'total', label: 'Total', align: 'right', sortable: true, value: (o: AdminOrder) => o.breakdown.totalCents },
   { key: 'payment', label: 'Payment', value: (o: AdminOrder) => o.payment.method },
   { key: 'status', label: 'Status', sortable: true },
+  { key: 'section', label: 'Section', value: (o: AdminOrder) => sectionOf(o) },
 ]
+/** Where the order is on the order desk. */
+const sectionOf = (o: AdminOrder) => (isClosed(o) ? '—' : (currentStage(o)?.name ?? '—'))
 
 const LABEL: Record<OrderStatus, string> = {
   pending: 'Pending',
@@ -137,6 +141,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
       <template #cell-total="{ row }"><span class="font-semibold tabular-nums">{{ formatLKR(row.breakdown.totalCents) }}</span></template>
       <template #cell-payment="{ row }"><span class="text-xs text-muted">{{ row.payment.method === 'card' ? `Card •${row.payment.cardLast4}` : 'Cash on delivery' }}</span></template>
       <template #cell-status="{ row }"><AdminBadge :value="row.status" /></template>
+      <template #cell-section="{ row }"><span class="text-xs font-semibold text-ink">{{ sectionOf(row) }}</span><span v-if="!isClosed(row) && currentStage(row)?.state === 'on_hold'" class="ml-1 text-[0.65rem] font-bold text-[#8a3d00]">ON HOLD</span></template>
     </AdminDataTable>
 
     <AdminModal :open="!!selected" :title="selected ? `Order ${selected.number}` : ''" :description="selected ? `${branchName(selected.branchId)} branch · placed ${fmt(selected.createdAt)}` : ''" size="lg" @close="selected = null">
@@ -166,6 +171,16 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
             </tbody>
           </table>
           <div class="mt-3 rounded-xl bg-white p-3 ring-1 ring-line"><CartSummary :bill="selected.breakdown" :show-hints="false" /></div>
+        </section>
+        <section v-if="selected.stages" class="md:col-span-2">
+          <h3 class="mb-2 flex items-center text-xs font-bold tracking-wide text-muted uppercase">Sections
+            <NuxtLink v-if="!isClosed(selected)" to="/admin/order-desk" class="ml-auto font-bold normal-case text-hela-green hover:underline">Work it on the order desk →</NuxtLink>
+          </h3>
+          <ol class="flex flex-wrap gap-1.5">
+            <li v-for="(st, i) in selected.stages" :key="st.stageId" class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1" :class="st.state === 'done' ? 'bg-hela-green text-white ring-hela-green' : i === (selected.stageIndex ?? 0) && !isClosed(selected) ? 'bg-hela-gold-100 ring-hela-gold' : 'bg-white text-muted ring-line'">
+              {{ st.name }}<template v-if="st.completedBy"> · {{ st.completedBy }}</template>
+            </li>
+          </ol>
         </section>
         <section class="md:col-span-2">
           <h3 class="mb-2 text-xs font-bold tracking-wide text-muted uppercase">History</h3>

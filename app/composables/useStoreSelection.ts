@@ -13,10 +13,8 @@ export interface StoreChoice {
 }
 
 const KEY = 'helamart:store-choice:v1'
-
-/** One store-list request at a time, shared by every caller. */
+/** Shared across callers: one store-list request at a time, and only the latest catalogue request wins. */
 let inflight: Promise<void> | null = null
-/** The latest catalogue request; older responses are ignored. */
 let catalogRequest = 0
 
 function isChoice(v: unknown): v is StoreChoice {
@@ -27,8 +25,8 @@ function isChoice(v: unknown): v is StoreChoice {
  * Which verified supermarket + branch the shopper is buying from.
  * Only approved, active supermarkets are offered; a saved choice that has
  * since been restricted/banned/closed is dropped automatically. Choosing a
- * store loads its own catalogue (products, prices, photos, branch stock)
- * from the HelaMart API.
+ * store loads its own catalogue (products, prices, photos, branch stock) —
+ * from the HelaMart API when NUXT_PUBLIC_API_BASE is set, else sample data.
  */
 export function useStoreSelection() {
   const choice = useState<StoreChoice | null>('store-choice', () => null)
@@ -86,8 +84,16 @@ export function useStoreSelection() {
       choice.value = first && b ? { storeId: first.id, branchId: b.id, storeName: first.name, branchName: b.name, brandColor: first.brandColor } : null
     }
     if (choice.value) writeStorage(KEY, choice.value)
-    // The area may have been set before the store list arrived: make sure the choice is inside it.
-    if (firstLoad) alignToArea()
+    // The area may have been set before the store list arrived: make sure the choice delivers there.
+    if (firstLoad && area.value) {
+      const ranked = rankStores(stores.value, area.value)
+      const current = ranked.find((r) => r.store.id === choice.value?.storeId)?.branches.find((b) => b.id === choice.value?.branchId)
+      const best = ranked.find((r) => r.available)
+      if (!current?.delivers && best?.serving) {
+        choice.value = { storeId: best.store.id, branchId: best.serving.id, storeName: best.store.name, branchName: best.serving.name, brandColor: best.store.brandColor }
+        writeStorage(KEY, choice.value)
+      }
+    }
     await applyCatalog()
   }
 

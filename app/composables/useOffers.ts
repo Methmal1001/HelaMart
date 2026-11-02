@@ -2,7 +2,6 @@ import type { FulfilmentMethod, Offer, Product } from '~/types'
 import type { Ref } from 'vue'
 import { listMyOffers, listStoreOffers, mergeOffers } from '~/services/offerService'
 import { catalogVersion } from '~/data/products'
-import type { StoreChoice } from './useStoreSelection'
 
 /**
  * Promotions for the shopper at the chosen branch:

@@ -15,8 +15,8 @@ const branchId = ref('')
 const loaded = ref(false)
 const showUnavailable = ref(false)
 
-onMounted(() => {
-  refresh()
+onMounted(async () => {
+  await refresh()
   loaded.value = true
 })
 
