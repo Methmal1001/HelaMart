@@ -1,7 +1,6 @@
 import type { AdminCategory, AdminOffer, AdminOrder, AdminProduct, Branch, Customer, OrderStatus, Tenant, TenantDashboard } from '~/types/admin'
 import type { CategoryId, IconName, OfferConditions, OfferRule, ProductShape } from '~/types'
 import { locateBranch } from '~/data/places'
-import { notOnApiYet } from '../http'
 import { apiGet as get, apiSend as send, encodeId as id } from './common'
 
 /**
@@ -96,7 +95,8 @@ export interface ProductInput {
   unit: string
   priceCents: number
   description: string
-  shape: ProductShape
+  /** Needed when there's no photo; null = photo only. */
+  shape: ProductShape | null
   color: string
   accent: string
   badge?: AdminProduct['badge']
@@ -123,14 +123,14 @@ export function adjustStock(token: string, productId: string, branchId: string, 
   return send(token, 'POST', `/admin/store/products/${id(productId)}/stock`, { branchId, delta, reason })
 }
 
-/** A branch's own price and range for a product (null price = the chain price). Not served by the HelaMart API yet. */
-export async function setBranchProduct(_token: string, _productId: string, _branchId: string, _input: { priceCents: number | null; sold: boolean }): Promise<AdminProduct> {
-  notOnApiYet('Branch prices and ranges')
+/** A branch's own price and range for a product (null price = the chain price). */
+export function setBranchProduct(token: string, productId: string, branchId: string, input: { priceCents: number | null; sold: boolean }): Promise<AdminProduct> {
+  return send(token, 'PUT', `/admin/store/products/${id(productId)}/branches/${id(branchId)}`, input)
 }
 
-/** Remove a product for good. Not served by the HelaMart API yet (hide it instead). */
-export async function deleteProduct(_token: string, _productId: string): Promise<void> {
-  notOnApiYet('Deleting products')
+/** Remove a product for good. */
+export async function deleteProduct(token: string, productId: string): Promise<void> {
+  await send(token, 'DELETE', `/admin/store/products/${id(productId)}`)
 }
 
 /**

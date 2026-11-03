@@ -1,19 +1,71 @@
+import type { AdminOrder, OrderStatus, OrderWorkflow } from '~/types/admin'
+import { api, backendEnabled } from '../http'
 import * as desk from './orderDeskApi'
 import * as store from './tenantApi'
+import type { DeskOrder, DeskView, OrderSlip, StageAction, StageInput, WorkflowView } from './orderDeskApi'
 
 /**
- * The supermarket side of ordering, for the orders, order desk and order workflow pages
- * (call these with `useAdminAuth().callApi`). The orders list and status changes are on the
- * HelaMart API; the order desk (sections, stage actions, slips) and the order workflow run on
- * in-browser data until the API serves them (`/admin/store/desk`, `/workflow`…).
+ * The supermarket side of ordering — orders list, order desk (sections, stage
+ * actions, slips) and the order workflow — on the HelaMart API
+ * (`/api/admin/store/...`). Without an API (offline demo) the in-browser
+ * implementations answer. Call these with `useAdminAuth().callApi`.
  */
 
-// ---- orders (HelaMart API)
+const enc = encodeURIComponent
 
-export const { listOrders, updateOrderStatus, branchDirectory, allowedTransitions } = store
+// ---- orders
 
-// ---- order desk and order workflow (in-browser for now)
+export function listOrders(token: string): Promise<AdminOrder[]> {
+  return backendEnabled() ? api('/admin/store/orders', { token }) : store.listOrders(token)
+}
 
-export const { listDesk, stageAction, orderSlip, getWorkflow, saveWorkflow, resetBranchWorkflow } = desk
+/** Cancel an open order or refund a delivered one (moving orders forward happens on the order desk). */
+export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = ''): Promise<AdminOrder> {
+  return backendEnabled()
+    ? api(`/admin/store/orders/${enc(orderId)}/status`, { method: 'PUT', body: { status, note }, token })
+    : store.updateOrderStatus(token, orderId, status, note)
+}
+
+export function branchDirectory(token: string): Promise<{ id: string; name: string; status: string }[]> {
+  return backendEnabled() ? api('/admin/store/branch-directory', { token }) : store.branchDirectory(token)
+}
+
+export { allowedTransitions } from './tenantApi'
+
+// ---- order desk
+
+export function listDesk(token: string): Promise<DeskView> {
+  return backendEnabled() ? api('/admin/store/desk', { token }) : desk.listDesk(token)
+}
+
+export function stageAction(
+  token: string,
+  orderId: string,
+  input: { action: StageAction; note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string },
+): Promise<DeskOrder> {
+  return backendEnabled() ? api(`/admin/store/orders/${enc(orderId)}/stage`, { method: 'POST', body: input, token }) : desk.stageAction(token, orderId, input)
+}
+
+/** The order slip (customer, delivery details, tracking QR). Records that it was printed. */
+export function orderSlip(token: string, orderId: string): Promise<OrderSlip> {
+  return backendEnabled() ? api(`/admin/store/orders/${enc(orderId)}/slip`, { token }) : desk.orderSlip(token, orderId)
+}
+
+// ---- order workflow (sections and their officers)
+
+export function getWorkflow(token: string, branchId: string | null = null): Promise<WorkflowView> {
+  return backendEnabled() ? api('/admin/store/workflow', { query: { branch: branchId }, token }) : desk.getWorkflow(token, branchId)
+}
+
+export function saveWorkflow(token: string, stages: StageInput[], branchId: string | null = null): Promise<OrderWorkflow> {
+  return backendEnabled()
+    ? api('/admin/store/workflow', { method: 'PUT', query: { branch: branchId }, body: { stages }, token })
+    : desk.saveWorkflow(token, stages, branchId)
+}
+
+/** The branch goes back to the chain default. */
+export function resetBranchWorkflow(token: string, branchId: string): Promise<void> {
+  return backendEnabled() ? api('/admin/store/workflow', { method: 'DELETE', query: { branch: branchId }, token }) : desk.resetBranchWorkflow(token, branchId)
+}
 
 export type { DeskOfficer, DeskOrder, DeskView, OrderSlip, StageAction, StageInput, WorkflowView } from './orderDeskApi'

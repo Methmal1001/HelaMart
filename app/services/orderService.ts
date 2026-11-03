@@ -1,7 +1,7 @@
 import type { CardDetails, CartLine, DeliveryDetails, Order, PaymentMethod, PublicTracking, User } from '~/types'
 import type { AdminOrder } from '~/types/admin'
 import { ApiError } from './apiError'
-import { api } from './http'
+import { api, backendEnabled } from './http'
 import type { PlaceOrderRequest as PlaceOrderBody } from './apiTypes'
 import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
 import { readAdminDb, writeAdminDb } from './admin/db'
@@ -17,8 +17,8 @@ export interface PlaceOrderRequest {
   payment: { method: PaymentMethod; card?: CardDetails }
 }
 
-// The functions below are in-browser until the HelaMart API serves them; the access token's
-// account id (the same in the API and the sample data) says whose orders they are.
+// With the HelaMart API these go to /me/orders and /track; without it (offline demo) the
+// in-browser data answers, and the access token's account id says whose orders they are.
 
 /**
  * GET /me/orders — the signed-in customer's orders, newest first, with the
@@ -26,6 +26,7 @@ export interface PlaceOrderRequest {
  * reopened and reprinted any time.
  */
 export async function listMyOrders(accessToken: string): Promise<Order[]> {
+  if (backendEnabled()) return api<Order[]>('/me/orders', { token: accessToken })
   await latency(150, 350)
   const userId = verifyAccessToken(accessToken)
   const platform = readAdminDb()
@@ -61,6 +62,7 @@ export async function listMyOrders(accessToken: string): Promise<Order[]> {
  * their order (delivered to the door, or collected at the counter).
  */
 export async function confirmMyOrderReceived(accessToken: string, orderId: string): Promise<void> {
+  if (backendEnabled()) return void (await api<void>(`/me/orders/${encodeURIComponent(orderId)}/received`, { method: 'POST', token: accessToken }))
   await latency(250, 500)
   const userId = verifyAccessToken(accessToken)
   const db = readAdminDb()
@@ -104,6 +106,7 @@ function publicView(db: ReturnType<typeof readAdminDb>, o: AdminOrder): PublicTr
 
 /** GET /track/:number?t= — what the slip's QR code opens (no sign-in; the code proves you hold the slip). */
 export async function trackOrder(number: string, code: string): Promise<PublicTracking> {
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number.trim())}`, { query: { t: code } })
   await latency(200, 400)
   const { db, o } = findByTrackCode(number, code)
   return publicView(db, o)
@@ -111,6 +114,7 @@ export async function trackOrder(number: string, code: string): Promise<PublicTr
 
 /** POST /track/:number/received — the customer scanned the QR on arrival and confirms they have the order. */
 export async function confirmReceivedByQr(number: string, code: string, receivedBy: string): Promise<PublicTracking> {
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number.trim())}/received`, { method: 'POST', body: { t: code, receivedBy } })
   await latency(300, 600)
   const { db, o } = findByTrackCode(number, code)
   markReceived(db, o, { via: 'customer_qr', receivedBy: receivedBy.trim().slice(0, 60) || o.customerName })

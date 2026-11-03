@@ -84,7 +84,7 @@ const columns: TableColumn[] = [
 // ---- create / edit
 const SHAPES: ProductShape[] = ['box', 'tallBox', 'bottle', 'can', 'jar', 'bag', 'carton', 'tray', 'loaf', 'round', 'long', 'roll']
 const editing = ref<AdminProduct | 'new' | null>(null)
-const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: 'box' as ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12 })
+const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: '' as '' | ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12 })
 const formError = ref('')
 const saving = ref(false)
 
@@ -100,6 +100,8 @@ const photo = reactive({
   error: '',
 })
 const photoInput = ref<HTMLInputElement | null>(null)
+/** A product needs a photo or a package shape (the shape draws its art when there's no photo). */
+const hasPhoto = computed(() => !!(photo.pending || photo.saved))
 
 function discardPending() {
   if (photo.pending) URL.revokeObjectURL(photo.pending.url)
@@ -151,21 +153,22 @@ function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
   void resetPhoto(p === 'new' ? undefined : p.image)
-  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: 'box', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
-  else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), badge: p.badge ?? '' })
+  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: '', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
+  else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), shape: p.shape ?? '', badge: p.badge ?? '' })
 }
 
 async function save() {
   formError.value = ''
   const input: ProductInput = {
     name: form.name, brand: form.brand, categoryId: form.categoryId, size: form.size, unit: form.unit,
-    priceCents: Math.round(Number.parseFloat(form.price) * 100), description: form.description, shape: form.shape,
+    priceCents: Math.round(Number.parseFloat(form.price) * 100), description: form.description, shape: form.shape || null,
     color: form.color, accent: form.accent, badge: form.badge || undefined, reorderLevel: Math.floor(Number(form.reorderLevel)),
     ownerBranchId: editing.value === 'new' ? form.owner || undefined : undefined,
   }
   saving.value = true
   try {
     if (photo.busy) throw new Error('Wait for the photo to finish processing.')
+    if (!hasPhoto.value && !form.shape) throw new Error('Upload a product photo or choose a package shape.')
     if (photo.pending) {
       const { blob, width, height } = photo.pending
       photo.saved = await auth.call((t) => uploadProductImage(t, blob, { width, height }))
@@ -289,7 +292,7 @@ async function saveStock() {
       </template>
       <template #cell-name="{ row }">
         <div class="flex items-center gap-3">
-          <ProductThumb :product="row" class="size-10 shrink-0" rounded="rounded-lg" />
+          <ProductThumb :product="{ ...row, shape: row.shape ?? 'box' }" class="size-10 shrink-0" rounded="rounded-lg" />
           <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span><span v-if="row.ownerBranchId" class="ml-1.5 rounded bg-hela-green-50 px-1 text-[0.65rem] font-semibold text-hela-green" :data-testid="`own-${row.id}`">{{ branchNameOf(row.ownerBranchId) }} only</span><span v-if="branch !== 'all' && !soldAt(row, branch)" class="ml-1.5 rounded bg-[#FBEAEA] px-1 text-[0.65rem] font-semibold text-[#8A2E2E]">Not sold here</span></span></span>
         </div>
       </template>
@@ -364,8 +367,14 @@ async function saveStock() {
           </div>
         </fieldset>
         <fieldset class="grid grid-cols-3 gap-3 sm:col-span-2">
-          <legend class="field-label">Package shape &amp; colours (used for art when there is no photo, and in freezers / bins)</legend>
-          <label><span class="sr-only">Shape</span><select v-model="form.shape" class="field" aria-label="Package shape"><option v-for="s in SHAPES" :key="s" :value="s">{{ s }}</option></select></label>
+          <legend class="field-label">Package shape &amp; colours <span class="font-normal text-muted">{{ hasPhoto ? '(optional with a photo)' : '(required without a photo)' }}</span></legend>
+          <label>
+            <span class="sr-only">Shape</span>
+            <select v-model="form.shape" class="field" aria-label="Package shape" :required="!hasPhoto" data-testid="shape-select">
+              <option value="" :disabled="!hasPhoto">{{ hasPhoto ? 'No shape (photo only)' : 'Choose a shape' }}</option>
+              <option v-for="s in SHAPES" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </label>
           <label class="flex items-center gap-2 text-xs">Colour <input v-model="form.color" type="color" class="h-9 w-12 rounded border-0"></label>
           <label class="flex items-center gap-2 text-xs">Label <input v-model="form.accent" type="color" class="h-9 w-12 rounded border-0"></label>
         </fieldset>

@@ -25,6 +25,8 @@ export interface ApiOptions {
   query?: Record<string, string | number | undefined | null>
   /** Abort after this long (default 15 s). */
   timeoutMs?: number
+  /** Lets the caller cancel the request (e.g. a "Stop" button); it then fails with code ABORTED. */
+  signal?: AbortSignal
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -36,6 +38,9 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000)
+  const cancel = () => controller.abort()
+  if (options.signal?.aborted) controller.abort()
+  options.signal?.addEventListener('abort', cancel, { once: true })
   let res: Response
   try {
     res = await fetch(url, {
@@ -49,11 +54,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       signal: controller.signal,
     })
   } catch {
+    // Cancelled by the caller: not a connection problem.
+    if (options.signal?.aborted) throw new ApiError(0, 'Stopped.', 'ABORTED')
     reportReachable(false)
     // Status 0: the API couldn't be reached. Not a 401, so a signed-in session is kept and retried later.
     throw new ApiError(0, 'Can’t reach HelaMart right now. Check your connection and try again.', 'NETWORK')
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', cancel)
   }
   reportReachable(true)
 

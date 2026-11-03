@@ -19,6 +19,8 @@ const titleId = useId()
 let previous: HTMLElement | null = null
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const self = Symbol('modal')
+/** z-index: a dialog opened over another (e.g. the password check over an editor) is drawn above it. */
+const layer = ref(70)
 
 watch(
   () => props.open,
@@ -26,6 +28,7 @@ watch(
     if (v) {
       previous = document.activeElement as HTMLElement | null
       modalStack.push(self)
+      layer.value = 70 + modalStack.length
       await nextTick()
       ;(box.value?.querySelector<HTMLElement>('[data-autofocus]') ?? box.value?.querySelector<HTMLElement>(FOCUSABLE))?.focus()
     } else {
@@ -79,7 +82,7 @@ const width = computed(() => ({ sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl',
 <template>
   <Teleport to="body">
     <Transition enter-active-class="transition duration-200" enter-from-class="opacity-0" leave-active-class="pointer-events-none transition duration-150" leave-to-class="opacity-0">
-      <div v-if="open" class="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-ink/40 p-4" @mousedown.self="!persistent && emit('close')">
+      <div v-if="open" class="fixed inset-0 grid place-items-center overflow-y-auto bg-ink/40 p-4" :style="{ zIndex: layer }" @mousedown.self="!persistent && emit('close')">
         <section
           ref="box"
           role="dialog"
