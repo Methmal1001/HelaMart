@@ -32,7 +32,13 @@ const current = computed(() => banners.value[index.value] ?? null)
 async function load() {
   const { listHomeBanners } = await import('~/services/bannerService')
   const keep = current.value?.id
-  banners.value = await listHomeBanners(area.value)
+  try {
+    banners.value = await listHomeBanners(area.value)
+  } catch {
+    // Banners are a nice-to-have: never block shopping when they can't load.
+    banners.value = []
+    return
+  }
   index.value = Math.max(0, banners.value.findIndex((b) => b.id === keep))
   const { resolveImageUrl } = await import('~/services/mock/mediaStore')
   for (const b of banners.value) if (b.image && !images.value[b.id]) images.value[b.id] = (await resolveImageUrl(b.image)) ?? ''

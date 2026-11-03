@@ -15,7 +15,8 @@ const product = computed(() => {
   return selectedProductId.value ? getProduct(selectedProductId.value) ?? null : null
 })
 const outOfStock = computed(() => product.value?.stock === 0)
-const maxQty = computed(() => (product.value?.stock !== undefined ? Math.max(1, product.value.stock) : 99))
+// Never more than the branch has in stock, nor the 99-per-item order limit.
+const maxQty = computed(() => Math.min(99, product.value?.stock !== undefined ? Math.max(1, product.value.stock) : 99))
 const category = computed(() => (product.value ? getCategory(product.value.categoryId) : null))
 const quantity = ref(1)
 const added = ref(false)

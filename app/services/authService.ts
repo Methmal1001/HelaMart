@@ -1,5 +1,6 @@
 import type { AuthResult, ShopperLocation, User } from '~/types'
 import { api } from './http'
+import type { AuthResultDto, GoogleLoginRequest, LoginRequest, PhoneRequest, RegisterRequest, UserDto } from './apiTypes'
 
 /**
  * Auth API (HelaMart backend):
@@ -11,7 +12,7 @@ import { api } from './http'
 
 /** PUT /me/phone — add or change the customer's mobile number. */
 export function savePhone(accessToken: string, phone: string): Promise<User> {
-  return api<User>('/me/phone', { method: 'PUT', body: { phone }, token: accessToken })
+  return api<UserDto>('/me/phone', { method: 'PUT', body: { phone } satisfies PhoneRequest, token: accessToken })
 }
 
 /** PUT /me/location — save (or change) the customer's shopping area. */
@@ -21,7 +22,7 @@ export function savePreferredLocation(accessToken: string, location: ShopperLoca
 
 /** POST /auth/login */
 export function login(email: string, password: string, remember: boolean): Promise<AuthResult> {
-  return api<AuthResult>('/auth/login', { method: 'POST', body: { email, password, remember } })
+  return api<AuthResultDto>('/auth/login', { method: 'POST', body: { email, password, remember } satisfies LoginRequest })
 }
 
 export interface RegisterInput {
@@ -35,7 +36,7 @@ export interface RegisterInput {
 
 /** POST /auth/register — creates a customer account and signs it in. */
 export function register(input: RegisterInput, remember: boolean): Promise<AuthResult> {
-  return api<AuthResult>('/auth/register', { method: 'POST', body: { ...input, remember } })
+  return api<AuthResultDto>('/auth/register', { method: 'POST', body: { ...input, remember } satisfies RegisterRequest })
 }
 
 /**
@@ -46,7 +47,7 @@ export function loginWithGoogle(
   input: { idToken: string } | { email: string; name?: string },
   remember: boolean,
 ): Promise<AuthResult> {
-  return api<AuthResult>('/auth/google', { method: 'POST', body: { ...input, remember } })
+  return api<AuthResultDto>('/auth/google', { method: 'POST', body: { ...input, remember } satisfies GoogleLoginRequest })
 }
 
 /** POST /auth/refresh — exchanges a refresh token for a new pair (rotation). */

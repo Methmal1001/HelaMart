@@ -15,13 +15,17 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-By default the storefront runs on **in-browser sample data** (no server needed). To use the
-**HelaMart API** (`H:\HelaMart_API`, ASP.NET Core + SQL Server database `helamart`), start it with
-`dotnet run --launch-profile http` (it listens on `http://localhost:5206` and seeds the database on
-first run), then start the frontend with `NUXT_PUBLIC_API_BASE=http://localhost:5206/api`.
-With the API on, sign-in, stores, catalogue, orders, personal offers and partner applications go to
-the server; everything else (branding, delivery coverage, store offers, banners, categories, the
-admin portal) still uses the in-browser data until the API has endpoints for it.
+The storefront talks to the **HelaMart API** (ASP.NET Core 8 + SQL Server) at
+`http://localhost:5206/api` — `runtimeConfig.public.apiBase`, overridable with
+`NUXT_PUBLIC_API_BASE`. Start the API first (`dotnet run --launch-profile http`), then `npm run dev`:
+the dev server runs on **port 3000**, the only origin the API's CORS policy allows.
+Sign-in (JWT + rotating refresh token), shopping area, mobile number, stores and their drawn delivery
+areas, categories, catalogue, store and personal offers, homepage banners, images (`/media/{id}`),
+checkout, order history, QR tracking and "I received it", and partner applications go to the API.
+In `/admin`, staff sign in through the API (password + 2FA) and the **ordering** pages — Order desk,
+Orders, Order workflow, order slips — use it; the other admin pages still run on in-browser data
+(they get a matching in-browser session automatically).
+Setting `NUXT_PUBLIC_API_BASE=` (empty) runs the old offline demo on sample data.
 
 Other scripts: `npm run build` · `npm run preview` · `npm run typecheck`
 
@@ -67,9 +71,12 @@ API running in Development). To use the real Google button set
 `NUXT_PUBLIC_GOOGLE_CLIENT_ID=<id>.apps.googleusercontent.com` here and the same id as
 `Auth:GoogleClientId` on the API, which verifies the ID token with Google.
 
-**Backend:** `app/services/*Service.ts` call the API through `app/services/http.ts`, one function
-per endpoint (`/auth/*`, `/me/location`, `/me/phone`, `/me/offers`, `/stores`, `/stores/:id/catalog`, `/orders`,
-`/partners/applications`). The server re-prices every order from its own prices and the shopper's
+**Backend:** `app/services/*Service.ts` call the API through `app/services/http.ts` (typed shapes in
+`app/services/apiTypes.ts`; every error `{ status, message, code }` becomes an `ApiError`), one function
+per endpoint (`/auth/*`, `/me/location`, `/me/phone`, `/me/offers`, `/stores`, `/stores/:id/catalog`,
+`/stores/:id/categories`, `/stores/:id/offers`, `/home/banners`, `/media/:id`, `/orders`, `/partners/applications`, `/health`). `useAuth().authorized()` adds the Bearer token, refreshes once on a
+401 (one shared in-flight refresh) and retries; `SESSION_*` codes sign the customer out. Tokens live in
+localStorage with "Keep me signed in", otherwise sessionStorage. The server re-prices every order from its own prices and the shopper's
 offers, and takes the items out of the branch's stock. The cart preview still uses `priceCart`
 with the same rules. Still to do: move the refresh token into an HttpOnly cookie set by the server.
 

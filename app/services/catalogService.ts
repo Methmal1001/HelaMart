@@ -2,6 +2,7 @@ import type { Category, Product } from '~/types'
 import type { AdminCategory } from '~/types/admin'
 import { STANDARD_CATEGORIES } from '~/data/categories'
 import { api } from './http'
+import type { CategoryDto, ProductDto } from './apiTypes'
 
 /** An admin category as the shop sees it. */
 export function toCategory(c: AdminCategory): Category {
@@ -11,9 +12,10 @@ export function toCategory(c: AdminCategory): Category {
   return { id: c.id, name: c.name, shortName, description: c.description, color: c.color, icon: c.icon, area: c.area, standard: c.standard }
 }
 
-/** GET /stores/:id/categories — the supermarket's visible categories, in its chosen order. */
-export function getStoreCategories(storeId: string): Promise<Category[]> {
-  return api<Category[]>(`/stores/${encodeURIComponent(storeId)}/categories`)
+/** GET /stores/{storeId}/categories — the supermarket's visible categories (its own included), in its order. */
+export async function loadStoreCategories(storeId: string): Promise<Category[]> {
+  const list = await api<CategoryDto[]>(`/stores/${encodeURIComponent(storeId)}/categories`)
+  return list.map((c) => ({ id: c.id, name: c.name, shortName: c.shortName || c.name, description: c.description ?? '', color: c.color, icon: c.icon, area: c.area, standard: c.standard }))
 }
 
 /**
@@ -22,5 +24,5 @@ export function getStoreCategories(storeId: string): Promise<Category[]> {
  * its uploaded photos and that branch's stock.
  */
 export function getStoreCatalog(storeId: string, branchId: string): Promise<Product[]> {
-  return api<Product[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
+  return api<ProductDto[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
 }

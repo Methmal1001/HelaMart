@@ -21,7 +21,7 @@ export async function getMedia(id: string): Promise<Blob | undefined> {
 /** Browser-displayable URL for an image reference (null when there's no image). */
 export async function resolveImageUrl(ref?: string): Promise<string | null> {
   if (!ref) return null
-  if (/^(https:|data:image\/)/.test(ref)) return ref
+  if (/^(https?:|data:image\/)/.test(ref)) return ref
   if (!isMediaRef(ref)) return null
   const cached = urlCache.get(ref)
   if (cached) return cached
@@ -38,7 +38,7 @@ export async function loadImageSource(ref?: string): Promise<ImageBitmap | null>
       const blob = await getMedia(ref.slice(6))
       return blob ? await createImageBitmap(blob) : null
     }
-    if (/^(https:|data:image\/)/.test(ref)) {
+    if (/^(https?:|data:image\/)/.test(ref)) {
       const res = await fetch(ref, { mode: 'cors' })
       return await createImageBitmap(await res.blob())
     }

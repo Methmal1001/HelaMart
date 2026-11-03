@@ -1,3 +1,4 @@
+import { backendEnabled } from '~/services/http'
 import type { Order, OrderProgress } from '~/types'
 
 const NEWS: Record<OrderProgress, (o: Order) => string> = {
@@ -78,5 +79,12 @@ export default defineNuxtPlugin(() => {
   window.addEventListener('storage', (e) => {
     if (e.key === 'helamart:platform-db:v2') void check()
   })
+  // With the HelaMart API, updates happen on the server: look again every 30 s while an order is still on its way.
+  if (backendEnabled()) {
+    setInterval(() => {
+      const open = orders.value.some((o) => o.progress && !['delivered', 'cancelled', 'refunded'].includes(o.progress))
+      if (open && document.visibilityState === 'visible') void check()
+    }, 30000)
+  }
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void check())
 })

@@ -2,6 +2,8 @@ import type { Offer, ShopperLocation } from '~/types'
 import type { BrandingProfile, PlatformBanner } from '~/types/admin'
 import { offerHeadline } from '~/utils/offerText'
 import { api } from './http'
+import type { BannerEventRequest, PublicBannerDto } from './apiTypes'
+import { fromOfferDto } from './offerService'
 import { apiGet as get, apiSend as send, encodeId as id } from './admin/common'
 import { storeUpload } from './admin/tenantApi'
 
@@ -58,12 +60,32 @@ export interface PublicBanner {
 }
 
 /** GET /home/banners?lat=&lng=&label=&district= — public. Without an area only "everyone" banners show. */
-export function listHomeBanners(area: ShopperLocation | null): Promise<PublicBanner[]> {
-  return api<PublicBanner[]>('/home/banners', { query: area ? { lat: area.lat, lng: area.lng, label: area.label, district: area.district } : {} })
+export async function listHomeBanners(area: ShopperLocation | null): Promise<PublicBanner[]> {
+  const list = await api<PublicBannerDto[]>('/home/banners', { query: area ? { lat: area.lat, lng: area.lng, label: area.label, district: area.district } : {} })
+  return list.map(fromBannerDto)
 }
 
-/** POST /home/banners/:id/events — simple view / click counts for head office. */
+function fromBannerDto(b: PublicBannerDto): PublicBanner {
+  return {
+    id: b.id, title: b.title, subtitle: b.subtitle ?? '', image: b.image, theme: b.theme, cta: b.cta,
+    store: b.store
+      ? {
+          id: b.store.id, name: b.store.name, brandColor: b.store.brandColor, branchId: b.store.branchId, branchName: b.store.branchName,
+          branding: { ...b.store.branding, primaryColor: b.store.branding?.primaryColor || b.store.brandColor, slogan: b.store.branding?.slogan ?? '', promoBanners: b.store.branding?.promoBanners ?? [], logoOnFixtures: !!b.store.branding?.logoOnFixtures },
+        }
+      : undefined,
+    offer: b.offer ? fromOfferDto(b.offer) : undefined,
+  }
+}
+
+/** Banners already counted as seen on this page load (one "view" per banner, however many places show it). */
+const viewed = new Set<string>()
+
+/** POST /home/banners/:id/events — view / click counts for head office. Fire-and-forget; never breaks the page. */
 export function recordBannerEvent(bannerId: string, kind: 'view' | 'click') {
-  // Analytics must never break the page.
-  void api<void>(`/home/banners/${id(bannerId)}/events`, { method: 'POST', body: { kind } }).catch(() => undefined)
+  if (kind === 'view') {
+    if (viewed.has(bannerId)) return
+    viewed.add(bannerId)
+  }
+  void api<void>(`/home/banners/${id(bannerId)}/events`, { method: 'POST', body: { kind } satisfies BannerEventRequest, timeoutMs: 5000 }).catch(() => undefined)
 }

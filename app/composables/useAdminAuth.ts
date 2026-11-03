@@ -321,6 +321,8 @@ export function useAdminAuth() {
     signedOutReason,
     can,
     call,
+    /** Same session as `call` (the ordering pages use this name). */
+    callApi: call,
     restore,
     logout,
     refreshMe,

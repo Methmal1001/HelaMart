@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { OrderStage, WorkflowStage } from '~/types/admin'
-import { getWorkflow, listDesk, orderSlip, stageAction, type DeskOfficer, type DeskOrder, type DeskView, type OrderSlip, type StageAction } from '~/services/admin/orderDeskApi'
+import { getWorkflow, listDesk, orderSlip, stageAction, type DeskOfficer, type DeskOrder, type DeskView, type OrderSlip, type StageAction } from '~/services/admin/orderingApi'
 import { atHandover, currentStage, isClosed } from '~/lib/workflow'
 
 /**
@@ -26,7 +26,7 @@ const scope = ref<'mine' | 'all'>('mine')
 async function load(quiet = false) {
   if (!quiet) loading.value = true
   try {
-    const [v, w] = await Promise.all([auth.call(listDesk), officers.value.length ? null : auth.call(getWorkflow)])
+    const [v, w] = await Promise.all([auth.callApi(listDesk), officers.value.length ? null : auth.callApi(getWorkflow)])
     view.value = v
     if (w) officers.value = w.officers
     if (!v.me.stageIds.length) scope.value = 'all'
@@ -105,7 +105,7 @@ const STATE: Record<OrderStage['state'], { label: string; tone: string }> = {
 async function act(o: DeskOrder, action: StageAction, extra: { note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string } = {}) {
   busy.value = true
   try {
-    const u = await auth.call((t) => stageAction(t, o.id, { action, ...extra }))
+    const u = await auth.callApi((t) => stageAction(t, o.id, { action, ...extra }))
     if (view.value) view.value.orders = view.value.orders.map((x) => (x.id === u.id ? { ...u, branchName: x.branchName } : x))
     const cur = currentStage(u)
     // The section just finished prints the order slip (the cashier's approval, by default).
@@ -189,7 +189,7 @@ const origin = ref('')
 onMounted(() => (origin.value = window.location.origin))
 async function printSlip(orderId: string, auto = false) {
   try {
-    slip.value = await auth.call((t) => orderSlip(t, orderId))
+    slip.value = await auth.callApi((t) => orderSlip(t, orderId))
     await nextTick()
     // Let the QR code paint before the print dialog takes its snapshot.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))

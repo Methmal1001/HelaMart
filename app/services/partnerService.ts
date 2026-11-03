@@ -1,5 +1,8 @@
 import type { BrandingProfile, TenantDocument, TenantStatus } from '~/types/admin'
 import { api } from './http'
+import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
+import { circlePolygon } from '~/lib/geo'
+import { townsInside } from '~/lib/coverage'
 
 /**
  * Public partner endpoints (no sign-in):
@@ -26,12 +29,15 @@ export interface ApplicationInput {
 
 /** POST /partners/applications — validated (and rate limited) again on the server. */
 export function submitApplication(input: ApplicationInput): Promise<{ reference: string }> {
-  return api<{ reference: string }>('/partners/applications', { method: 'POST', body: input })
+  const body: ApplicationRequest = { ...input, vatNumber: input.vatNumber.trim() || undefined }
+  return api<ApplicationReceiptDto>('/partners/applications', { method: 'POST', body })
 }
 
 /** Status lookup needs both the reference and the email used — no enumeration of applicants. */
-export function applicationStatus(reference: string, email: string): Promise<{ name: string; reference: string; status: TenantStatus; reason?: string; submittedAt: string }> {
-  return api('/partners/applications/status', { query: { reference, email } })
+export type ApplicationStatus = ApplicationStatusDto & { status: TenantStatus }
+
+export function applicationStatus(reference: string, email: string): Promise<ApplicationStatus> {
+  return api<ApplicationStatus>('/partners/applications/status', { query: { reference, email } })
 }
 
 export interface PublicStore {
@@ -58,6 +64,46 @@ export interface PublicBranch {
 }
 
 /** GET /stores — only approved, active supermarkets. Restricted or banned ones disappear. */
-export function listStores(): Promise<PublicStore[]> {
-  return api<PublicStore[]>('/stores')
+export async function listStores(): Promise<PublicStore[]> {
+  return (await api<PublicStoreDto[]>('/stores')).map(fromStoreDto).filter((s) => s.branches.length)
+}
+
+/**
+ * The API's store → the storefront's. Each branch carries the delivery area its
+ * supermarket drew (polygon + named places); shoppers are matched against it.
+ */
+function fromStoreDto(s: PublicStoreDto): PublicStore {
+  const primary = s.branding?.primaryColor || s.brandColor
+  return {
+    id: s.id,
+    name: s.name,
+    brandColor: s.brandColor,
+    branding: {
+      logo: s.branding?.logo,
+      banner: s.branding?.banner,
+      primaryColor: primary,
+      slogan: s.branding?.slogan ?? '',
+      accentColor: s.branding?.accentColor,
+      promoBanners: s.branding?.promoBanners ?? [],
+      welcomeMessage: s.branding?.welcomeMessage,
+      logoOnFixtures: !!s.branding?.logoOnFixtures,
+    },
+    branches: s.branches.filter((b) => b.status !== 'closed' && Number.isFinite(b.lat) && Number.isFinite(b.lng)).map(fromBranchDto),
+  }
+}
+function fromBranchDto(b: PublicBranchDto): PublicBranch {
+  return {
+    id: b.id, name: b.name, city: b.city, district: b.district,
+    status: b.status === 'open' ? 'open' : 'temporarily_closed',
+    hours: b.hours, lat: b.lat, lng: b.lng, deliveryRadiusKm: b.deliveryRadiusKm,
+    coverage: coverageOf(b),
+  }
+}
+
+/** The branch's drawn delivery area; a circle of its delivery radius only if the API sent none. */
+function coverageOf(b: PublicBranchDto): PublicBranch['coverage'] {
+  const drawn = b.coverage?.polygon?.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) ?? []
+  if (drawn.length >= 3) return { polygon: drawn, places: b.coverage?.places?.length ? b.coverage.places : [b.city] }
+  const polygon = circlePolygon(b.lat, b.lng, Math.max(1, b.deliveryRadiusKm), 24)
+  return { polygon, places: [...new Set([b.city, ...townsInside(polygon)])] }
 }

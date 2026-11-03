@@ -1,5 +1,6 @@
+import type { Category } from '~/types'
 import { listStores, type PublicStore } from '~/services/partnerService'
-import { getStoreCatalog, getStoreCategories } from '~/services/catalogService'
+import { getStoreCatalog, loadStoreCategories } from '~/services/catalogService'
 import { setActiveCategories } from '~/data/categories'
 import { getProduct, setActiveCatalog } from '~/data/products'
 import { branchServes, rankStores } from '~/lib/area'
@@ -31,6 +32,9 @@ function isChoice(v: unknown): v is StoreChoice {
 export function useStoreSelection() {
   const choice = useState<StoreChoice | null>('store-choice', () => null)
   const stores = useState<PublicStore[]>('store-list', () => [])
+  /** Why the store list couldn't load (the API's message), shown with a Retry button. */
+  const storeError = useState<string>('store-list-error', () => '')
+  const catalogLoading = useState<boolean>('catalog-loading', () => false)
   const { lines, remove } = useCart()
   const { show } = useToasts()
   const { area } = useShoppingArea()
@@ -40,12 +44,23 @@ export function useStoreSelection() {
     const current = choice.value
     if (!current) return
     const request = ++catalogRequest
-    let list, cats
+    let list
+    let cats: Category[] = []
+    catalogLoading.value = true
     try {
-      ;[list, cats] = await Promise.all([getStoreCatalog(current.storeId, current.branchId), getStoreCategories(current.storeId)])
-    } catch {
-      if (request === catalogRequest) show(`Couldn’t load ${current.storeName}’s shelves. Check your connection and try again.`, 'error')
+      // Categories and products together. Categories failing never blocks shopping: products keep the standard names.
+      ;[list, cats] = await Promise.all([
+        getStoreCatalog(current.storeId, current.branchId),
+        loadStoreCategories(current.storeId).catch((e: unknown) => {
+          if (request === catalogRequest) show(`Couldn’t load ${current.storeName}’s aisle names: ${e instanceof Error ? e.message : 'try again.'}`, 'error')
+          return [] as Category[]
+        }),
+      ])
+    } catch (e) {
+      if (request === catalogRequest) show(`Couldn’t load ${current.storeName}’s shelves: ${e instanceof Error ? e.message : 'try again.'}`, 'error')
       return
+    } finally {
+      if (request === catalogRequest) catalogLoading.value = false
     }
     // The shopper picked another branch while this one was loading.
     if (request !== catalogRequest) return
@@ -67,8 +82,10 @@ export function useStoreSelection() {
     const firstLoad = !stores.value.length
     try {
       stores.value = await listStores()
-    } catch {
-      show('Can’t reach HelaMart right now. Supermarkets will appear once you’re back online.', 'error')
+      storeError.value = ''
+    } catch (e) {
+      storeError.value = e instanceof Error ? e.message : 'Can’t reach HelaMart right now.'
+      show(storeError.value, 'error')
       return
     }
     const saved = choice.value ?? readStorage(KEY, isChoice)
@@ -135,5 +152,5 @@ export function useStoreSelection() {
     return !!b && branchServes(b, area.value)
   })
 
-  return { choice, stores, currentStore, choiceServesArea, refresh, select, alignToArea }
+  return { choice, stores, storeError, catalogLoading, currentStore, choiceServesArea, refresh, select, alignToArea }
 }

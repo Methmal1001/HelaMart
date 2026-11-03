@@ -2,6 +2,7 @@ import type { CardDetails, CartLine, DeliveryDetails, Order, PaymentMethod, Publ
 import type { AdminOrder } from '~/types/admin'
 import { ApiError } from './apiError'
 import { api } from './http'
+import type { PlaceOrderRequest as PlaceOrderBody } from './apiTypes'
 import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
 import { readAdminDb, writeAdminDb } from './admin/db'
 import { markReceived } from './admin/handover'
@@ -123,8 +124,17 @@ export async function confirmReceivedByQr(number: string, code: string, received
  * stock and stores the order for that branch.
  * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined.
  */
-export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _user: User): Promise<Order> {
-  const order = await api<Order>('/orders', { method: 'POST', body: req, token: accessToken })
+export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _user: User, labels?: { storeName?: string; branchName?: string }): Promise<Order> {
+  // The server re-prices the cart and applies offers; the returned breakdown is the bill.
+  const body: PlaceOrderBody = {
+    storeId: req.storeId,
+    branchId: req.branchId,
+    lines: req.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+    delivery: req.delivery,
+    payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
+  }
+  const placed = await api<Order>('/orders', { method: 'POST', body, token: accessToken })
+  const order = { ...placed, storeName: placed.storeName ?? labels?.storeName, branchName: placed.branchName ?? labels?.branchName }
   // The API doesn't serve order tracking yet: keep a copy so "Your orders", the slip QR
   // and the supermarket's Order desk (all in-browser for now) can follow this order.
   const db = readDb()
