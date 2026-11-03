@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { backendEnabled } from '~/services/http'
 import { progressOf } from '~/composables/useMyOrders'
 
 const { panel, closePanel } = useStoreUi()
@@ -11,8 +10,6 @@ const { orders, loaded: ordersLoaded, load: loadOrders, openOrders } = useMyOrde
 const recent = computed(() => orders.value.slice(0, 3))
 
 // ---- mobile number (required; shown to the supermarket for deliveries)
-/** The HelaMart API doesn't store a changed number yet — it's given with each order there. */
-const canChangePhone = !backendEnabled()
 const editingPhone = ref(false)
 const phoneDraft = ref('')
 const phoneError = ref('')
@@ -63,7 +60,7 @@ async function signOut() {
           <p class="truncate text-sm text-muted">{{ user.email }}</p>
           <p v-if="!editingPhone" class="flex items-center gap-2 text-sm text-muted" data-testid="account-phone">
             <span>{{ user.phone ?? 'No mobile number' }}</span>
-            <button v-if="canChangePhone" type="button" class="text-xs font-bold text-hela-green hover:underline" @click="startPhone">Change</button>
+            <button type="button" class="text-xs font-bold text-hela-green hover:underline" @click="startPhone">Change</button>
           </p>
           <form v-else class="mt-1 flex items-center gap-2" @submit.prevent="submitPhone">
             <input v-model="phoneDraft" type="tel" autocomplete="tel" class="h-9 w-36 rounded-lg bg-white px-2.5 text-sm ring-1 ring-line focus:ring-2 focus:ring-hela-green focus:outline-none" aria-label="Mobile number">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { IconName } from '~/types'
 import type { StageAppliesTo } from '~/types/admin'
-import { getWorkflow, resetBranchWorkflow, saveWorkflow, type DeskOfficer, type StageInput, type WorkflowView } from '~/services/admin/orderDeskApi'
+import { getWorkflow, resetBranchWorkflow, saveWorkflow, type DeskOfficer, type StageInput, type WorkflowView } from '~/services/admin/orderingApi'
 import { STANDARD_STAGES, stageApplies } from '~/lib/workflow'
 
 /**
@@ -43,7 +43,7 @@ const canCustomise = computed(() => !!view.value?.inherited && view.value.canEdi
 async function load(branchId: string | null) {
   loading.value = true
   try {
-    const r = await auth.call((t) => getWorkflow(t, branchId))
+    const r = await auth.callApi((t) => getWorkflow(t, branchId))
     view.value = r
     scopeId.value = r.branchId
     officers.value = r.officers
@@ -76,7 +76,7 @@ async function useChainDefault() {
   const r = await confirm({ title: `Use the chain default at ${branchName.value}?`, message: `${branchName.value}’s own sections and officer assignments are removed; new orders follow the chain default.`, confirmLabel: 'Use chain default', tone: 'danger' })
   if (!r.ok) return
   try {
-    await auth.call((t) => resetBranchWorkflow(t, scopeId.value!))
+    await auth.callApi((t) => resetBranchWorkflow(t, scopeId.value!))
     notify.ok(`${branchName.value} now follows the chain default`)
     await load(scopeId.value)
   } catch (e) {
@@ -142,7 +142,7 @@ async function save() {
   if (problems.value.length) return notify.error(new Error(problems.value[0]))
   saving.value = true
   try {
-    const wf = await auth.call((t) => saveWorkflow(t, draft.value.map(({ key: _k, open: _o, ...s }) => s), scopeId.value))
+    const wf = await auth.callApi((t) => saveWorkflow(t, draft.value.map(({ key: _k, open: _o, ...s }) => s), scopeId.value))
     notify.ok(scopeId.value ? `${branchName.value} branch workflow saved` : 'Chain default workflow saved')
     await load(scopeId.value)
     meta.value = { updatedAt: wf.updatedAt, updatedBy: wf.updatedBy }

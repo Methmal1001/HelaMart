@@ -19,10 +19,12 @@ The storefront talks to the **HelaMart API** (ASP.NET Core 8 + SQL Server) at
 `http://localhost:5206/api` — `runtimeConfig.public.apiBase`, overridable with
 `NUXT_PUBLIC_API_BASE`. Start the API first (`dotnet run --launch-profile http`), then `npm run dev`:
 the dev server runs on **port 3000**, the only origin the API's CORS policy allows.
-Sign-in (JWT + rotating refresh token), shopping area, stores, catalogue, offers, checkout and
-partner applications go to the API. Not on the API yet, so still in the browser: store branding
-approvals, homepage banners, categories (names/colours), order history/tracking (bills returned at
-checkout are kept on the device), changing the mobile number, and the whole `/admin` portal.
+Sign-in (JWT + rotating refresh token), shopping area, mobile number, stores and their drawn delivery
+areas, categories, catalogue, store and personal offers, homepage banners, images (`/media/{id}`),
+checkout, order history, QR tracking and "I received it", and partner applications go to the API.
+In `/admin`, staff sign in through the API (password + 2FA) and the **ordering** pages — Order desk,
+Orders, Order workflow, order slips — use it; the other admin pages still run on in-browser data
+(they get a matching in-browser session automatically).
 Setting `NUXT_PUBLIC_API_BASE=` (empty) runs the old offline demo on sample data.
 
 Other scripts: `npm run build` · `npm run preview` · `npm run typecheck`
@@ -71,8 +73,8 @@ API running in Development). To use the real Google button set
 
 **Backend:** `app/services/*Service.ts` call the API through `app/services/http.ts` (typed shapes in
 `app/services/apiTypes.ts`; every error `{ status, message, code }` becomes an `ApiError`), one function
-per endpoint (`/auth/*`, `/me/location`, `/me/offers`, `/stores`, `/stores/:id/catalog`, `/orders`,
-`/partners/applications`, `/health`). `useAuth().authorized()` adds the Bearer token, refreshes once on a
+per endpoint (`/auth/*`, `/me/location`, `/me/phone`, `/me/offers`, `/stores`, `/stores/:id/catalog`,
+`/stores/:id/categories`, `/stores/:id/offers`, `/home/banners`, `/media/:id`, `/orders`, `/partners/applications`, `/health`). `useAuth().authorized()` adds the Bearer token, refreshes once on a
 401 (one shared in-flight refresh) and retries; `SESSION_*` codes sign the customer out. Tokens live in
 localStorage with "Keep me signed in", otherwise sessionStorage. The server re-prices every order from its own prices and the shopper's
 offers, and takes the items out of the branch's stock. The cart preview still uses `priceCart`

@@ -17,7 +17,8 @@ export function useOffers() {
 
   const activeOffers = computed(() => offers.value.filter((o) => isOfferActive(o)))
   /** Everything that prices this shopper's basket at the chosen branch. */
-  const allOffers = computed(() => mergeOffers(isAuthenticated.value ? offers.value : [], storeOffers.value))
+  // "Coming soon" offers are shown in the Offers drawer but never price the basket.
+  const allOffers = computed(() => mergeOffers(isAuthenticated.value ? offers.value : [], storeOffers.value).filter((o) => !o.upcoming))
 
   async function load() {
     if (!isAuthenticated.value) {

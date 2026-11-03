@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AdminOrder, OrderStatus, TableColumn } from '~/types/admin'
-import { allowedTransitions, branchDirectory, listOrders, updateOrderStatus } from '~/services/admin/tenantApi'
+import { allowedTransitions, branchDirectory, listOrders, updateOrderStatus } from '~/services/admin/orderingApi'
 import { currentStage, isClosed } from '~/lib/workflow'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'orders.view' })
@@ -23,7 +23,7 @@ const branchName = (id: string) => branches.value.find((b) => b.id === id)?.name
 async function load() {
   loading.value = true
   try {
-    ;[orders.value, branches.value] = await Promise.all([auth.call(listOrders), auth.call(branchDirectory)])
+    ;[orders.value, branches.value] = await Promise.all([auth.callApi(listOrders), auth.callApi(branchDirectory)])
   } catch (e) {
     notify.error(e)
   } finally {
@@ -92,7 +92,7 @@ async function move(o: AdminOrder, status: OrderStatus) {
   }
   busy.value = true
   try {
-    const updated = await auth.call((t) => updateOrderStatus(t, o.id, status, note), 'Refunds need your password confirmed.')
+    const updated = await auth.callApi((t) => updateOrderStatus(t, o.id, status, note), 'Refunds need your password confirmed.')
     orders.value = orders.value.map((x) => (x.id === updated.id ? updated : x))
     selected.value = updated
     notify.ok(`${updated.number}: ${updated.status.replace(/_/g, ' ')}`)

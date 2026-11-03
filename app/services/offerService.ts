@@ -32,7 +32,7 @@ export function offersForUser(userId: string): Offer[] {
  * (the API scopes them to the chosen supermarket and branch).
  */
 export async function listMyOffers(accessToken: string, store?: { storeId: string; branchId: string } | null): Promise<Offer[]> {
-  if (backendEnabled()) return api<OfferDto[]>('/me/offers', { token: accessToken, query: { storeId: store?.storeId, branchId: store?.branchId } })
+  if (backendEnabled()) return (await api<OfferDto[]>('/me/offers', { token: accessToken, query: { storeId: store?.storeId, branchId: store?.branchId } })).map(fromOfferDto)
   await latency(150, 350)
   return offersForUser(verifyAccessToken(accessToken))
 }
@@ -74,9 +74,8 @@ export function storeOffersFor(storeId: string, branchId: string, userId: string
 
 /** GET /stores/:id/offers?branch= — public; personalised when a token is sent. */
 export async function listStoreOffers(storeId: string, branchId: string, accessToken?: string | null): Promise<Offer[]> {
-  // With the API, /me/offers already returns this branch's running offers for the signed-in
-  // customer, and the server applies them at checkout — nothing extra to show from the browser.
-  if (backendEnabled()) return []
+  // GET /stores/{storeId}/offers?branch= — the branch's running and "coming soon" offers; personalised when signed in.
+  if (backendEnabled()) return (await api<OfferDto[]>(`/stores/${encodeURIComponent(storeId)}/offers`, { query: { branch: branchId }, token: accessToken })).map(fromOfferDto)
   await latency(80, 200)
   let userId: string | null = null
   try {
@@ -88,6 +87,12 @@ export async function listStoreOffers(storeId: string, branchId: string, accessT
 }
 
 /** Personal + supermarket offers, without duplicates (same id or code). */
+/** The API's offer → the app's (a store theme needs its primary colour; the accent falls back to it). */
+export function fromOfferDto(o: OfferDto): Offer {
+  const { storeTheme, ...rest } = o
+  return { ...rest, storeTheme: storeTheme?.primaryColor ? { logo: storeTheme.logo, primaryColor: storeTheme.primaryColor, accentColor: storeTheme.accentColor || storeTheme.primaryColor } : undefined }
+}
+
 export function mergeOffers(...lists: Offer[][]): Offer[] {
   const out: Offer[] = []
   for (const o of lists.flat()) if (!out.some((x) => x.id === o.id || x.code === o.code)) out.push(o)

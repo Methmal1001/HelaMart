@@ -107,6 +107,21 @@ function finishLogin(db: ReturnType<typeof readAdminDb>, staffId: string, userAg
   return { user: toStaffView(db, staff), tokens }
 }
 
+/**
+ * With the HelaMart API, staff sign in there (password + 2FA are checked by the
+ * server). The admin pages that still run on this in-browser data get a matching
+ * session for the same person, without asking again. Null when the person
+ * isn't in the in-browser data.
+ */
+export function bridgeSession(email: string, userAgent: string): AdminLoginResult | null {
+  const db = readAdminDb()
+  const staff = db.staff.find((s) => s.email === email.trim().toLowerCase() && s.status === 'active')
+  if (!staff) return null
+  const { tokens } = issueSession(db, staff, userAgent)
+  writeAdminDb(db)
+  return { user: toStaffView(db, staff), tokens }
+}
+
 /** Step 3 (when required): choose a new password, then the session is issued. */
 export async function completePasswordChange(challengeId: string, newPassword: string, userAgent: string): Promise<AdminLoginResult> {
   await latency(300, 600)

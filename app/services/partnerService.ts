@@ -157,9 +157,8 @@ export async function listStores(): Promise<PublicStore[]> {
 }
 
 /**
- * The API's store → the storefront's. The API gives each branch a pin and a
- * delivery radius; the area shoppers are matched against is that circle, with
- * the towns inside it as the branch's named delivery places.
+ * The API's store → the storefront's. Each branch carries the delivery area its
+ * supermarket drew (polygon + named places); shoppers are matched against it.
  */
 function fromStoreDto(s: PublicStoreDto): PublicStore {
   const primary = s.branding?.primaryColor || s.brandColor
@@ -181,13 +180,20 @@ function fromStoreDto(s: PublicStoreDto): PublicStore {
   }
 }
 function fromBranchDto(b: PublicBranchDto): PublicBranch {
-  const polygon = circlePolygon(b.lat, b.lng, Math.max(1, b.deliveryRadiusKm), 24)
   return {
     id: b.id, name: b.name, city: b.city, district: b.district,
     status: b.status === 'open' ? 'open' : 'temporarily_closed',
     hours: b.hours, lat: b.lat, lng: b.lng, deliveryRadiusKm: b.deliveryRadiusKm,
-    coverage: { polygon, places: [...new Set([b.city, ...townsInside(polygon)])] },
+    coverage: coverageOf(b),
   }
+}
+
+/** The branch's drawn delivery area; a circle of its delivery radius only if the API sent none. */
+function coverageOf(b: PublicBranchDto): PublicBranch['coverage'] {
+  const drawn = b.coverage?.polygon?.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) ?? []
+  if (drawn.length >= 3) return { polygon: drawn, places: b.coverage?.places?.length ? b.coverage.places : [b.city] }
+  const polygon = circlePolygon(b.lat, b.lng, Math.max(1, b.deliveryRadiusKm), 24)
+  return { polygon, places: [...new Set([b.city, ...townsInside(polygon)])] }
 }
 
 /** The in-browser store list (sample data). Also used by in-browser services such as banners. */

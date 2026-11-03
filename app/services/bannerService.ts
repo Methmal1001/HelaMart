@@ -12,6 +12,9 @@ import { readAdminDb, writeAdminDb } from './admin/db'
 import { audit, authenticate, requirePermission, requirePlatform, requireStepUp, sanitize } from './admin/security'
 import { nowIso, run } from './admin/common'
 import { listLocalStores } from './partnerService'
+import { api, backendEnabled } from './http'
+import { fromOfferDto } from './offerService'
+import type { BannerEventRequest, PublicBannerDto } from './apiTypes'
 
 /**
  * HelaMart homepage banners. Only HelaMart head office (platform.banners.manage)
@@ -170,14 +173,42 @@ export function bannersFor(area: ShopperLocation | null, now = Date.now()): Publ
   return out.sort((a, b) => b.priority - a.priority).map(({ priority: _p, ...rest }) => rest)
 }
 
-/** GET /home/banners?lat=&lng= — public. */
+/** GET /home/banners?lat=&lng=&label=&district= — public; banners for the shopper's area, best first. */
 export async function listHomeBanners(area: ShopperLocation | null): Promise<PublicBanner[]> {
+  if (backendEnabled()) {
+    const list = await api<PublicBannerDto[]>('/home/banners', { query: area ? { lat: area.lat, lng: area.lng, label: area.label, district: area.district } : {} })
+    return list.map(fromBannerDto)
+  }
   await latency(60, 160)
   return bannersFor(area)
 }
 
-/** POST /home/banners/:id/events — simple view / click counts for head office. */
+function fromBannerDto(b: PublicBannerDto): PublicBanner {
+  return {
+    id: b.id, title: b.title, subtitle: b.subtitle ?? '', image: b.image, theme: b.theme, cta: b.cta,
+    store: b.store
+      ? {
+          id: b.store.id, name: b.store.name, brandColor: b.store.brandColor, branchId: b.store.branchId, branchName: b.store.branchName,
+          branding: { ...b.store.branding, primaryColor: b.store.branding?.primaryColor || b.store.brandColor, slogan: b.store.branding?.slogan ?? '', promoBanners: b.store.branding?.promoBanners ?? [], logoOnFixtures: !!b.store.branding?.logoOnFixtures },
+        }
+      : undefined,
+    offer: b.offer ? fromOfferDto(b.offer) : undefined,
+  }
+}
+
+/** Banners already counted as seen on this page load (one "view" per banner, however many places show it). */
+const viewed = new Set<string>()
+
+/** POST /home/banners/{id}/events — view / click counts for head office. Fire-and-forget; never breaks the page. */
 export function recordBannerEvent(id: string, kind: 'view' | 'click') {
+  if (kind === 'view') {
+    if (viewed.has(id)) return
+    viewed.add(id)
+  }
+  if (backendEnabled()) {
+    void api<void>(`/home/banners/${encodeURIComponent(id)}/events`, { method: 'POST', body: { kind } satisfies BannerEventRequest, timeoutMs: 5000 }).catch(() => {})
+    return
+  }
   try {
     const db = readAdminDb()
     const b = db.banners.find((x) => x.id === id)

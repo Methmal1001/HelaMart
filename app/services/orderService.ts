@@ -11,7 +11,6 @@ import { findPlace } from '~/data/places'
 import { coversLocation } from '~/lib/coverage'
 import { api, backendEnabled } from './http'
 import type { PlaceOrderRequest as PlaceOrderBody } from './apiTypes'
-import { decodeJwt } from '~/utils/jwt'
 import { atHandover, stageLabel, trackingSteps } from '~/lib/workflow'
 
 export interface PlaceOrderRequest {
@@ -41,8 +40,7 @@ function luhn(num: string) {
  * reopened and reprinted any time.
  */
 export async function listMyOrders(accessToken: string): Promise<Order[]> {
-  // The API has no order-history endpoint yet: show the bills it returned at checkout on this device.
-  if (backendEnabled()) return receiptsOf(decodeJwt<{ sub?: string }>(accessToken)?.sub)
+  if (backendEnabled()) return api<Order[]>('/me/orders', { token: accessToken })
   await latency(150, 350)
   const userId = verifyAccessToken(accessToken)
   const platform = readAdminDb()
@@ -73,36 +71,12 @@ export async function listMyOrders(accessToken: string): Promise<Order[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-// ------------------------------------------------------------------ bills from the API, kept on this device
-
-const RECEIPTS = 'helamart:receipts:v1'
-function readReceipts(): Record<string, Order[]> {
-  try {
-    return JSON.parse(localStorage.getItem(RECEIPTS) ?? '{}') as Record<string, Order[]>
-  } catch {
-    return {}
-  }
-}
-function saveReceipt(order: Order) {
-  try {
-    const all = readReceipts()
-    all[order.userId] = [order, ...(all[order.userId] ?? []).filter((o) => o.id !== order.id)].slice(0, 50)
-    localStorage.setItem(RECEIPTS, JSON.stringify(all))
-  } catch {
-    /* storage full or blocked — the confirmation screen still shows the bill */
-  }
-}
-function receiptsOf(userId?: string): Order[] {
-  if (!userId) return []
-  return (readReceipts()[userId] ?? []).map((o) => ({ ...o, progress: o.progress ?? 'pending', canConfirmReceipt: false }))
-}
-
 /**
  * POST /me/orders/:id/received — the signed-in customer confirms they have
  * their order (delivered to the door, or collected at the counter).
  */
 export async function confirmMyOrderReceived(accessToken: string, orderId: string): Promise<void> {
-  if (backendEnabled()) throw new ApiError(501, 'Confirming delivery isn’t available yet.', 'NOT_SUPPORTED')
+  if (backendEnabled()) return api<void>(`/me/orders/${encodeURIComponent(orderId)}/received`, { method: 'POST', token: accessToken })
   await latency(250, 500)
   const userId = verifyAccessToken(accessToken)
   const db = readAdminDb()
@@ -146,7 +120,7 @@ function publicView(db: ReturnType<typeof readAdminDb>, o: AdminOrder): PublicTr
 
 /** GET /track/:number?t= — what the slip's QR code opens (no sign-in; the code proves you hold the slip). */
 export async function trackOrder(number: string, code: string): Promise<PublicTracking> {
-  if (backendEnabled()) throw new ApiError(404, 'Order tracking by QR code isn’t available yet. Signed-in customers can see their bills under Your orders.', 'NOT_SUPPORTED')
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number)}`, { query: { t: code } })
   await latency(200, 400)
   const { db, o } = findByTrackCode(number, code)
   return publicView(db, o)
@@ -154,7 +128,7 @@ export async function trackOrder(number: string, code: string): Promise<PublicTr
 
 /** POST /track/:number/received — the customer scanned the QR on arrival and confirms they have the order. */
 export async function confirmReceivedByQr(number: string, code: string, receivedBy: string): Promise<PublicTracking> {
-  if (backendEnabled()) throw new ApiError(404, 'Confirming delivery by QR code isn’t available yet.', 'NOT_SUPPORTED')
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number)}/received`, { method: 'POST', body: { t: code, receivedBy } })
   await latency(300, 600)
   const { db, o } = findByTrackCode(number, code)
   markReceived(db, o, { via: 'customer_qr', receivedBy: receivedBy.trim().slice(0, 60) || o.customerName })
@@ -178,7 +152,6 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
       payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
     }
     const order = await api<Order>('/orders', { method: 'POST', body, token: accessToken })
-    saveReceipt({ ...order, storeName: order.storeName ?? labels?.storeName, branchName: order.branchName ?? labels?.branchName })
     return { ...order, storeName: order.storeName ?? labels?.storeName, branchName: order.branchName ?? labels?.branchName }
   }
   await latency(700, 1200)

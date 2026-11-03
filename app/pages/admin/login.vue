@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ApiError } from '~/services/apiError'
-import { demoAuthenticatorCode, sessionPolicy } from '~/services/admin/auth'
+import { sessionPolicy } from '~/services/admin/auth'
+import { policy as apiPolicy } from '~/services/admin/apiAuth'
+import { backendEnabled } from '~/services/http'
 import { SEED_PASSWORDS } from '~/data/admin/seed'
 
 definePageMeta({ layout: false })
@@ -24,7 +26,10 @@ const passwordReason = ref<'new' | 'expired'>('new')
 const demo = ref<{ code: string; secondsLeft: number; email: string } | null>(null)
 let demoTimer: ReturnType<typeof setInterval> | null = null
 
-const rules = computed(() => staffPasswordRules(sessionPolicy().passwordMinLength, email.value).map((r) => ({ ...r, ok: r.test(newPassword.value) })))
+/** Password length rule from the server's security settings (the API's, or the in-browser demo's). */
+const minLength = ref(backendEnabled() ? 12 : sessionPolicy().passwordMinLength)
+onMounted(() => backendEnabled() && apiPolicy().then((p) => (minLength.value = p.passwordMinLength)).catch(() => undefined))
+const rules = computed(() => staffPasswordRules(minLength.value, email.value).map((r) => ({ ...r, ok: r.test(newPassword.value) })))
 
 /** Only ever redirect inside the admin area (prevents open redirects). */
 function safeRedirect() {
@@ -55,9 +60,16 @@ async function submitCredentials() {
     password.value = ''
     step.value = 'mfa'
     if (demoMode) {
-      const tick = () => (demo.value = demoAuthenticatorCode(challengeId.value))
-      tick()
-      demoTimer = setInterval(tick, 1000)
+      // Testers' stand-in for the authenticator app: fetch the current code, count down, fetch the next one.
+      const fetchCode = async () => {
+        const d = await auth.demoCode(challengeId.value)
+        demo.value = d ? { ...d } : null
+      }
+      await fetchCode()
+      demoTimer = setInterval(() => {
+        if (!demo.value || demo.value.secondsLeft <= 1) void fetchCode()
+        else demo.value.secondsLeft--
+      }, 1000)
     }
   } catch (e) {
     fail(e)

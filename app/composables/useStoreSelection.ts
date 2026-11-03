@@ -1,5 +1,6 @@
+import type { Category } from '~/types'
 import { listStores, type PublicStore } from '~/services/partnerService'
-import { getStoreCatalog, getStoreCategories } from '~/services/catalogService'
+import { getStoreCatalog, loadStoreCategories } from '~/services/catalogService'
 import { setActiveCategories } from '~/data/categories'
 import { getProduct, setActiveCatalog } from '~/data/products'
 import { branchServes, rankStores } from '~/lib/area'
@@ -44,9 +45,17 @@ export function useStoreSelection() {
     if (!current) return
     const request = ++catalogRequest
     let list
+    let cats: Category[] = []
     catalogLoading.value = true
     try {
-      list = await getStoreCatalog(current.storeId, current.branchId)
+      // Categories and products together. Categories failing never blocks shopping: products keep the standard names.
+      ;[list, cats] = await Promise.all([
+        getStoreCatalog(current.storeId, current.branchId),
+        loadStoreCategories(current.storeId).catch((e: unknown) => {
+          if (request === catalogRequest) show(`Couldn’t load ${current.storeName}’s aisle names: ${e instanceof Error ? e.message : 'try again.'}`, 'error')
+          return [] as Category[]
+        }),
+      ])
     } catch (e) {
       if (request === catalogRequest) show(`Couldn’t load ${current.storeName}’s shelves: ${e instanceof Error ? e.message : 'try again.'}`, 'error')
       return
@@ -56,7 +65,7 @@ export function useStoreSelection() {
     // The shopper picked another branch while this one was loading.
     if (request !== catalogRequest) return
     // The supermarket's own categories first (names, colours, order), then its products.
-    setActiveCategories(getStoreCategories(current.storeId))
+    setActiveCategories(cats)
     setActiveCatalog(list)
     const missing = lines.value.filter((l) => !getProduct(l.productId))
     for (const l of missing) remove(l.productId)

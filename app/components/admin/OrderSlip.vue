@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OrderSlip } from '~/services/admin/orderDeskApi'
+import type { OrderSlip } from '~/services/admin/orderingApi'
 
 /**
  * The order slip printed when the cashier approves an order: goes with the

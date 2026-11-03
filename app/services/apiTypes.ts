@@ -1,4 +1,4 @@
-import type { FulfilmentMethod, OfferRule, PaymentMethod, ProductShape, ShopperLocation } from '~/types'
+import type { FulfilmentMethod, IconName, OfferConditions, OfferRule, PaymentMethod, ProductShape, ShopperLocation, StoreAreaId } from '~/types'
 
 /**
  * Shapes of the HelaMart API (ASP.NET Core 8) as documented in its Swagger
@@ -83,6 +83,8 @@ export interface PublicBranchDto {
   lat: number
   lng: number
   deliveryRadiusKm: number
+  /** The branch's drawn delivery area: polygon of [lat, lng] points and the named places inside it. */
+  coverage?: { polygon?: [number, number][]; places?: string[] }
 }
 
 export interface PublicStoreDto {
@@ -112,6 +114,18 @@ export interface ProductDto {
   stock: number
 }
 
+/** GET /stores/{storeId}/categories — visible categories in the supermarket's order. */
+export interface CategoryDto {
+  id: string
+  name: string
+  shortName?: string
+  description?: string
+  color: string
+  icon: IconName
+  area: StoreAreaId
+  standard: boolean
+}
+
 // ------------------------------------------------------------------ offers
 
 export interface OfferDto {
@@ -122,6 +136,36 @@ export interface OfferDto {
   expiresAt: string
   /** `kind` decides which of the other fields are present. */
   rule: OfferRule
+  conditions?: OfferConditions
+  storeId?: string
+  storeName?: string
+  forNewCustomers?: boolean
+  storeTheme?: { logo?: string; primaryColor?: string; accentColor?: string }
+  /** Announced ("coming soon"): shown, never applied. */
+  upcoming?: boolean
+}
+
+// ------------------------------------------------------------------ homepage banners
+
+/** GET /home/banners?lat=&lng=&label=&district= */
+export interface PublicBannerDto {
+  id: string
+  title: string
+  subtitle?: string
+  /** `media:<id>` 3:1 image; without it a themed design is drawn. */
+  image?: string
+  theme: 'green' | 'gold' | 'sunset' | 'ocean' | 'berry'
+  cta: 'shop' | 'offers' | 'none'
+  store?: { id: string; name: string; branding?: BrandingProfileDto; brandColor: string; branchId?: string; branchName?: string }
+  offer?: OfferDto
+}
+
+export interface BannerEventRequest {
+  kind: 'view' | 'click'
+}
+
+export interface PhoneRequest {
+  phone: string
 }
 
 // ------------------------------------------------------------------ checkout
