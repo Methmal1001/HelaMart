@@ -39,7 +39,9 @@ const available = computed(() => ranked.value.filter((r) => r.available && match
 /** Shown only when searching: matching supermarkets that don't deliver here. */
 const elsewhere = computed(() => (q.value ? ranked.value.filter((r) => !r.available && matches(r, q.value)).slice(0, 4) : []))
 const current = computed(() => ranked.value.find((r) => r.store.id === choice.value?.storeId) ?? null)
-const servingBranches = computed(() => current.value?.branches.filter((b) => b.delivers) ?? [])
+const servingBranches = computed(() => current.value?.branches.filter((b) => b.usable) ?? [])
+/** The chosen branch is pickup only (no home delivery). */
+const chosenPickup = computed(() => current.value?.branches.find((b) => b.id === choice.value?.branchId)?.deliveryEnabled === false)
 const totalAvailable = computed(() => ranked.value.filter((r) => r.available).length)
 
 function choose(r: RankedStore) {
@@ -67,7 +69,7 @@ watch([() => choice.value?.storeId, loaded], async () => {
     <div class="flex items-center justify-between gap-2">
       <h2 id="chooser-title" class="min-w-0 text-base leading-tight font-bold text-ink">
         Your supermarket
-        <span v-if="area && loaded" class="block text-xs font-semibold text-muted">{{ totalAvailable }} deliver{{ totalAvailable === 1 ? 's' : '' }} to your area</span>
+        <span v-if="area && loaded" class="block text-xs font-semibold text-muted">{{ totalAvailable }} {{ totalAvailable === 1 ? 'shop' : 'shops' }} for your area · delivery or pickup</span>
       </h2>
       <button v-if="area" type="button" class="flex max-w-[55%] shrink-0 items-center gap-1 rounded-full bg-hela-green-50 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-hela-green transition hover:bg-hela-green hover:text-white" data-testid="change-area" @click="openFinder()">
         <AppIcon name="pin" :size="12" class="shrink-0" /><span class="truncate">{{ area.label }}</span><span class="shrink-0 opacity-70">· Change</span>
@@ -132,7 +134,8 @@ watch([() => choice.value?.storeId, loaded], async () => {
             <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" size="size-10" />
             <span class="mt-2 line-clamp-2 text-sm leading-tight font-bold text-ink">{{ r.store.name }}</span>
             <span class="mt-0.5 mb-2 block truncate text-[0.7rem] text-muted">{{ r.serving!.name }} branch</span>
-            <span class="mt-auto inline-flex items-center gap-1 self-start rounded-full bg-hela-green-50 px-1.5 py-0.5 text-[0.6rem] font-bold text-hela-green"><AppIcon name="truck" :size="10" />Delivers · {{ formatKm(r.serving!.distanceKm) }}</span>
+            <span v-if="r.serving!.delivers" class="mt-auto inline-flex items-center gap-1 self-start rounded-full bg-hela-green-50 px-1.5 py-0.5 text-[0.6rem] font-bold text-hela-green"><AppIcon name="truck" :size="10" />Delivers · {{ formatKm(r.serving!.distanceKm) }}</span>
+            <span v-else class="mt-auto inline-flex items-center gap-1 self-start rounded-full bg-hela-gold px-1.5 py-0.5 text-[0.6rem] font-extrabold text-hela-green-900" :data-testid="`pickup-only-${r.store.id}`"><AppIcon name="store" :size="10" />Pickup only · {{ formatKm(r.serving!.distanceKm) }}</span>
           </button>
 
           <div
@@ -166,11 +169,16 @@ watch([() => choice.value?.storeId, loaded], async () => {
       <label v-if="current && servingBranches.length > 1" class="mt-1 flex items-center gap-2 text-xs">
         <span class="font-semibold text-muted">Branch</span>
         <select class="field h-8 flex-1 py-0 text-xs" :value="choice?.branchId" aria-label="Branch" data-testid="chooser-branch" @change="chooseBranch">
-          <option v-for="b in servingBranches" :key="b.id" :value="b.id">{{ b.name }} · {{ formatKm(b.distanceKm) }}</option>
+          <option v-for="b in servingBranches" :key="b.id" :value="b.id">{{ b.name }} · {{ formatKm(b.distanceKm) }}{{ b.delivers ? '' : ' · pickup only' }}</option>
         </select>
       </label>
       <p v-else-if="current?.available && choice" class="mt-1 text-xs text-muted">
         Shopping at <b class="text-ink">{{ choice.storeName }} · {{ choice.branchName }}</b>
+      </p>
+      <!-- Pickup only: no home delivery from this branch -->
+      <p v-if="choice && chosenPickup" class="mt-1.5 flex items-start gap-2 rounded-xl bg-hela-gold-100 px-3 py-2 text-xs text-[#6d5622] ring-1 ring-hela-gold" role="note" data-testid="chooser-pickup-note">
+        <AppIcon name="store" :size="14" class="mt-px shrink-0" />
+        <span><b>Pickup only.</b> {{ choice.storeName }} {{ choice.branchName }} doesn’t deliver — you’ll collect your order at the store{{ current?.branches.find((b) => b.id === choice?.branchId)?.address ? `, ${current?.branches.find((b) => b.id === choice?.branchId)?.address}` : '' }}.</span>
       </p>
     </template>
   </section>

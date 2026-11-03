@@ -2,7 +2,9 @@
 import type { Branch, StaffView } from '~/types/admin'
 import { DISTRICTS } from '~/data/sriLanka'
 import { PLACES, findPlace } from '~/data/places'
-import { listBranches, saveBranch, setBranchStatus, type BranchInput } from '~/services/admin/tenantApi'
+import { listBranches, saveBranch, setBranchDelivery as setLocalBranchDelivery, setBranchStatus, type BranchInput } from '~/services/admin/tenantApi'
+import { branchDeliveryStates, setBranchDelivery } from '~/services/admin/orderingApi'
+import { backendEnabled } from '~/services/http'
 import { listTeam } from '~/services/admin/common'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'branches.view' })
@@ -17,9 +19,13 @@ const team = ref<StaffView[]>([])
 const canManage = computed(() => auth.can('branches.manage') && auth.isChainLevel.value && !auth.readOnly.value)
 const canEditBranch = (b: Branch) => auth.can('branches.manage') && !auth.readOnly.value && (auth.isChainLevel.value || !!auth.user.value?.branchIds.includes(b.id))
 
+/** Home delivery on (true) or pickup only (false), per branch — from the HelaMart API. */
+const delivery = ref<Record<string, boolean>>({})
+const deliversFrom = (b: Branch) => delivery.value[b.id] ?? b.deliveryEnabled !== false
+
 async function load() {
   try {
-    branches.value = await auth.call(listBranches)
+    ;[branches.value, delivery.value] = await Promise.all([auth.call(listBranches), auth.callApi(branchDeliveryStates).catch(() => ({}) as Record<string, boolean>)])
     if (auth.can('staff.view')) team.value = await auth.call(listTeam)
   } catch (e) {
     notify.error(e)
@@ -63,6 +69,28 @@ async function onCoverageSaved() {
   await load()
 }
 
+/** Switch a branch between home delivery and pickup only. */
+async function toggleDelivery(b: Branch) {
+  const on = !deliversFrom(b)
+  const r = await confirm({
+    title: on ? `Turn on home delivery at ${b.name}?` : `Make ${b.name} pickup only?`,
+    message: on
+      ? 'Shoppers in its delivery area can choose home delivery again. Your order workflow’s delivery section handles these orders.'
+      : 'Shoppers see this branch as “Pickup only”, checkout offers store pickup alone, and home-delivery orders are refused. Orders already placed aren’t changed.',
+    confirmLabel: on ? 'Turn on delivery' : 'Make pickup only',
+  })
+  if (!r.ok) return
+  try {
+    await auth.callApi((t) => setBranchDelivery(t, b.id, on))
+    // Keep the admin pages that still run on in-browser data in step.
+    if (backendEnabled()) await auth.call((t) => setLocalBranchDelivery(t, b.id, on)).catch(() => undefined)
+    delivery.value = { ...delivery.value, [b.id]: on }
+    notify.ok(on ? `${b.name}: home delivery is on` : `${b.name} is now pickup only`)
+  } catch (e) {
+    notify.error(e)
+  }
+}
+
 async function changeStatus(b: Branch, status: Branch['status']) {
   const r = await confirm({
     title: status === 'open' ? `Re-open ${b.name}?` : status === 'closed' ? `Close ${b.name} permanently?` : `Temporarily close ${b.name}?`,
@@ -101,13 +129,22 @@ async function changeStatus(b: Branch, status: Branch['status']) {
           <dt class="text-muted">Team</dt><dd>{{ b.staffCount }} staff</dd>
           <dt class="text-muted">Address</dt><dd class="text-ink">{{ b.address }}</dd>
           <dt class="text-muted">Hours</dt><dd>{{ b.openingHours }}</dd>
+          <dt class="text-muted">Orders</dt>
+          <dd :data-testid="`delivery-mode-${b.id}`">
+            <span v-if="deliversFrom(b)" class="inline-flex items-center gap-1 rounded-full bg-hela-green-50 px-2 py-0.5 text-xs font-bold text-hela-green"><AppIcon name="truck" :size="11" />Home delivery &amp; pickup</span>
+            <span v-else class="inline-flex items-center gap-1 rounded-full bg-hela-gold px-2 py-0.5 text-xs font-extrabold text-hela-green-900"><AppIcon name="store" :size="11" />Pickup only</span>
+          </dd>
           <dt class="text-muted">Delivers to</dt>
-          <dd v-if="b.coverage" class="text-ink" :title="b.coverage.places.join(', ')">{{ b.coverage.places.length }} places · {{ b.coverage.areaKm2 }} km²<span class="block truncate text-xs text-muted">{{ b.coverage.places.slice(0, 4).join(', ') }}{{ b.coverage.places.length > 4 ? '…' : '' }}</span></dd>
+          <dd v-if="!deliversFrom(b)" class="text-muted">No home delivery — customers collect at the branch</dd>
+          <dd v-else-if="b.coverage" class="text-ink" :title="b.coverage.places.join(', ')">{{ b.coverage.places.length }} places · {{ b.coverage.areaKm2 }} km²<span class="block truncate text-xs text-muted">{{ b.coverage.places.slice(0, 4).join(', ') }}{{ b.coverage.places.length > 4 ? '…' : '' }}</span></dd>
           <dd v-else class="font-semibold text-[#8A2E2E]" data-testid="coverage-missing">Not set — hidden from shoppers</dd>
         </dl>
         <div v-if="canEditBranch(b)" class="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
           <button type="button" class="btn-ghost h-8 px-3 text-xs" :data-testid="`edit-branch-${b.id}`" @click="open(b)"><AppIcon name="edit" :size="14" />Edit</button>
-          <button type="button" class="btn-ghost h-8 px-3 text-xs" :class="b.coverage ? '' : 'bg-[#FBEAEA] text-[#8A2E2E]'" :data-testid="`coverage-${b.id}`" @click="coverageFor = b"><AppIcon name="map" :size="14" />Delivery area</button>
+          <button type="button" class="btn-ghost h-8 px-3 text-xs" :data-testid="`toggle-delivery-${b.id}`" @click="toggleDelivery(b)">
+            <AppIcon :name="deliversFrom(b) ? 'store' : 'truck'" :size="14" />{{ deliversFrom(b) ? 'Make pickup only' : 'Turn on delivery' }}
+          </button>
+          <button v-if="deliversFrom(b)" type="button" class="btn-ghost h-8 px-3 text-xs" :class="b.coverage ? '' : 'bg-[#FBEAEA] text-[#8A2E2E]'" :data-testid="`coverage-${b.id}`" @click="coverageFor = b"><AppIcon name="map" :size="14" />Delivery area</button>
           <button v-if="b.status !== 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'open')">Re-open</button>
           <button v-if="b.status === 'open'" type="button" class="btn-ghost h-8 px-3 text-xs" @click="changeStatus(b, 'temporarily_closed')">Close temporarily</button>
           <button v-if="b.status !== 'closed' && canManage" type="button" class="btn-ghost h-8 px-3 text-xs text-[#8A2E2E]" @click="changeStatus(b, 'closed')">Close</button>

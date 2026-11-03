@@ -148,6 +148,11 @@ export interface PublicBranch {
   deliveryRadiusKm: number
   /** Where this branch delivers (map area + named places). */
   coverage: { polygon: [number, number][]; places: string[] }
+  /** False = pickup only: the supermarket doesn't deliver from this branch; customers collect at the store. */
+  deliveryEnabled: boolean
+  /** Where to collect orders. */
+  address?: string
+  phone?: string
 }
 
 /** GET /stores — only approved, active supermarkets. Restricted or banned ones disappear. */
@@ -185,6 +190,9 @@ function fromBranchDto(b: PublicBranchDto): PublicBranch {
     status: b.status === 'open' ? 'open' : 'temporarily_closed',
     hours: b.hours, lat: b.lat, lng: b.lng, deliveryRadiusKm: b.deliveryRadiusKm,
     coverage: coverageOf(b),
+    deliveryEnabled: b.deliveryEnabled !== false,
+    address: b.address,
+    phone: b.phone,
   }
 }
 
@@ -207,9 +215,13 @@ export function listLocalStores(): PublicStore[] {
       brandColor: t.brandColor,
       branding: liveBranding(t),
       branches: db.branches
-        // Strict: a branch is only offered once its delivery area has been set.
-        .filter((b) => b.tenantId === t.id && b.status !== 'closed' && (b.coverage?.polygon.length ?? 0) >= 3)
-        .map((b) => ({ id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours, ...pick(locateBranch(b)), deliveryRadiusKm: b.deliveryRadiusKm, coverage: { polygon: b.coverage!.polygon, places: b.coverage!.places } })),
+        // Strict: a delivering branch is only offered once its delivery area has been set (pickup-only branches don't need one).
+        .filter((b) => b.tenantId === t.id && b.status !== 'closed' && ((b.coverage?.polygon.length ?? 0) >= 3 || b.deliveryEnabled === false))
+        .map((b) => ({
+          id: b.id, name: b.name, city: b.city, district: b.district, status: b.status as 'open' | 'temporarily_closed', hours: b.openingHours, ...pick(locateBranch(b)),
+          deliveryRadiusKm: b.deliveryRadiusKm, coverage: { polygon: b.coverage?.polygon ?? [], places: b.coverage?.places ?? [b.city] },
+          deliveryEnabled: b.deliveryEnabled !== false, address: b.address, phone: b.phone || undefined,
+        })),
     }))
     .filter((s) => s.branches.length)
 }

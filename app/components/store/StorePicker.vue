@@ -30,7 +30,7 @@ const branches = computed<(PublicStore['branches'][number] & Partial<RankedBranc
   if (!store.value) return []
   return rankOf(store.value)?.branches ?? store.value.branches
 })
-const branchUsable = (b: (typeof branches.value)[number]) => b.status === 'open' && (!area.value || !!b.delivers)
+const branchUsable = (b: (typeof branches.value)[number]) => b.status === 'open' && (!area.value || !!b.usable)
 const currentBranch = computed(() => (area.value && currentStore.value ? rankOf(currentStore.value)?.branches.find((b) => b.id === choice.value?.branchId) : undefined))
 
 function start() {
@@ -152,7 +152,7 @@ function changeArea() {
               <span>
                 <span class="block font-semibold text-ink">{{ b.name }}<template v-if="b.distanceKm !== undefined"> · {{ formatKm(b.distanceKm) }}</template></span>
                 <span class="block text-xs text-muted">{{ b.city }}, {{ b.district }} · {{ b.status === 'open' ? b.hours : 'Temporarily closed' }}</span>
-                <span v-if="area && b.status === 'open'" class="mt-0.5 block text-xs font-semibold" :class="b.delivers ? 'text-hela-green' : 'text-[#8A2E2E]'">{{ b.delivers ? `Delivers to ${area.label}` : `Doesn’t deliver to ${area.label}` }}</span>
+                <span v-if="area && b.status === 'open'" class="mt-0.5 block text-xs font-semibold" :class="b.delivers ? 'text-hela-green' : b.collect ? 'text-[#6d5622]' : 'text-[#8A2E2E]'">{{ b.delivers ? `Delivers to ${area.label}` : b.collect ? 'Pickup only — collect at the store' : b.deliveryEnabled === false ? 'Pickup only — too far from your area' : `Doesn’t deliver to ${area.label}` }}</span>
               </span>
             </label>
           </div>

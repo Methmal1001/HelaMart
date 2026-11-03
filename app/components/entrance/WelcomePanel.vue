@@ -15,7 +15,7 @@ function choose(kind: (typeof AVATAR_OPTIONS)[number]['kind']) {
 }
 
 const { area, openFinder } = useShoppingArea()
-const { choice, currentStore, choiceServesArea, refresh } = useStoreSelection()
+const { choice, currentStore, choiceServesArea, pickupOnly, refresh } = useStoreSelection()
 
 /** Before entering: the shopper's area must be known and the chosen supermarket must deliver there. */
 const blocker = computed<null | 'area' | 'coverage' | 'store'>(() => {
@@ -239,7 +239,8 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
               <StoreBadge :name="currentStore.name" :branding="currentStore.branding" :color="currentStore.brandColor" size="size-10" />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-bold text-ink">{{ choice.storeName }}</span>
-                <span class="flex items-center gap-1 truncate text-xs text-muted"><AppIcon name="pin" :size="11" />{{ choice.branchName }} · delivers to {{ area.label }}</span>
+                <span v-if="!pickupOnly" class="flex items-center gap-1 truncate text-xs text-muted"><AppIcon name="pin" :size="11" />{{ choice.branchName }} · delivers to {{ area.label }}</span>
+                <span v-else class="mt-0.5 inline-flex items-center gap-1 rounded-full bg-hela-gold px-1.5 py-0.5 text-[0.62rem] font-extrabold text-hela-green-900" data-testid="compact-pickup-only"><AppIcon name="store" :size="10" />{{ choice.branchName }} · Pickup only</span>
               </span>
               <span class="shrink-0 rounded-full bg-hela-green-50 px-2.5 py-1 text-xs font-bold text-hela-green">Change</span>
             </button>

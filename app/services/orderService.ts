@@ -164,6 +164,9 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, us
   const branch = platform.branches.find((b) => b.id === req.branchId && b.tenantId === req.storeId)
   if (!store || store.status !== 'active') throw new ApiError(409, 'This supermarket isn’t taking orders on HelaMart right now. Please choose another store.', 'STORE_UNAVAILABLE')
   if (!branch || branch.status !== 'open') throw new ApiError(409, `${branch?.name ?? 'This'} branch is closed at the moment. Please choose another branch.`, 'BRANCH_CLOSED')
+  if (req.delivery.method === 'delivery' && branch.deliveryEnabled === false) {
+    throw new ApiError(422, `${store.name} ${branch.name} doesn’t offer home delivery — choose store pickup and collect your order at the branch.`, 'DELIVERY_UNAVAILABLE')
+  }
   // Home delivery only inside the branch's own delivery area (set by the supermarket).
   if (req.delivery.method === 'delivery') {
     const town = findPlace(req.delivery.city)

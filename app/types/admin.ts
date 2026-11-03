@@ -184,6 +184,8 @@ export interface Branch {
   openingHours: string
   status: BranchStatus
   deliveryRadiusKm: number
+  /** False = pickup only: no home delivery from this branch. Absent = delivers. */
+  deliveryEnabled?: boolean
   managerId?: string
   /** Map pin (resolved from the town when the branch is saved). */
   lat?: number

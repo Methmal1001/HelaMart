@@ -131,7 +131,7 @@ async function mountMap() {
 
 function syncHighlight() {
   if (!map) return
-  map.setHighlighted(draft.value ? new Set(available.value.flatMap((r) => r.branches.filter((b) => b.delivers).map((b) => b.id))) : null)
+  map.setHighlighted(draft.value ? new Set(available.value.flatMap((r) => r.branches.filter((b) => b.usable).map((b) => b.id))) : null)
   // Draw delivery areas: the focused supermarket's, otherwise those that deliver here.
   const shown = focusedStore.value
     ? ranked.value.filter((r) => r.store.id === focusedStore.value).flatMap((r) => r.branches.filter((b) => b.status === 'open').map((b) => ({ polygon: b.coverage.polygon, color: r.store.branding.primaryColor, strong: b.delivers })))
@@ -256,7 +256,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
             </fieldset>
 
             <p class="mt-4 text-sm font-bold text-ink" data-testid="area-count">
-              {{ available.length ? `${available.length} supermarket${available.length === 1 ? '' : 's'} deliver${available.length === 1 ? 's' : ''} to ${draft.label}` : `No supermarket delivers to ${draft.label} yet` }}
+              {{ available.length ? `${available.length} supermarket${available.length === 1 ? '' : 's'} for ${draft.label} (delivery or pickup)` : `No supermarket delivers to ${draft.label} yet` }}
             </p>
             <ul class="mt-2 space-y-2">
               <li v-for="r in available" :key="r.store.id" class="rounded-2xl bg-white ring-1 transition" :class="focusedStore === r.store.id ? 'ring-2 ring-hela-green' : 'ring-line'" :data-testid="`area-store-${r.store.id}`">
@@ -266,14 +266,16 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
                     <span class="block truncate font-bold text-ink">{{ r.store.name }}</span>
                     <span class="block truncate text-xs text-muted">{{ r.serving!.name }} · {{ formatKm(r.serving!.distanceKm) }}</span>
                   </span>
-                  <span class="chip shrink-0 bg-hela-green-50 text-[0.65rem] text-hela-green"><AppIcon name="truck" :size="11" />Delivers</span>
+                  <span v-if="r.serving!.delivers" class="chip shrink-0 bg-hela-green-50 text-[0.65rem] text-hela-green"><AppIcon name="truck" :size="11" />Delivers</span>
+                  <span v-else class="chip shrink-0 bg-hela-gold text-[0.65rem] font-extrabold text-hela-green-900"><AppIcon name="store" :size="11" />Pickup only</span>
                 </button>
                 <div v-if="focusedStore === r.store.id" class="space-y-1.5 border-t border-line px-3 pt-2 pb-3">
                   <p v-if="r.store.branding.slogan" class="text-xs text-muted italic">“{{ r.store.branding.slogan }}”</p>
-                  <div v-for="b in r.branches.filter((x) => x.delivers)" :key="b.id" class="flex items-center justify-between gap-2 rounded-xl bg-cream px-3 py-2 text-sm">
+                  <div v-for="b in r.branches.filter((x) => x.usable)" :key="b.id" class="flex items-center justify-between gap-2 rounded-xl bg-cream px-3 py-2 text-sm">
                     <span class="min-w-0">
                       <span class="block truncate font-semibold text-ink">{{ b.name }}</span>
-                      <span class="block text-xs text-muted">{{ formatKm(b.distanceKm) }} · delivers to {{ draft!.label }}</span>
+                      <span v-if="b.delivers" class="block text-xs text-muted">{{ formatKm(b.distanceKm) }} · delivers to {{ draft!.label }}</span>
+                      <span v-else class="block text-xs font-semibold text-[#6d5622]">{{ formatKm(b.distanceKm) }} · pickup only — collect at the store</span>
                     </span>
                     <button type="button" class="btn-primary h-9 shrink-0 px-3 text-xs" :data-testid="`shop-${b.id}`" @click="shopHere(r.store.id, b.id)">Shop here</button>
                   </div>

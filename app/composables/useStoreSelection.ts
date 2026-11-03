@@ -3,7 +3,7 @@ import { listStores, type PublicStore } from '~/services/partnerService'
 import { getStoreCatalog, loadStoreCategories } from '~/services/catalogService'
 import { setActiveCategories } from '~/data/categories'
 import { getProduct, setActiveCatalog } from '~/data/products'
-import { branchServes, rankStores } from '~/lib/area'
+import { branchUsable, rankStores } from '~/lib/area'
 
 export interface StoreChoice {
   storeId: string
@@ -106,7 +106,7 @@ export function useStoreSelection() {
       const ranked = rankStores(stores.value, area.value)
       const current = ranked.find((r) => r.store.id === choice.value?.storeId)?.branches.find((b) => b.id === choice.value?.branchId)
       const best = ranked.find((r) => r.available)
-      if (!current?.delivers && best?.serving) {
+      if (!current?.usable && best?.serving) {
         choice.value = { storeId: best.store.id, branchId: best.serving.id, storeName: best.store.name, branchName: best.serving.name, brandColor: best.store.brandColor }
         writeStorage(KEY, choice.value)
       }
@@ -132,15 +132,20 @@ export function useStoreSelection() {
     if (!a || !stores.value.length) return
     const ranked = rankStores(stores.value, a)
     const current = ranked.find((r) => r.store.id === choice.value?.storeId)?.branches.find((b) => b.id === choice.value?.branchId)
-    if (current?.delivers) return
+    if (current?.usable) return
     const best = ranked.find((r) => r.available)
     if (!best?.serving) {
       if (announce) show(`No HelaMart supermarket delivers to ${a.label} yet. Try a nearby town.`, 'error')
       return
     }
     void select(best.store.id, best.serving.id)
-    if (announce) show(`Now shopping at ${best.store.name} · ${best.serving.name} — it delivers to ${a.label}.`, 'success')
+    if (announce) show(best.serving.delivers ? `Now shopping at ${best.store.name} · ${best.serving.name} — it delivers to ${a.label}.` : `Now shopping at ${best.store.name} · ${best.serving.name} — pickup only: collect your order at the store.`, 'success')
   }
+
+  /** The chosen branch's public record (delivery or pickup only, where to collect). */
+  const currentBranch = computed(() => stores.value.find((s) => s.id === choice.value?.storeId)?.branches.find((b) => b.id === choice.value?.branchId) ?? null)
+  /** The chosen branch doesn't deliver: customers collect their orders at the store. */
+  const pickupOnly = computed(() => currentBranch.value?.deliveryEnabled === false)
 
   /** The chosen supermarket's public record, including its HelaMart-approved branding. */
   const currentStore = computed(() => stores.value.find((s) => s.id === choice.value?.storeId) ?? null)
@@ -149,8 +154,8 @@ export function useStoreSelection() {
   const choiceServesArea = computed(() => {
     if (!area.value || !choice.value) return null
     const b = currentStore.value?.branches.find((x) => x.id === choice.value?.branchId)
-    return !!b && branchServes(b, area.value)
+    return !!b && branchUsable(b, area.value)
   })
 
-  return { choice, stores, storeError, catalogLoading, currentStore, choiceServesArea, refresh, select, alignToArea }
+  return { choice, stores, storeError, catalogLoading, currentStore, currentBranch, pickupOnly, choiceServesArea, refresh, select, alignToArea }
 }

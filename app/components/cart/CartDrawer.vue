@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { pickupOnly, choice: storeChoice } = useStoreSelection()
 const { panel, closePanel } = useStoreUi()
 const { items, itemCount } = useCart()
 const { startCheckout } = useCheckout()
@@ -33,6 +34,9 @@ async function review() {
 
     <template v-if="items.length" #footer>
       <CartSummary />
+      <p v-if="pickupOnly" class="mt-3 flex items-center gap-2 rounded-xl bg-hela-gold-100 px-3 py-2 text-xs font-semibold text-[#6d5622] ring-1 ring-hela-gold" data-testid="cart-pickup-only">
+        <AppIcon name="store" :size="14" class="shrink-0" />Pickup only — {{ storeChoice?.branchName }} doesn’t deliver; you’ll collect at the store.
+      </p>
       <button type="button" class="btn-primary mt-4 h-12 w-full" @click="startCheckout()">
         <AppIcon :name="isAuthenticated ? 'receipt' : 'lock'" :size="18" />
         {{ isAuthenticated ? 'Checkout' : 'Log in to checkout' }}

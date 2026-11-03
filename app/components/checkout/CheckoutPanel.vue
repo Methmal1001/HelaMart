@@ -11,7 +11,7 @@ const { user, authorized, isAuthenticated } = useAuth()
 const { lines, clear } = useCart()
 const { requestLogin } = useAuthDialog()
 const { show } = useToasts()
-const { choice: storeChoice, currentStore, refresh: refreshStores } = useStoreSelection()
+const { choice: storeChoice, currentStore, pickupOnly, refresh: refreshStores } = useStoreSelection()
 const { load: loadOffers } = useOffers()
 const { load: loadOrders, openOrders } = useMyOrders()
 const { area } = useShoppingArea()
@@ -66,6 +66,8 @@ watch(fulfilment, (m) => {
   delivery.method = m
   delivery.slot = ''
 })
+// The supermarket doesn't deliver from this branch: store pickup only.
+watch(pickupOnly, (p) => p && (fulfilment.value = 'pickup'), { immediate: true })
 // Signed out mid-checkout (e.g. session expired): close the flow.
 watch(isAuthenticated, (v) => !v && open.value && step.value !== 'done' && closePanel())
 
@@ -195,6 +197,20 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
     </template>
 
     <div class="px-5 py-5">
+      <!-- Pickup only: the supermarket doesn't deliver from this branch -->
+      <div v-if="pickupOnly && step !== 'done'" class="mb-4 flex items-start gap-3 rounded-2xl bg-hela-gold-100 p-3.5 ring-2 ring-hela-gold" role="note" data-testid="checkout-pickup-only">
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-hela-gold text-hela-green-900"><AppIcon name="store" :size="18" /></span>
+        <div class="min-w-0 text-sm text-[#5a4518]">
+          <p class="font-extrabold text-ink">Pickup only — collect your order at the store</p>
+          <p class="mt-0.5">{{ storeChoice?.storeName }} {{ storeChoice?.branchName }} doesn’t offer home delivery.</p>
+          <p v-if="branch?.address || branch?.hours" class="mt-1 text-xs">
+            <template v-if="branch?.address"><AppIcon name="pin" :size="11" class="inline" /> {{ branch.address }}</template>
+            <template v-if="branch?.hours"> · {{ branch.hours }}</template>
+            <template v-if="branch?.phone"> · {{ branch.phone }}</template>
+          </p>
+        </div>
+      </div>
+
       <!-- 1. Review -->
       <section v-if="step === 'review'" aria-label="Review items">
         <div class="mb-3"><StorePicker compact /></div>
@@ -230,14 +246,17 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
             type="button"
             role="radio"
             :aria-checked="fulfilment === m"
-            class="flex items-center gap-2.5 rounded-xl bg-white p-3 text-left text-sm ring-1 transition"
+            :aria-disabled="m === 'delivery' && pickupOnly"
+            :disabled="m === 'delivery' && pickupOnly"
+            class="flex items-center gap-2.5 rounded-xl bg-white p-3 text-left text-sm ring-1 transition disabled:cursor-not-allowed disabled:bg-cream disabled:opacity-60"
             :class="fulfilment === m ? 'ring-2 ring-hela-green' : 'ring-line hover:bg-hela-green-50'"
+            :data-testid="`fulfilment-${m}`"
             @click="fulfilment = m"
           >
             <AppIcon :name="m === 'delivery' ? 'truck' : 'store'" :size="20" class="text-hela-green" />
             <span>
               <span class="block font-semibold text-ink">{{ m === 'delivery' ? 'Home delivery' : 'Store pickup' }}</span>
-              <span class="block text-xs text-muted">{{ m === 'delivery' ? 'To your door' : 'No delivery fee' }}</span>
+              <span class="block text-xs text-muted">{{ m === 'delivery' ? (pickupOnly ? 'Not offered by this branch' : 'To your door') : 'No delivery fee' }}</span>
             </span>
           </button>
         </div>

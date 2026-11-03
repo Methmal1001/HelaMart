@@ -85,6 +85,11 @@ export interface PublicBranchDto {
   deliveryRadiusKm: number
   /** The branch's drawn delivery area: polygon of [lat, lng] points and the named places inside it. */
   coverage?: { polygon?: [number, number][]; places?: string[] }
+  /** False = pickup only: no home delivery; customers collect at the branch. */
+  deliveryEnabled?: boolean
+  /** Where customers collect their orders. */
+  address?: string
+  phone?: string
 }
 
 export interface PublicStoreDto {

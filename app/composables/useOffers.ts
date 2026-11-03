@@ -59,8 +59,10 @@ export function useOffers() {
 export function useBill(fulfilment?: Ref<FulfilmentMethod>) {
   const { lines } = useCart()
   const { allOffers } = useOffers()
+  const { pickupOnly } = useStoreSelection()
   return computed(() => {
     void catalogVersion.value
-    return priceCart(lines.value, allOffers.value, { fulfilment: fulfilment?.value ?? 'delivery' })
+    // A pickup-only branch never charges delivery.
+    return priceCart(lines.value, allOffers.value, { fulfilment: pickupOnly.value ? 'pickup' : (fulfilment?.value ?? 'delivery') })
   })
 }

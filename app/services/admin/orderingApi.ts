@@ -32,6 +32,22 @@ export function branchDirectory(token: string): Promise<{ id: string; name: stri
 
 export { allowedTransitions } from './tenantApi'
 
+// ---- how a branch hands orders over: home delivery, or pickup only
+
+/** Each branch's delivery setting, as the API holds it (branchId → home delivery on). */
+export async function branchDeliveryStates(token: string): Promise<Record<string, boolean>> {
+  if (!backendEnabled()) return Object.fromEntries((await store.listBranches(token)).map((b) => [b.id, b.deliveryEnabled !== false]))
+  const list = await api<{ id: string; deliveryEnabled?: boolean }[]>('/admin/store/branches', { token })
+  return Object.fromEntries(list.map((b) => [b.id, b.deliveryEnabled !== false]))
+}
+
+/** Home delivery on, or pickup only (customers collect at the branch). */
+export function setBranchDelivery(token: string, branchId: string, deliveryEnabled: boolean): Promise<{ id: string; deliveryEnabled?: boolean }> {
+  return backendEnabled()
+    ? api(`/admin/store/branches/${enc(branchId)}/delivery`, { method: 'PUT', body: { deliveryEnabled }, token })
+    : store.setBranchDelivery(token, branchId, deliveryEnabled)
+}
+
 // ---- order desk
 
 export function listDesk(token: string): Promise<DeskView> {

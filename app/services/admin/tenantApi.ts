@@ -158,6 +158,21 @@ export function saveBranch(token: string, input: BranchInput, id?: string): Prom
   })
 }
 
+/** PUT /branches/:id/delivery — home delivery on, or pickup only (offline demo data). */
+export function setBranchDelivery(token: string, branchId: string, deliveryEnabled: boolean): Promise<Branch> {
+  return run(token, (ctx) => {
+    requirePermission(ctx, 'branches.manage')
+    requireWritable(ctx)
+    const b = ownedOrNotFound(ctx, ctx.db.branches.find((x) => x.id === branchId), 'Branch')
+    assertBranchAccess(ctx, b.id)
+    if ((b.deliveryEnabled !== false) !== deliveryEnabled) {
+      b.deliveryEnabled = deliveryEnabled
+      audit(ctx.db, ctx, 'branch.delivery', b.name, deliveryEnabled ? 'Home delivery on' : 'Pickup only — no home delivery', 'warning')
+    }
+    return b
+  })
+}
+
 /**
  * PUT /branches/:id/coverage — the branch's home-delivery area (map polygon +
  * named cities/villages). Required before shoppers can see the branch.
