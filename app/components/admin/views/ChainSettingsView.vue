@@ -4,14 +4,14 @@ import { getChainSettings, updateChainSettings, type ChainSettings } from '~/ser
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const info = ref<Awaited<ReturnType<typeof getChainSettings>> | null>(null)
-const f = reactive({ name: '', hotline: '', supportEmail: '', defaultHours: '', deliveryRs: '', minOrderRs: '' })
+const f = reactive({ name: '', hotline: '', supportEmail: '', defaultHours: '', deliveryRs: '', minOrderRs: '', vatNumber: '', vatRate: '' })
 const error = ref('')
 const saving = ref(false)
 
 onMounted(async () => {
   try {
     info.value = await auth.call(getChainSettings)
-    Object.assign(f, { ...info.value, deliveryRs: (info.value.deliveryFeeCents / 100).toFixed(2), minOrderRs: (info.value.minOrderCents / 100).toFixed(2) })
+    Object.assign(f, { ...info.value, deliveryRs: (info.value.deliveryFeeCents / 100).toFixed(2), minOrderRs: (info.value.minOrderCents / 100).toFixed(2), vatNumber: info.value.vatNumber ?? '', vatRate: info.value.vatPercent == null ? '' : String(info.value.vatPercent) })
   } catch (e) {
     notify.error(e)
   }
@@ -23,6 +23,7 @@ async function save() {
   const next: ChainSettings = {
     name: f.name, hotline: f.hotline, supportEmail: f.supportEmail, defaultHours: f.defaultHours,
     deliveryFeeCents: Math.round(Number.parseFloat(f.deliveryRs) * 100), minOrderCents: Math.round(Number.parseFloat(f.minOrderRs) * 100),
+    vatNumber: f.vatNumber.trim() || null, vatPercent: f.vatRate.trim() ? Number(f.vatRate) : null,
   }
   try {
     await auth.call((t) => updateChainSettings(t, next), 'Changing supermarket settings needs your password confirmed.')
@@ -49,6 +50,12 @@ async function save() {
           <label class="block"><span class="field-label">Default opening hours</span><input v-model="f.defaultHours" class="field" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Delivery fee (Rs.)</span><input v-model="f.deliveryRs" class="field" inputmode="decimal" :disabled="auth.readOnly.value"></label>
           <label class="block"><span class="field-label">Minimum order (Rs.)</span><input v-model="f.minOrderRs" class="field" inputmode="decimal" :disabled="auth.readOnly.value"></label>
+        </div>
+        <h2 class="pt-2 font-bold text-ink">VAT</h2>
+        <p class="text-xs text-muted">Leave the rate empty if you aren’t VAT registered. Shelf prices include VAT. A new rate only applies to new orders; mark exempt products on the product form.</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block"><span class="field-label">VAT number</span><input v-model="f.vatNumber" class="field" maxlength="40" data-testid="vat-number" :disabled="auth.readOnly.value"></label>
+          <label class="block"><span class="field-label">VAT rate (%)</span><input v-model="f.vatRate" class="field" inputmode="decimal" data-testid="vat-rate" :disabled="auth.readOnly.value"></label>
         </div>
         <div class="flex items-center gap-3 pt-1">
           <button type="submit" class="btn-primary h-10" :disabled="saving || auth.readOnly.value">{{ saving ? 'Saving…' : 'Save settings' }}</button>

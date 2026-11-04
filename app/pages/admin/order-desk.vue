@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { OrderStage, WorkflowStage } from '~/types/admin'
-import { getWorkflow, listDesk, orderSlip, stageAction, type DeskOfficer, type DeskOrder, type DeskView, type OrderSlip, type StageAction } from '~/services/admin/orderingApi'
+import { CANCEL_REASONS, getWorkflow, listDesk, orderSlip, stageAction, type DeskOfficer, type DeskOrder, type DeskView, type OrderSlip, type StageAction } from '~/services/admin/orderingApi'
 import { atHandover, currentStage, isClosed } from '~/lib/workflow'
 
 /**
@@ -102,7 +102,7 @@ const STATE: Record<OrderStage['state'], { label: string; tone: string }> = {
 }
 
 // ---- actions
-async function act(o: DeskOrder, action: StageAction, extra: { note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string } = {}) {
+async function act(o: DeskOrder, action: StageAction, extra: { note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string; reason?: string } = {}) {
   busy.value = true
   try {
     const u = await auth.callApi((t) => stageAction(t, o.id, { action, ...extra }))
@@ -138,9 +138,10 @@ async function askReason(o: DeskOrder, action: 'hold' | 'send_back' | 'reject') 
       : 'The order is cancelled, items go back into stock and any card payment is refunded. The customer sees your reason.',
     confirmLabel: action === 'hold' ? 'Put on hold' : action === 'send_back' ? 'Send back' : 'Reject order',
     tone: action === 'reject' ? 'danger' : undefined,
-    reasonLabel: 'Reason',
+    reasonLabel: action === 'reject' ? 'Details (optional, except for “Other”)' : 'Reason',
+    reasonOptions: action === 'reject' ? CANCEL_REASONS : undefined,
   })
-  if (r.ok) await act(o, action, { note: r.reason, shared: action === 'reject' })
+  if (r.ok) await act(o, action, { note: r.reason, shared: action === 'reject', ...(action === 'reject' ? { reason: r.code } : {}) })
   return cur
 }
 function primary(o: DeskOrder): { label: string; action: StageAction } | null {

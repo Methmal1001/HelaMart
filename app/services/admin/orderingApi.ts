@@ -19,10 +19,30 @@ export function listOrders(token: string): Promise<AdminOrder[]> {
   return backendEnabled() ? api('/admin/store/orders', { token }) : store.listOrders(token)
 }
 
+/** Why an order is cancelled or refunded. The server keeps the same list (Domain/CloseReasons.cs) and reports group by it. */
+export const CANCEL_REASONS = [
+  { value: 'customer_request', label: 'Customer asked to cancel' },
+  { value: 'out_of_stock', label: 'Items out of stock' },
+  { value: 'customer_unreachable', label: 'Couldn’t reach the customer' },
+  { value: 'delivery_problem', label: 'Can’t deliver to this address' },
+  { value: 'duplicate_order', label: 'Duplicate order' },
+  { value: 'price_error', label: 'Wrong price or offer' },
+  { value: 'other', label: 'Other' },
+]
+export const REFUND_REASONS = [
+  { value: 'damaged_or_expired', label: 'Damaged or expired items' },
+  { value: 'wrong_items', label: 'Wrong items delivered' },
+  { value: 'missing_items', label: 'Items missing' },
+  { value: 'not_received', label: 'Customer didn’t receive it' },
+  { value: 'late_delivery', label: 'Delivered too late' },
+  { value: 'customer_request', label: 'Customer changed their mind' },
+  { value: 'other', label: 'Other' },
+]
+
 /** Cancel an open order or refund a delivered one (moving orders forward happens on the order desk). */
-export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = ''): Promise<AdminOrder> {
+export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = '', reason?: string): Promise<AdminOrder> {
   return backendEnabled()
-    ? api(`/admin/store/orders/${enc(orderId)}/status`, { method: 'PUT', body: { status, note }, token })
+    ? api(`/admin/store/orders/${enc(orderId)}/status`, { method: 'PUT', body: { status, note, reason }, token })
     : store.updateOrderStatus(token, orderId, status, note)
 }
 
@@ -41,7 +61,7 @@ export function listDesk(token: string): Promise<DeskView> {
 export function stageAction(
   token: string,
   orderId: string,
-  input: { action: StageAction; note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string },
+  input: { action: StageAction; note?: string; shared?: boolean; assigneeId?: string; receivedBy?: string; reason?: string },
 ): Promise<DeskOrder> {
   return backendEnabled() ? api(`/admin/store/orders/${enc(orderId)}/stage`, { method: 'POST', body: input, token }) : desk.stageAction(token, orderId, input)
 }

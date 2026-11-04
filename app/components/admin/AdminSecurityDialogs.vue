@@ -7,10 +7,20 @@ const auth = useAdminAuth()
 
 // ---- confirm
 const reason = ref('')
-watch(current, () => (reason.value = ''))
+const reasonCode = ref('')
+watch(current, () => {
+  reason.value = ''
+  reasonCode.value = ''
+})
+const canConfirm = computed(() => {
+  if (!current.value?.reasonLabel) return true
+  if (!current.value.reasonOptions) return !!reason.value.trim()
+  return !!reasonCode.value && (reasonCode.value !== 'other' || !!reason.value.trim())
+})
 function ok() {
-  if (current.value?.reasonLabel && !reason.value.trim()) return
-  settle(true, reason.value.trim())
+  if (!canConfirm.value) return
+  const label = current.value?.reasonOptions?.find((o) => o.value === reasonCode.value)?.label ?? ''
+  settle(true, reason.value.trim() || label, reasonCode.value)
 }
 
 // ---- step-up
@@ -40,9 +50,16 @@ async function confirmPassword() {
 <template>
   <AdminModal :open="!!current" :title="current?.title ?? ''" size="sm" @close="settle(false)">
     <p class="text-sm text-muted">{{ current?.message }}</p>
+    <label v-if="current?.reasonOptions" class="mt-4 block">
+      <span class="field-label">Reason</span>
+      <select v-model="reasonCode" class="field" data-autofocus data-testid="reason-select">
+        <option value="" disabled>Choose a reason</option>
+        <option v-for="o in current.reasonOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+      </select>
+    </label>
     <label v-if="current?.reasonLabel" class="mt-4 block">
       <span class="field-label">{{ current.reasonLabel }}</span>
-      <textarea v-model="reason" rows="3" maxlength="200" class="field h-auto py-2" data-autofocus />
+      <textarea v-model="reason" rows="3" maxlength="200" class="field h-auto py-2" :data-autofocus="current.reasonOptions ? undefined : ''" />
       <span class="mt-1 block text-xs text-muted">Saved in the audit log.</span>
     </label>
     <template #footer>
@@ -51,7 +68,7 @@ async function confirmPassword() {
         type="button"
         class="btn h-9 text-white"
         :class="current?.tone === 'danger' ? 'bg-[#8A2E2E] hover:bg-[#6f2424]' : 'bg-hela-green hover:bg-hela-green-900'"
-        :disabled="!!current?.reasonLabel && !reason.trim()"
+        :disabled="!canConfirm"
         @click="ok"
       >
         {{ current?.confirmLabel ?? 'Confirm' }}
