@@ -2,9 +2,8 @@
 import type { Branch, StaffView } from '~/types/admin'
 import { DISTRICTS } from '~/data/sriLanka'
 import { PLACES, findPlace } from '~/data/places'
-import { listBranches, saveBranch, setBranchDelivery as setLocalBranchDelivery, setBranchStatus, type BranchInput } from '~/services/admin/tenantApi'
+import { listBranches, saveBranch, setBranchStatus, type BranchInput } from '~/services/admin/tenantApi'
 import { branchDeliveryStates, setBranchDelivery } from '~/services/admin/orderingApi'
-import { backendEnabled } from '~/services/http'
 import { listTeam } from '~/services/admin/common'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'branches.view' })
@@ -82,8 +81,6 @@ async function toggleDelivery(b: Branch) {
   if (!r.ok) return
   try {
     await auth.callApi((t) => setBranchDelivery(t, b.id, on))
-    // Keep the admin pages that still run on in-browser data in step.
-    if (backendEnabled()) await auth.call((t) => setLocalBranchDelivery(t, b.id, on)).catch(() => undefined)
     delivery.value = { ...delivery.value, [b.id]: on }
     notify.ok(on ? `${b.name}: home delivery is on` : `${b.name} is now pickup only`)
   } catch (e) {

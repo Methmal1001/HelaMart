@@ -1,15 +1,9 @@
 import type { Category, Product } from '~/types'
 import type { AdminCategory } from '~/types/admin'
-import { readAdminDb } from './admin/db'
 import { STANDARD_CATEGORIES } from '~/data/categories'
-import { api, backendEnabled } from './http'
+import { api } from './http'
 import type { CategoryDto, ProductDto } from './apiTypes'
 
-/**
- * GET /stores/:id/catalog?branch= — what a shopper sees at one branch:
- * the supermarket's own active products (in visible categories), its prices,
- * its uploaded photos and that branch's stock.
- */
 /** An admin category as the shop sees it. */
 export function toCategory(c: AdminCategory): Category {
   // Keep HelaMart's short label for an unrenamed standard category; otherwise the supermarket's own name.
@@ -20,31 +14,15 @@ export function toCategory(c: AdminCategory): Category {
 
 /** GET /stores/{storeId}/categories — the supermarket's visible categories (its own included), in its order. */
 export async function loadStoreCategories(storeId: string): Promise<Category[]> {
-  if (!backendEnabled()) return getStoreCategories(storeId)
   const list = await api<CategoryDto[]>(`/stores/${encodeURIComponent(storeId)}/categories`)
   return list.map((c) => ({ id: c.id, name: c.name, shortName: c.shortName || c.name, description: c.description ?? '', color: c.color, icon: c.icon, area: c.area, standard: c.standard }))
 }
 
-/** The in-browser categories (offline demo data). */
-export function getStoreCategories(storeId: string): Category[] {
-  return readAdminDb()
-    .categories.filter((c) => c.tenantId === storeId && c.visible)
-    .sort((a, b) => a.order - b.order)
-    .map(toCategory)
-}
-
-export async function getStoreCatalog(storeId: string, branchId: string): Promise<Product[]> {
-  if (backendEnabled()) return api<ProductDto[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
-  return getLocalStoreCatalog(storeId, branchId)
-}
-
-/** The in-browser catalogue for a branch (sample data). */
-export function getLocalStoreCatalog(storeId: string, branchId: string): Product[] {
-  const db = readAdminDb()
-  // Only products in categories that exist and are visible (removed or hidden categories take their products off the shelves).
-  const shown = new Set(db.categories.filter((c) => c.tenantId === storeId && c.visible).map((c) => c.id))
-  return db.products
-    // The branch's own range (not "not sold here", not another branch's own product) at the branch's price.
-    .filter((p) => p.tenantId === storeId && p.status === 'active' && shown.has(p.categoryId) && !p.notSoldAt?.includes(branchId) && (!p.ownerBranchId || p.ownerBranchId === branchId))
-    .map(({ tenantId: _t, stock, reorderLevel: _r, status: _s, updatedAt: _u, branchPrices, notSoldAt: _n, ownerBranchId: _ob, ...product }) => ({ ...product, priceCents: branchPrices?.[branchId] ?? product.priceCents, stock: stock[branchId] ?? 0 }))
+/**
+ * GET /stores/:id/catalog?branch= — what a shopper sees at one branch:
+ * the supermarket's own active products (in visible categories), its prices,
+ * its uploaded photos and that branch's stock.
+ */
+export function getStoreCatalog(storeId: string, branchId: string): Promise<Product[]> {
+  return api<ProductDto[]>(`/stores/${encodeURIComponent(storeId)}/catalog`, { query: { branch: branchId } })
 }

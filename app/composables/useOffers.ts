@@ -4,16 +4,16 @@ import { listMyOffers, listStoreOffers, mergeOffers } from '~/services/offerServ
 import { catalogVersion } from '~/data/products'
 
 /**
- * Promotions for the shopper:
- *  - personal offers (signed-in customers, loaded by the auth plugin)
+ * Promotions for the shopper at the chosen branch:
+ *  - personal offers (signed-in customers, loaded by the auth plugin on login and store change)
  *  - the chosen supermarket branch's running offers (everyone, including guests)
  */
 export function useOffers() {
   const offers = useState<Offer[]>('offers', () => [])
   const storeOffers = useState<Offer[]>('store-offers', () => [])
   const loading = useState<boolean>('offers-loading', () => false)
+  const store = useState<StoreChoice | null>('store-choice', () => null)
   const { authorized, isAuthenticated, getAccessToken } = useAuth()
-  const store = useState<{ storeId: string; branchId: string } | null>('store-choice', () => null)
 
   const activeOffers = computed(() => offers.value.filter((o) => isOfferActive(o)))
   /** Everything that prices this shopper's basket at the chosen branch. */

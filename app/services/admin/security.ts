@@ -160,16 +160,23 @@ function endSession(db: AdminDb, session: AdminSessionRecord, err: ApiError): ne
 /** Validate an admin access token and everything behind it. */
 export function authenticate(token: string | null | undefined): AdminContext {
   if (!token) throw new ApiError(401, 'Please sign in.', 'NO_TOKEN')
-  const [h, p, sig] = token.split('.')
-  if (!h || !p || !sig || hash(`${h}.${p}.${ADMIN_SECRET}`) !== sig) throw new ApiError(401, 'Invalid session.', 'BAD_TOKEN')
   const claims = decodeJwt<{ sub: string; sid: string; typ: string; exp: number }>(token)
   if (!claims || claims.typ !== 'admin') throw new ApiError(401, 'Invalid session.', 'BAD_TOKEN')
   if (claims.exp * 1000 <= Date.now()) throw new ApiError(401, 'Session token expired.', 'TOKEN_EXPIRED')
 
   const db = readAdminDb()
-  const session = db.sessions.find((s) => s.id === claims.sid)
-  if (!session || session.revoked) throw new ApiError(401, 'You have been signed out.', 'SESSION_REVOKED')
   const now = Date.now()
+  // Staff sign in through the HelaMart API, which checks the token's signature and the session
+  // (idle and absolute limits, revocation). In-browser features follow that session with a
+  // local record for the same staff id.
+  let session = db.sessions.find((s) => s.id === claims.sid)
+  if (!session) {
+    session = { id: claims.sid, staffId: claims.sub, refreshHash: '', createdAt: now, lastSeenAt: now, expiresAt: 0, stepUpUntil: 0, revoked: false, familyId: claims.sid, userAgent: 'HelaMart API session' }
+    db.sessions.push(session)
+  }
+  if (session.revoked || session.staffId !== claims.sub) throw new ApiError(401, 'You have been signed out.', 'SESSION_REVOKED')
+  session.expiresAt = Math.max(session.expiresAt, claims.exp * 1000)
+  session.lastSeenAt = now
   if (now > session.expiresAt) throw new ApiError(401, 'Your session has ended. Please sign in again.', 'SESSION_EXPIRED')
   if (now - session.lastSeenAt > db.settings.security.sessionIdleMinutes * 60e3) endSession(db, session, new ApiError(401, 'You were signed out after a period of inactivity.', 'SESSION_IDLE'))
   const staff = db.staff.find((s) => s.id === claims.sub)

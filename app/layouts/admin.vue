@@ -22,7 +22,13 @@ watch(() => route.fullPath, () => (mobileOpen.value = false))
 
 interface NavItem { to: string; label: string; icon: IconName; perm?: Permission }
 const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
-  { label: 'Overview', items: [{ to: '/admin', label: 'Platform dashboard', icon: 'grid', perm: 'platform.dashboard' }] },
+  {
+    label: 'Overview',
+    items: [
+      { to: '/admin', label: 'Platform dashboard', icon: 'grid', perm: 'platform.dashboard' },
+      { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'platform.dashboard' },
+    ],
+  },
   {
     label: 'Supermarkets',
     items: [
@@ -57,6 +63,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/branches', label: 'Branches', icon: 'store', perm: 'branches.view' },
       { to: '/admin/order-desk', label: 'Order desk', icon: 'clipboard' },
       { to: '/admin/orders', label: 'Orders', icon: 'receipt', perm: 'orders.view' },
+      { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'orders.view' },
       { to: '/admin/products', label: 'Products & stock', icon: 'package', perm: 'products.view' },
       { to: '/admin/categories', label: 'Categories', icon: 'list', perm: 'products.view' },
       { to: '/admin/customers', label: 'Customers', icon: 'users', perm: 'customers.view' },

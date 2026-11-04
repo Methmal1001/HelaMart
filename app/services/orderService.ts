@@ -1,16 +1,11 @@
 import type { CardDetails, CartLine, DeliveryDetails, Order, PaymentMethod, PublicTracking, User } from '~/types'
 import type { AdminOrder } from '~/types/admin'
-import { markReceived } from './admin/handover'
-import { getProduct } from '~/data/products'
-import { priceCart } from '~/utils/pricing'
 import { ApiError } from './apiError'
-import { mergeOffers, offersForUser, storeOffersFor } from './offerService'
-import { latency, readDb, verifyAccessToken, writeDb } from './mock/server'
-import { readAdminDb, writeAdminDb } from './admin/db'
-import { findPlace } from '~/data/places'
-import { coversLocation } from '~/lib/coverage'
 import { api, backendEnabled } from './http'
 import type { PlaceOrderRequest as PlaceOrderBody } from './apiTypes'
+import { latency, readDb, verifyAccessToken } from './mock/server'
+import { readAdminDb, writeAdminDb } from './admin/db'
+import { markReceived } from './admin/handover'
 import { atHandover, stageLabel, trackingSteps } from '~/lib/workflow'
 
 export interface PlaceOrderRequest {
@@ -22,17 +17,8 @@ export interface PlaceOrderRequest {
   payment: { method: PaymentMethod; card?: CardDetails }
 }
 
-function luhn(num: string) {
-  let sum = 0
-  let dbl = false
-  for (let i = num.length - 1; i >= 0; i--) {
-    let d = Number(num[i])
-    if (dbl && (d *= 2) > 9) d -= 9
-    sum += d
-    dbl = !dbl
-  }
-  return sum % 10 === 0
-}
+// With the HelaMart API these go to /me/orders and /track; without it (offline demo) the
+// in-browser data answers, and the access token's account id says whose orders they are.
 
 /**
  * GET /me/orders — the signed-in customer's orders, newest first, with the
@@ -76,7 +62,7 @@ export async function listMyOrders(accessToken: string): Promise<Order[]> {
  * their order (delivered to the door, or collected at the counter).
  */
 export async function confirmMyOrderReceived(accessToken: string, orderId: string): Promise<void> {
-  if (backendEnabled()) return api<void>(`/me/orders/${encodeURIComponent(orderId)}/received`, { method: 'POST', token: accessToken })
+  if (backendEnabled()) return void (await api<void>(`/me/orders/${encodeURIComponent(orderId)}/received`, { method: 'POST', token: accessToken }))
   await latency(250, 500)
   const userId = verifyAccessToken(accessToken)
   const db = readAdminDb()
@@ -120,7 +106,7 @@ function publicView(db: ReturnType<typeof readAdminDb>, o: AdminOrder): PublicTr
 
 /** GET /track/:number?t= — what the slip's QR code opens (no sign-in; the code proves you hold the slip). */
 export async function trackOrder(number: string, code: string): Promise<PublicTracking> {
-  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number)}`, { query: { t: code } })
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number.trim())}`, { query: { t: code } })
   await latency(200, 400)
   const { db, o } = findByTrackCode(number, code)
   return publicView(db, o)
@@ -128,7 +114,7 @@ export async function trackOrder(number: string, code: string): Promise<PublicTr
 
 /** POST /track/:number/received — the customer scanned the QR on arrival and confirms they have the order. */
 export async function confirmReceivedByQr(number: string, code: string, receivedBy: string): Promise<PublicTracking> {
-  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number)}/received`, { method: 'POST', body: { t: code, receivedBy } })
+  if (backendEnabled()) return api<PublicTracking>(`/track/${encodeURIComponent(number.trim())}/received`, { method: 'POST', body: { t: code, receivedBy } })
   await latency(300, 600)
   const { db, o } = findByTrackCode(number, code)
   markReceived(db, o, { via: 'customer_qr', receivedBy: receivedBy.trim().slice(0, 60) || o.customerName })
@@ -137,89 +123,21 @@ export async function confirmReceivedByQr(number: string, code: string, received
 }
 
 /**
- * POST /orders — the server re-prices the cart with the customer's own offers
- * (never trusting client totals), "charges" the card and stores the order.
+ * POST /orders — the server re-prices the cart from its own prices and the customer's offers
+ * (client totals are never trusted), "charges" the card, takes the items out of the branch's
+ * stock and stores the order for that branch.
  * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined.
  */
-export async function placeOrder(accessToken: string, req: PlaceOrderRequest, user: User, labels?: { storeName?: string; branchName?: string }): Promise<Order> {
-  if (backendEnabled()) {
-    // The server re-prices the cart and applies offers; the returned breakdown is the bill.
-    const body: PlaceOrderBody = {
-      storeId: req.storeId,
-      branchId: req.branchId,
-      lines: req.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-      delivery: req.delivery,
-      payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
-    }
-    const order = await api<Order>('/orders', { method: 'POST', body, token: accessToken })
-    return { ...order, storeName: order.storeName ?? labels?.storeName, branchName: order.branchName ?? labels?.branchName }
-  }
-  await latency(700, 1200)
-  const userId = verifyAccessToken(accessToken)
-  if (!req.lines.length) throw new ApiError(400, 'Your cart is empty.')
-
-  // The supermarket must be active (not pending/restricted/banned) and the branch open.
-  const platform = readAdminDb()
-  const store = platform.tenants.find((t) => t.id === req.storeId)
-  const branch = platform.branches.find((b) => b.id === req.branchId && b.tenantId === req.storeId)
-  if (!store || store.status !== 'active') throw new ApiError(409, 'This supermarket isn’t taking orders on HelaMart right now. Please choose another store.', 'STORE_UNAVAILABLE')
-  if (!branch || branch.status !== 'open') throw new ApiError(409, `${branch?.name ?? 'This'} branch is closed at the moment. Please choose another branch.`, 'BRANCH_CLOSED')
-  if (req.delivery.method === 'delivery' && branch.deliveryEnabled === false) {
-    throw new ApiError(422, `${store.name} ${branch.name} doesn’t offer home delivery — choose store pickup and collect your order at the branch.`, 'DELIVERY_UNAVAILABLE')
-  }
-  // Home delivery only inside the branch's own delivery area (set by the supermarket).
-  if (req.delivery.method === 'delivery') {
-    const town = findPlace(req.delivery.city)
-    const target = { lat: town?.lat ?? Number.NaN, lng: town?.lng ?? Number.NaN, label: req.delivery.city }
-    if (!coversLocation(branch.coverage, target)) throw new ApiError(422, `${store.name} ${branch.name} doesn’t deliver to ${req.delivery.city || 'that address'}. Choose a place in its delivery area, or store pickup.`, 'OUTSIDE_DELIVERY_AREA')
-  }
-  const customer = platform.customers.find((c) => c.id === userId)
-  if (customer?.status === 'blocked') throw new ApiError(403, 'Your HelaMart account is suspended. Contact HelaMart support.', 'ACCOUNT_SUSPENDED')
-  if (customer?.blockedByTenants.includes(store.id)) throw new ApiError(403, `${store.name} has blocked orders from this account. Contact the store for help.`, 'BLOCKED_BY_STORE')
-
-  // Re-price on the server with the shopper's own offers + this branch's running supermarket offers.
-  const offers = mergeOffers(offersForUser(userId), storeOffersFor(store.id, branch.id, userId))
-  const breakdown = priceCart(req.lines, offers, { fulfilment: req.delivery.method })
-
-  let cardLast4: string | undefined
-  if (req.payment.method === 'card') {
-    const number = (req.payment.card?.number ?? '').replace(/\s+/g, '')
-    if (!/^\d{13,19}$/.test(number) || !luhn(number)) throw new ApiError(422, 'The card number is not valid.', 'CARD_INVALID')
-    if (number === '4000000000000002') throw new ApiError(402, 'Your card was declined. Try another card or pay on delivery.', 'CARD_DECLINED')
-    cardLast4 = number.slice(-4)
-  }
-
-  const db = readDb()
-  const seq = db.orders.length + 1
-  const now = new Date()
-  const order: Order = {
-    id: `ord_${now.getTime().toString(36)}`,
-    number: `HM-${now.getFullYear()}-${String(10000 + seq).slice(1)}${String(now.getTime()).slice(-3)}`,
-    createdAt: now.toISOString(),
-    userId,
-    storeId: store.id,
-    branchId: branch.id,
-    customerName: user.name,
-    customerEmail: user.email,
-    lines: breakdown.lines.map((l) => {
-      const p = getProduct(l.productId)!
-      return { ...l, name: p.name, size: p.size }
-    }),
-    breakdown,
+export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _user: User, labels?: { storeName?: string; branchName?: string }): Promise<Order> {
+  // The server re-prices the cart and applies offers; the returned breakdown is the bill.
+  const body: PlaceOrderBody = {
+    storeId: req.storeId,
+    branchId: req.branchId,
+    lines: req.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
     delivery: req.delivery,
-    payment: { method: req.payment.method, cardLast4, status: req.payment.method === 'card' ? 'paid' : 'pay-on-delivery' },
-    status: 'confirmed',
-    storeName: store.name,
-    branchName: branch.name,
+    payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
   }
-  db.orders.push(order)
-  writeDb(db)
-  // Count usage of the supermarket's offers (shown on its Promotions page).
-  const usedIds = new Set(breakdown.applied.map((a) => a.offer.id))
-  if (usedIds.size) {
-    const adminDb = readAdminDb()
-    for (const o of adminDb.offers) if (o.tenantId === store.id && usedIds.has(o.id)) o.usageCount++
-    writeAdminDb(adminDb)
-  }
-  return order
+  // "Your orders", the slip QR and the Order desk read the order back from the API.
+  const order = await api<Order>('/orders', { method: 'POST', body, token: accessToken })
+  return { ...order, storeName: order.storeName ?? labels?.storeName, branchName: order.branchName ?? labels?.branchName }
 }

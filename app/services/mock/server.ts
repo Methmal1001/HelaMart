@@ -127,13 +127,12 @@ export function signAccessToken(user: User, now = Date.now()) {
   return { token: `${header}.${payload}.${signature}`, expiresAt: exp }
 }
 
-/** Server-side check of an access token: signature, type and expiry. Returns the user id. */
+/**
+ * Reads a HelaMart API access token for the in-browser features: type and expiry, then the user id
+ * (the same id in the API and the sample data). The signature is the API's to check, with its own key.
+ */
 export function verifyAccessToken(token: string | null | undefined): string {
   if (!token) throw new ApiError(401, 'Authentication required.', 'NO_TOKEN')
-  const [header, payload, signature] = token.split('.')
-  if (!header || !payload || !signature || hash(`${header}.${payload}.${SECRET}`) !== signature) {
-    throw new ApiError(401, 'Invalid access token.', 'BAD_TOKEN')
-  }
   const claims = decodeJwt(token)
   if (!claims || claims.typ !== 'access') throw new ApiError(401, 'Invalid access token.', 'BAD_TOKEN')
   if (claims.exp * 1000 <= Date.now()) throw new ApiError(401, 'Access token expired.', 'TOKEN_EXPIRED')

@@ -43,9 +43,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // HelaMart API (ASP.NET Core 8 + SQL Server). Sign-in, shopping area, stores, catalogue, offers,
-      // checkout and partner applications use it. Override with NUXT_PUBLIC_API_BASE=https://…/api.
-      // (An empty value runs the storefront offline on in-browser sample data — for demos only.)
+      // HelaMart API (ASP.NET Core 8 + SQL Server, H:\HelaMart_API). Override with NUXT_PUBLIC_API_BASE=https://…/api.
       apiBase: 'http://localhost:5206/api',
       // Google OAuth Web client ID. Empty → simulated Google sign-in for testing.
       // Set via env: NUXT_PUBLIC_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com

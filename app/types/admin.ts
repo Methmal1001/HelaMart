@@ -1,4 +1,4 @@
-import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, OrderProgress, PriceBreakdown, Product, StoreAreaId } from './index'
+import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, OrderProgress, PriceBreakdown, Product, ProductShape, StoreAreaId } from './index'
 
 // ================================================================== permissions
 
@@ -371,7 +371,9 @@ export interface AdminOrder {
   source: 'storefront' | 'sample'
 }
 
-export interface AdminProduct extends Omit<Product, 'stock'> {
+export interface AdminProduct extends Omit<Product, 'stock' | 'shape'> {
+  /** Package shape for the generated art; null = photo only (the shop draws the photo on a box). */
+  shape: ProductShape | null
   tenantId: string
   /** Stock held at each branch. */
   stock: Record<string, number>

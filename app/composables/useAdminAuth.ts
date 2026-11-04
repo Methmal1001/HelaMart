@@ -1,9 +1,7 @@
 import type { Ref } from 'vue'
 import type { AdminTokens, Permission, StaffView } from '~/types/admin'
 import * as adminAuth from '~/services/admin/auth'
-import * as apiAuth from '~/services/admin/apiAuth'
 import { ApiError, isUnauthorized } from '~/services/apiError'
-import { backendEnabled } from '~/services/http'
 import { base64UrlDecode, base64UrlEncode } from '~/utils/jwt'
 
 /**
@@ -12,89 +10,13 @@ import { base64UrlDecode, base64UrlEncode } from '~/utils/jwt'
  *  - 10-minute access tokens, rotated refresh tokens, absolute session limit.
  *  - Inactivity sign-out with a one-minute warning; heartbeat while the user is active.
  *  - Cross-tab sign-out; step-up (password re-entry) for sensitive actions.
- *
- * With the HelaMart API (the default), staff sign in through `/api/admin/auth` and
- * the ordering pages (order desk, orders, order workflow) call the API with that
- * session (`callApi`). The admin pages that still run on in-browser data use a
- * matching in-browser session for the same person (`call`), opened automatically.
  */
 
 type Status = 'unknown' | 'anonymous' | 'authenticated'
+const COOKIE = 'helamart_admin'
 const SKEW = 60 * 1000
 
-/** One token pair kept in a /admin-scoped, browser-session cookie, refreshed single-flight. */
-class TokenStore {
-  tokens: AdminTokens | null = null
-  private refreshing: Promise<boolean> | null = null
-  private timer: ReturnType<typeof setTimeout> | null = null
-
-  constructor(
-    private cookie: string,
-    private doRefresh: (refreshToken: string) => Promise<{ tokens: AdminTokens; user: StaffView }>,
-    private onFail: (e: unknown) => void,
-  ) {}
-
-  read(): AdminTokens | null {
-    const raw = document.cookie.split('; ').find((c) => c.startsWith(`${this.cookie}=`))?.slice(this.cookie.length + 1)
-    if (!raw) return null
-    try {
-      return JSON.parse(base64UrlDecode(raw)) as AdminTokens
-    } catch {
-      return null
-    }
-  }
-
-  set(t: AdminTokens) {
-    this.tokens = t
-    const secure = location.protocol === 'https:' ? '; Secure' : ''
-    // No Max-Age: an admin session never survives closing the browser.
-    document.cookie = `${this.cookie}=${base64UrlEncode(JSON.stringify(t))}; Path=/admin; SameSite=Strict${secure}`
-    this.schedule()
-  }
-
-  clear() {
-    this.tokens = null
-    document.cookie = `${this.cookie}=; Path=/admin; SameSite=Strict; Max-Age=0`
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = null
-  }
-
-  schedule() {
-    if (this.timer) clearTimeout(this.timer)
-    if (!this.tokens) return
-    this.timer = setTimeout(() => void this.refresh(), Math.max(5000, this.tokens.accessExpiresAt - Date.now() - SKEW))
-  }
-
-  refresh(): Promise<boolean> {
-    if (this.refreshing) return this.refreshing
-    this.refreshing = (async () => {
-      const shared = this.read()
-      // Another tab already rotated — adopt instead of reusing the old token.
-      if (shared && this.tokens && shared.refreshToken !== this.tokens.refreshToken && shared.accessExpiresAt - Date.now() > SKEW) {
-        this.tokens = shared
-        this.schedule()
-        return true
-      }
-      const current = shared ?? this.tokens
-      if (!current) return false
-      try {
-        this.set((await this.doRefresh(current.refreshToken)).tokens)
-        return true
-      } catch (e) {
-        this.onFail(e)
-        return false
-      }
-    })().finally(() => (this.refreshing = null))
-    return this.refreshing
-  }
-
-  async token(): Promise<string | null> {
-    if (!this.tokens) return null
-    if (this.tokens.accessExpiresAt - Date.now() < SKEW && !(await this.refresh())) return null
-    return this.tokens?.accessToken ?? null
-  }
-}
-
+let tokens: AdminTokens | null = null
 let state: {
   user: Ref<StaffView | null>
   status: Ref<Status>
@@ -103,20 +25,14 @@ let state: {
   signedOutReason: Ref<string>
 } | null = null
 let restorePromise: Promise<void> | null = null
+let refreshing: Promise<boolean> | null = null
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
 let idleTimer: ReturnType<typeof setInterval> | null = null
 let channel: BroadcastChannel | null = null
 let lastActivity = Date.now()
 let lastHeartbeat = Date.now()
 let idleMinutes = 15
 let stepUpResolver: ((ok: boolean) => void) | null = null
-
-/** The in-browser session (admin pages not yet on the API). Re-opened from the API session when it lapses. */
-const local = new TokenStore('helamart_admin', (rt) => adminAuth.refresh(rt), () => {
-  if (backendEnabled()) local.clear()
-  else end('Your session ended.')
-})
-/** The HelaMart API session. */
-const remote = new TokenStore('helamart_admin_api', (rt) => apiAuth.refresh(rt), (e) => end(e instanceof ApiError ? e.message : 'Your session ended.'))
 
 function bind() {
   if (!state) {
@@ -131,47 +47,50 @@ function bind() {
   return state
 }
 
+// ------------------------------------------------------------------ cookie
+
+function readCookie(): AdminTokens | null {
+  const raw = document.cookie.split('; ').find((c) => c.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1)
+  if (!raw) return null
+  try {
+    return JSON.parse(base64UrlDecode(raw)) as AdminTokens
+  } catch {
+    return null
+  }
+}
+
+function writeCookie(t: AdminTokens) {
+  const secure = location.protocol === 'https:' ? '; Secure' : ''
+  // No Max-Age: an admin session never survives closing the browser.
+  document.cookie = `${COOKIE}=${base64UrlEncode(JSON.stringify(t))}; Path=/admin; SameSite=Strict${secure}`
+}
+
+function clearCookie() {
+  document.cookie = `${COOKIE}=; Path=/admin; SameSite=Strict; Max-Age=0`
+}
+
 // ------------------------------------------------------------------ session lifecycle
 
-function signedIn(user: StaffView, broadcast: boolean) {
+function apply(result: adminAuth.AdminLoginResult, broadcast = true) {
   const s = bind()
-  s.user.value = user
+  tokens = result.tokens
+  writeCookie(result.tokens)
+  s.user.value = result.user
   s.status.value = 'authenticated'
   s.signedOutReason.value = ''
   lastActivity = Date.now()
+  scheduleRefresh()
   startIdleWatch()
   if (broadcast) channel?.postMessage({ type: 'login' })
 }
 
-/** Open the matching in-browser session for the API-signed-in person (for pages not yet on the API). */
-function bridgeLocal(email: string) {
-  const r = adminAuth.bridgeSession(email, navigator.userAgent)
-  if (r) local.set(r.tokens)
-}
-
-async function applyApi(result: adminAuth.AdminLoginResult, broadcast = true) {
-  remote.set(result.tokens)
-  bridgeLocal(result.user.email)
-  signedIn(result.user, broadcast)
-  try {
-    idleMinutes = (await apiAuth.policy()).idleMinutes
-  } catch {
-    /* keep the default */
-  }
-}
-
-function applyLocal(result: adminAuth.AdminLoginResult, broadcast = true) {
-  local.set(result.tokens)
-  idleMinutes = adminAuth.sessionPolicy().idleMinutes
-  signedIn(result.user, broadcast)
-}
-
 function end(reason = '', broadcast = true) {
   const s = bind()
-  remote.clear()
-  local.clear()
+  tokens = null
+  clearCookie()
+  if (refreshTimer) clearTimeout(refreshTimer)
   if (idleTimer) clearInterval(idleTimer)
-  idleTimer = null
+  refreshTimer = idleTimer = null
   s.user.value = null
   s.status.value = 'anonymous'
   s.idleWarning.value = null
@@ -185,14 +104,33 @@ function end(reason = '', broadcast = true) {
   }
 }
 
-/** Token for the in-browser admin services (re-opened from the API session if needed). */
-async function localToken(): Promise<string | null> {
-  const t = await local.token()
-  if (t || !backendEnabled()) return t
-  const email = bind().user.value?.email
-  if (!email || !remote.tokens) return null
-  bridgeLocal(email)
-  return local.tokens?.accessToken ?? null
+function scheduleRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  if (!tokens) return
+  refreshTimer = setTimeout(() => void refreshTokens(), Math.max(5000, tokens.accessExpiresAt - Date.now() - SKEW))
+}
+
+function refreshTokens(): Promise<boolean> {
+  if (refreshing) return refreshing
+  refreshing = (async () => {
+    const shared = readCookie()
+    // Another tab already rotated — adopt instead of reusing the old token.
+    if (shared && tokens && shared.refreshToken !== tokens.refreshToken && shared.accessExpiresAt - Date.now() > SKEW) {
+      tokens = shared
+      scheduleRefresh()
+      return true
+    }
+    const current = shared ?? tokens
+    if (!current) return false
+    try {
+      apply(await adminAuth.refresh(current.refreshToken), false)
+      return true
+    } catch (e) {
+      end(e instanceof ApiError ? e.message : 'Your session ended.')
+      return false
+    }
+  })().finally(() => (refreshing = null))
+  return refreshing
 }
 
 // ------------------------------------------------------------------ inactivity
@@ -202,15 +140,17 @@ function onActivity() {
   const s = bind()
   if (s.idleWarning.value !== null) s.idleWarning.value = null
   // Heartbeat so the server knows the admin is still active (at most once a minute).
-  if (Date.now() - lastHeartbeat > 60000 && (remote.tokens || local.tokens)) {
+  if (tokens && Date.now() - lastHeartbeat > 60000) {
     lastHeartbeat = Date.now()
-    if (backendEnabled()) void remote.token().then((t) => void (t && apiAuth.touch(t).catch(() => undefined)))
-    void local.token().then((t) => void (t && adminAuth.touch(t).catch(() => undefined)))
+    void getToken().then((t) => {
+      if (t) void adminAuth.touch(t).catch(() => undefined)
+    })
   }
 }
 
 function startIdleWatch() {
   if (idleTimer) clearInterval(idleTimer)
+  idleMinutes = adminAuth.sessionPolicy().idleMinutes
   idleTimer = setInterval(() => {
     const s = bind()
     if (s.status.value !== 'authenticated') return
@@ -224,15 +164,19 @@ function startIdleWatch() {
   }, 1000)
 }
 
-async function logout(reason = '') {
-  const r = remote.tokens
-  const l = local.tokens
-  end(reason)
-  if (r) await apiAuth.logout(r.accessToken, r.refreshToken).catch(() => undefined)
-  if (l) await adminAuth.logout(l.accessToken, l.refreshToken).catch(() => undefined)
+async function getToken(): Promise<string | null> {
+  if (!tokens) return null
+  if (tokens.accessExpiresAt - Date.now() < SKEW && !(await refreshTokens())) return null
+  return tokens?.accessToken ?? null
 }
 
-/** Restore the session from the cookies once per page load. */
+async function logout(reason = '') {
+  const t = tokens
+  end(reason)
+  if (t) await adminAuth.logout(t.accessToken, t.refreshToken).catch(() => undefined)
+}
+
+/** Restore the session from the cookie once per page load. */
 function restore(): Promise<void> {
   if (restorePromise) return restorePromise
   restorePromise = (async () => {
@@ -248,36 +192,24 @@ function restore(): Promise<void> {
       }
       for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'pointermove']) window.addEventListener(ev, onActivity, { passive: true })
     }
-    const store = backendEnabled() ? remote : local
-    const saved = store.read()
+    const saved = readCookie()
     if (!saved || saved.refreshExpiresAt <= Date.now()) {
-      if (saved) store.clear()
+      if (saved) clearCookie()
       s.status.value = 'anonymous'
       return
     }
-    store.tokens = saved
-    if (backendEnabled()) {
-      const l = local.read()
-      if (l && l.refreshExpiresAt > Date.now()) local.tokens = l
-    }
+    tokens = saved
     try {
-      if (saved.accessExpiresAt - Date.now() <= SKEW && !(await store.refresh())) {
+      if (saved.accessExpiresAt - Date.now() > SKEW) {
+        s.user.value = await adminAuth.me(saved.accessToken)
+        s.status.value = 'authenticated'
+        scheduleRefresh()
+        startIdleWatch()
+      } else if (!(await refreshTokens())) {
         s.status.value = 'anonymous'
-        return
       }
-      store.schedule()
-      const user = backendEnabled() ? await apiAuth.me(store.tokens!.accessToken) : await adminAuth.me(store.tokens!.accessToken)
-      if (backendEnabled()) {
-        if (!local.tokens) bridgeLocal(user.email)
-        else local.schedule()
-        idleMinutes = await apiAuth.policy().then((p) => p.idleMinutes).catch(() => idleMinutes)
-      } else idleMinutes = adminAuth.sessionPolicy().idleMinutes
-      signedIn(user, false)
     } catch (e) {
-      if (isUnauthorized(e) && (await store.refresh())) {
-        restorePromise = null
-        return restore()
-      }
+      if (isUnauthorized(e) && (await refreshTokens())) return
       end(e instanceof ApiError ? e.message : '', false)
     }
   })()
@@ -306,19 +238,10 @@ export function useAdminAuth() {
     return new Promise((r) => (stepUpResolver = r))
   }
 
-  /** Confirms the password with the API (and the in-browser session, so both allow the action). */
   async function confirmStepUp(password: string) {
-    if (backendEnabled()) {
-      const t = await remote.token()
-      if (!t) throw new ApiError(401, 'Please sign in again.')
-      await apiAuth.reauthenticate(t, password)
-      const l = await localToken()
-      if (l) await adminAuth.reauthenticate(l, password).catch(() => undefined)
-    } else {
-      const t = await local.token()
-      if (!t) throw new ApiError(401, 'Please sign in again.')
-      await adminAuth.reauthenticate(t, password)
-    }
+    const t = await getToken()
+    if (!t) throw new ApiError(401, 'Please sign in again.')
+    await adminAuth.reauthenticate(t, password)
     stepUp.value = null
     stepUpResolver?.(true)
     stepUpResolver = null
@@ -330,10 +253,13 @@ export function useAdminAuth() {
     stepUpResolver = null
   }
 
-  /** Token refresh, forced sign-out on 401, and password step-up on STEP_UP_REQUIRED (then retry). */
-  async function withToken<T>(get: () => Promise<string | null>, store: TokenStore, fn: (token: string) => Promise<T>, stepUpReason: string): Promise<T> {
+  /**
+   * Call an admin API with the current token. Handles token refresh, forced
+   * sign-out on 401, and password step-up on STEP_UP_REQUIRED (then retries).
+   */
+  async function call<T>(fn: (token: string) => Promise<T>, stepUpReason = 'Confirm your password to continue.'): Promise<T> {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const t = await get()
+      const t = await getToken()
       if (!t) {
         end('Please sign in again.')
         throw new ApiError(401, 'Please sign in again.')
@@ -346,12 +272,7 @@ export function useAdminAuth() {
           continue
         }
         if (isUnauthorized(e)) {
-          if ((e as ApiError).code === 'TOKEN_EXPIRED' && (await store.refresh())) continue
-          // The in-browser session lapsed while the API session is fine: re-open it.
-          if (store === local && backendEnabled() && remote.tokens) {
-            local.clear()
-            continue
-          }
+          if ((e as ApiError).code === 'TOKEN_EXPIRED' && (await refreshTokens())) continue
           end((e as ApiError).message)
         }
         throw e
@@ -360,36 +281,18 @@ export function useAdminAuth() {
     throw new ApiError(500, 'Request failed.')
   }
 
-  /** Admin pages still on in-browser data. */
-  function call<T>(fn: (token: string) => Promise<T>, stepUpReason = 'Confirm your password to continue.'): Promise<T> {
-    return withToken(localToken, local, fn, stepUpReason)
-  }
-
-  /** The HelaMart API (ordering: order desk, orders, order workflow). Offline demo: same as `call`. */
-  function callApi<T>(fn: (token: string) => Promise<T>, stepUpReason = 'Confirm your password to continue.'): Promise<T> {
-    if (!backendEnabled()) return call(fn, stepUpReason)
-    return withToken(() => remote.token(), remote, fn, stepUpReason)
-  }
-
   async function refreshMe() {
-    if (backendEnabled()) {
-      const t = await remote.token()
-      if (t) user.value = await apiAuth.me(t)
-    } else {
-      const t = await local.token()
-      if (t) user.value = await adminAuth.me(t)
-    }
+    const t = await getToken()
+    if (t) user.value = await adminAuth.me(t)
   }
 
   /** Super Admin is working inside a supermarket's portal. */
   const acting = computed(() => user.value?.acting ?? null)
 
-  /** Super Admin: open a supermarket's portal with full chain-admin access (on the API and the in-browser pages). */
+  /** Super Admin: open a supermarket's portal with full chain-admin access. */
   async function manageTenant(tenantId: string) {
     const { startManagingTenant } = await import('~/services/admin/platformApi')
-    const reason = 'Managing a supermarket’s portal needs your password confirmed.'
-    if (backendEnabled()) await callApi((t) => apiAuth.startManaging(t, tenantId), reason)
-    await call((t) => startManagingTenant(t, tenantId), reason)
+    await call((t) => startManagingTenant(t, tenantId), 'Managing a supermarket’s portal needs your password confirmed.')
     await refreshMe()
     await navigateTo('/admin')
   }
@@ -397,7 +300,6 @@ export function useAdminAuth() {
   /** Back to HelaMart control. */
   async function stopManaging() {
     const { stopManagingTenant } = await import('~/services/admin/platformApi')
-    if (backendEnabled()) await callApi((t) => apiAuth.stopManaging(t))
     await call(stopManagingTenant)
     await refreshMe()
     await navigateTo('/admin/supermarkets')
@@ -419,7 +321,8 @@ export function useAdminAuth() {
     signedOutReason,
     can,
     call,
-    callApi,
+    /** Same session as `call` (the ordering pages use this name). */
+    callApi: call,
     restore,
     logout,
     refreshMe,
@@ -428,22 +331,12 @@ export function useAdminAuth() {
     cancelStepUp,
     stayActive: onActivity,
     /** Login steps (used by the sign-in page). */
-    login: (email: string, password: string) => (backendEnabled() ? apiAuth.login(email, password) : adminAuth.login(email, password)),
+    login: adminAuth.login,
     verifyMfa: async (challengeId: string, code: string) => {
-      if (backendEnabled()) {
-        const r = await apiAuth.verifyMfa(challengeId, code)
-        if ('tokens' in r) await applyApi(r)
-        return r
-      }
       const r = await adminAuth.verifyMfa(challengeId, code, navigator.userAgent)
-      if ('tokens' in r) applyLocal(r)
+      if ('tokens' in r) apply(r)
       return r
     },
-    completePasswordChange: async (challengeId: string, pw: string) => {
-      if (backendEnabled()) await applyApi(await apiAuth.completePasswordChange(challengeId, pw))
-      else applyLocal(await adminAuth.completePasswordChange(challengeId, pw, navigator.userAgent))
-    },
-    /** The current 2FA code for testers (development only): from the API, or the in-browser stand-in. */
-    demoCode: async (challengeId: string) => (backendEnabled() ? apiAuth.demoCode(challengeId).catch(() => null) : adminAuth.demoAuthenticatorCode(challengeId)),
+    completePasswordChange: async (challengeId: string, pw: string) => apply(await adminAuth.completePasswordChange(challengeId, pw, navigator.userAgent)),
   }
 }
