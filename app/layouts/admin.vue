@@ -27,6 +27,7 @@ const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin', label: 'Platform dashboard', icon: 'grid', perm: 'platform.dashboard' },
       { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'platform.dashboard' },
+      { to: '/admin/commission', label: 'Commission', icon: 'tag', perm: 'platform.finance' },
     ],
   },
   {
@@ -64,6 +65,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/order-desk', label: 'Order desk', icon: 'clipboard' },
       { to: '/admin/orders', label: 'Orders', icon: 'receipt', perm: 'orders.view' },
       { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'orders.view' },
+      { to: '/admin/cash-handovers', label: 'Cash handovers', icon: 'tag', perm: 'finance.cash' },
       { to: '/admin/products', label: 'Products & stock', icon: 'package', perm: 'products.view' },
       { to: '/admin/categories', label: 'Categories', icon: 'list', perm: 'products.view' },
       { to: '/admin/customers', label: 'Customers', icon: 'users', perm: 'customers.view' },

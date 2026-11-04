@@ -82,8 +82,8 @@ export function allowedTransitions(order: AdminOrder): OrderStatus[] {
   return NEXT[order.status].filter((s) => (s === 'out_for_delivery' ? order.delivery.method === 'delivery' : s === 'ready_for_pickup' ? order.delivery.method === 'pickup' : true))
 }
 
-export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = ''): Promise<AdminOrder> {
-  return send(token, 'PUT', `/admin/store/orders/${id(orderId)}/status`, { status, note })
+export function updateOrderStatus(token: string, orderId: string, status: OrderStatus, note = '', reason?: string): Promise<AdminOrder> {
+  return send(token, 'PUT', `/admin/store/orders/${id(orderId)}/status`, { status, note, reason })
 }
 
 // ================================================================== products & stock
@@ -106,6 +106,10 @@ export interface ProductInput {
   accent: string
   badge?: AdminProduct['badge']
   reorderLevel: number
+  /** What it costs the supermarket, for profit reports (saved only with "View financial reports"); null = not entered. */
+  costCents?: number | null
+  /** No VAT on this product (saved only with "View financial reports"). */
+  vatExempt?: boolean
   /** `media:<id>` from uploadProductImage, or null to remove the photo. */
   image?: string | null
   /** New products only: make it this branch's own product (branch staff always add to their branch). */
@@ -264,7 +268,11 @@ export async function listOfferProducts(token: string): Promise<{ id: string; na
 // ================================================================== chain settings
 
 /** Brand colour, logo and banners are not here: they go through HelaMart approval (see brandingApi). */
-export type ChainSettings = Pick<Tenant, 'name' | 'hotline' | 'supportEmail' | 'defaultHours' | 'deliveryFeeCents' | 'minOrderCents'>
+export type ChainSettings = Pick<Tenant, 'name' | 'hotline' | 'supportEmail' | 'defaultHours' | 'deliveryFeeCents' | 'minOrderCents'> & {
+  vatNumber?: string | null
+  /** VAT rate for new orders; null = not VAT registered. Shelf prices include it. */
+  vatPercent?: number | null
+}
 
 export function getChainSettings(token: string): Promise<ChainSettings & { status: Tenant['status']; statusReason?: string; plan: Tenant['plan']; commissionPercent: number; reference: string }> {
   return get(token, '/admin/store/settings')

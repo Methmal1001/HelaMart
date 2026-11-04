@@ -11,7 +11,10 @@ export const PLATFORM_PERMISSION_GROUPS: PermissionGroup<PlatformPermission>[] =
   {
     id: 'p-overview',
     label: 'Platform overview',
-    permissions: [{ id: 'platform.dashboard', label: 'View platform dashboard', description: 'Supermarkets, sales and customers across Sri Lanka.' }],
+    permissions: [
+      { id: 'platform.dashboard', label: 'View platform dashboard', description: 'Supermarkets, sales and customers across Sri Lanka.' },
+      { id: 'platform.finance', label: 'View commission and record payments', description: 'Commission statements, payments due and recording what supermarkets pay.', sensitive: true },
+    ],
   },
   {
     id: 'p-tenants',
@@ -58,6 +61,8 @@ export const TENANT_PERMISSION_GROUPS: PermissionGroup<TenantPermission>[] = [
     permissions: [
       { id: 'dashboard.view', label: 'View dashboard', description: 'Sales, orders and stock overview.' },
       { id: 'reports.view', label: 'View revenue figures', description: 'Revenue totals and trends.' },
+      { id: 'finance.view', label: 'View financial reports', description: 'Cost prices, profit, VAT, reconciliation, stock value and commission.', sensitive: true },
+      { id: 'finance.cash', label: 'Record cash handovers', description: 'See cash collected and record what riders and counter officers hand in.' },
     ],
   },
   {
@@ -147,7 +152,7 @@ export const ROLE_IDS = {
 
 /** Permissions a Branch Manager role template holds. */
 export const BRANCH_MANAGER_PERMISSIONS: TenantPermission[] = [
-  'dashboard.view', 'reports.view', 'branches.view', 'orders.view', 'orders.manage', 'orders.refund', 'products.view',
+  'dashboard.view', 'reports.view', 'finance.cash', 'branches.view', 'orders.view', 'orders.manage', 'orders.refund', 'products.view',
   'inventory.manage', 'customers.view', 'promotions.view', 'tasks.view', 'tasks.manage', 'staff.view', 'staff.manage', 'audit.view',
 ]
 

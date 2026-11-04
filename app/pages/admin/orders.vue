@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AdminOrder, OrderStatus, TableColumn } from '~/types/admin'
-import { allowedTransitions, branchDirectory, listOrders, updateOrderStatus } from '~/services/admin/orderingApi'
+import { allowedTransitions, branchDirectory, CANCEL_REASONS, listOrders, REFUND_REASONS, updateOrderStatus } from '~/services/admin/orderingApi'
 import { currentStage, isClosed } from '~/lib/workflow'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', scope: 'tenant', permission: 'orders.view' })
@@ -76,6 +76,7 @@ function actionsFor(o: AdminOrder) {
 
 async function move(o: AdminOrder, status: OrderStatus) {
   let note = ''
+  let reason = ''
   if (status === 'cancelled' || status === 'refunded') {
     const r = await confirm({
       title: status === 'cancelled' ? `Cancel ${o.number}?` : `Refund ${o.number}?`,
@@ -85,14 +86,16 @@ async function move(o: AdminOrder, status: OrderStatus) {
           : `Refund ${formatLKR(o.breakdown.totalCents)} to the customer. This cannot be undone.`,
       confirmLabel: status === 'cancelled' ? 'Cancel order' : 'Issue refund',
       tone: 'danger',
-      reasonLabel: 'Reason',
+      reasonLabel: 'Details (optional, except for “Other”)',
+      reasonOptions: status === 'cancelled' ? CANCEL_REASONS : REFUND_REASONS,
     })
     if (!r.ok) return
     note = r.reason
+    reason = r.code
   }
   busy.value = true
   try {
-    const updated = await auth.callApi((t) => updateOrderStatus(t, o.id, status, note), 'Refunds need your password confirmed.')
+    const updated = await auth.callApi((t) => updateOrderStatus(t, o.id, status, note, reason), 'Refunds need your password confirmed.')
     orders.value = orders.value.map((x) => (x.id === updated.id ? updated : x))
     selected.value = updated
     notify.ok(`${updated.number}: ${updated.status.replace(/_/g, ' ')}`)

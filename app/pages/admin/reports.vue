@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChatTurn, ReportCatalog, ReportName, ReportResult } from '~/services/admin/reportsApi'
-import { askReports, downloadReportCsv, reportCatalog } from '~/services/admin/reportsApi'
+import { askReports, downloadReportCsv, reportCatalog, runReport } from '~/services/admin/reportsApi'
+import { branchDirectory } from '~/services/admin/orderingApi'
 import { ApiError } from '~/services/apiError'
 
 definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: 'platform.dashboard', tenant: 'orders.view' } })
@@ -26,17 +27,26 @@ const thread = ref<HTMLElement | null>(null)
 
 const today = new Date()
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-const quick = reactive({ from: iso(new Date(today.getTime() - 29 * 864e5)), to: iso(today) })
+const quick = reactive({ from: iso(new Date(today.getTime() - 29 * 864e5)), to: iso(today), branchId: '' })
+const branches = ref<{ id: string; name: string }[]>([])
+/** Quick reports under their headings (Orders, Finance). */
+const reportGroups = computed(() => {
+  const groups = new Map<string, NonNullable<typeof catalog.value>['reports']>()
+  for (const r of catalog.value?.reports ?? []) groups.set(r.group, [...(groups.get(r.group) ?? []), r])
+  return [...groups].map(([name, reports]) => ({ name, reports }))
+})
+const quickArgs = () => ({ from: quick.from, to: quick.to, ...(quick.branchId ? { branchId: quick.branchId } : {}) })
 
 const SUGGESTIONS = computed(() =>
   auth.isPlatform.value
-    ? ['Which supermarkets earned the most revenue last month?', 'Compare commission per supermarket this quarter', 'Top 10 products across HelaMart this month', 'Orders by status in the last 7 days']
-    : ['How did each branch do last month?', 'Top 10 products by revenue this month', 'Show yesterday’s cancelled orders', 'Which order-desk section has the most orders waiting?'],
+    ? ['Which supermarkets earned the most revenue last month?', 'Compare commission per supermarket this quarter', 'Top 10 products across HelaMart this month', 'Orders by status in the last 7 days', 'Which supermarkets have overdue commission?']
+    : ['How did each branch do last month?', 'What’s running low and how many days will it last?', 'Why were orders cancelled this month?', 'Which products make the most profit?', 'Which order-desk section is slowest?', 'What’s our profit and loss this month?'],
 )
 
 onMounted(async () => {
   try {
     catalog.value = await auth.call(reportCatalog)
+    if (!auth.isPlatform.value) branches.value = await auth.call((t) => branchDirectory(t))
   } catch (e) {
     notify.error(e)
   }
@@ -115,6 +125,20 @@ async function download(name: ReportName, args: Record<string, unknown>, key: st
   }
 }
 
+/** Show a report on the page straight away (no assistant needed). */
+async function view(name: ReportName, title: string) {
+  downloading.value = `view-${name}`
+  try {
+    const report = await auth.call((t) => runReport(t, name, quickArgs()))
+    messages.value.push({ id: nextId++, role: 'assistant', text: title, reports: [report] })
+    scrollDown()
+  } catch (e) {
+    notify.error(e)
+  } finally {
+    downloading.value = null
+  }
+}
+
 function clearChat() {
   messages.value = []
 }
@@ -160,11 +184,11 @@ function cell(col: string, v: string | number | null) {
   return v
 }
 
-const FILTER_LABELS: Record<string, string> = { from: 'From', to: 'To', branchId: 'Branch', supermarketId: 'Supermarket', statuses: 'Statuses', fulfilment: 'Fulfilment', paymentMethod: 'Payment', groupBy: 'Grouped by', sortBy: 'Sorted by', limit: 'Limit', category: 'Category' }
+const FILTER_LABELS: Record<string, string> = { from: 'From', to: 'To', branchId: 'Branch', supermarketId: 'Supermarket', statuses: 'Statuses', fulfilment: 'Fulfilment', paymentMethod: 'Payment', groupBy: 'Grouped by', sortBy: 'Sorted by', limit: 'Limit', category: 'Category', show: 'Showing', orderNumber: 'Order', customer: 'Customer', product: 'Product' }
 function filterChips(f: Record<string, unknown>) {
   return Object.entries(f)
     .filter(([k]) => k !== 'note')
-    .map(([k, v]) => `${FILTER_LABELS[k] ?? k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
+    .map(([k, v]) => `${FILTER_LABELS[k] ?? k}: ${k === 'branchId' ? (branches.value.find((b) => b.id === v)?.name ?? v) : Array.isArray(v) ? v.join(', ') : String(v)}`)
 }
 
 const expanded = ref<Record<string, boolean>>({})
@@ -180,7 +204,7 @@ const PREVIEW = 8
       <button v-if="messages.length" type="button" class="btn-ghost h-10" :disabled="thinking" @click="clearChat"><AppIcon name="refresh" :size="16" />New chat</button>
     </AdminPageHeader>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
       <!-- Chat -->
       <section class="card flex min-h-[32rem] flex-col p-0" aria-label="Reports assistant chat">
         <div ref="thread" class="flex-1 space-y-4 overflow-y-auto p-4" style="max-height: calc(100vh - 17rem)" aria-live="polite">
@@ -189,7 +213,7 @@ const PREVIEW = 8
             <p class="mt-3 text-lg font-extrabold text-ink">What would you like to know?</p>
             <p class="mt-1 text-sm text-muted">Ask in plain words: periods like “last month” or “this week”, a branch, a status. Every answer shows the report it used.</p>
             <div v-if="catalog && !catalog.assistant" class="mt-4 rounded-xl bg-hela-gold-100 p-3 text-left text-sm text-[#6d5622]">
-              The assistant isn’t set up on the server yet (Gemini API key missing). You can still download the reports on the right as CSV.
+              The assistant isn’t set up on the server yet (Gemini API key missing). You can still view or download the reports on the right.
             </div>
             <div v-else class="mt-5 flex flex-wrap justify-center gap-2">
               <button v-for="s in SUGGESTIONS" :key="s" type="button" class="chip cursor-pointer hover:bg-hela-green-50" @click="send(s)">{{ s }}</button>
@@ -232,7 +256,7 @@ const PREVIEW = 8
                     </tbody>
                   </table>
                 </div>
-                <p v-else class="p-3 text-sm text-muted">No matching orders in this period.</p>
+                <p v-else class="p-3 text-sm text-muted">Nothing to show for this period.</p>
                 <footer v-if="r.rows.length > PREVIEW || r.truncated" class="flex flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2 text-xs text-muted">
                   <button v-if="r.rows.length > PREVIEW" type="button" class="font-bold text-hela-green hover:underline" @click="expanded[`${m.id}-${i}`] = !expanded[`${m.id}-${i}`]">
                     {{ expanded[`${m.id}-${i}`] ? 'Show fewer rows' : `Show ${r.rows.length} rows` }}
@@ -258,7 +282,7 @@ const PREVIEW = 8
             rows="2"
             maxlength="1000"
             class="field min-h-11 flex-1 resize-none"
-            :placeholder="catalog && !catalog.assistant ? 'The assistant isn’t available — use the CSV reports on the right.' : 'e.g. How many orders did each branch get last week?'"
+            :placeholder="catalog && !catalog.assistant ? 'The assistant isn’t available — use the quick reports on the right.' : 'e.g. What items are in order HM-2026-9087?'"
             :disabled="thinking || (catalog !== null && !catalog.assistant)"
             @keydown="onKey"
           />
@@ -268,30 +292,37 @@ const PREVIEW = 8
       </section>
 
       <!-- Quick CSV downloads without the assistant -->
-      <aside class="card h-fit p-4" aria-label="Quick CSV reports">
-        <p class="font-extrabold text-ink">Quick CSV reports</p>
-        <p class="mt-0.5 text-xs text-muted">Download straight away, no question needed.</p>
+      <aside class="card h-fit p-4 lg:max-h-[calc(100vh-13rem)] lg:overflow-y-auto" aria-label="Quick reports">
+        <p class="font-extrabold text-ink">Quick reports</p>
+        <p class="mt-0.5 text-xs text-muted">View or download straight away, no question needed.</p>
         <div class="mt-3 grid grid-cols-2 gap-2">
           <label class="text-xs"><span class="field-label">From</span><input v-model="quick.from" type="date" class="field" :max="quick.to"></label>
           <label class="text-xs"><span class="field-label">To</span><input v-model="quick.to" type="date" class="field" :min="quick.from"></label>
         </div>
-        <ul class="mt-3 space-y-2">
-          <li v-for="r in catalog?.reports ?? []" :key="r.name">
-            <button
-              type="button"
-              class="flex w-full items-start gap-2 rounded-xl p-2 text-left ring-1 ring-line transition hover:bg-hela-green-50 disabled:opacity-60"
-              :title="r.description"
-              :disabled="downloading === `quick-${r.name}`"
-              @click="download(r.name, { from: quick.from, to: quick.to }, `quick-${r.name}`)"
-            >
-              <AppIcon name="copy" :size="15" class="mt-0.5 shrink-0 text-hela-green" />
-              <span class="min-w-0">
-                <span class="block text-sm font-bold text-ink">{{ downloading === `quick-${r.name}` ? 'Preparing…' : r.title }}</span>
-                <span class="block text-[0.7rem] leading-snug text-muted">{{ r.description }}</span>
-              </span>
-            </button>
+        <label v-if="branches.length > 1" class="mt-2 block text-xs">
+          <span class="field-label">Branch</span>
+          <select v-model="quick.branchId" class="field" data-testid="quick-branch">
+            <option value="">All branches</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </label>
+        <template v-for="g in reportGroups" :key="g.name">
+        <h3 class="mt-4 text-xs font-extrabold tracking-wide text-muted uppercase">{{ g.name }}</h3>
+        <ul class="mt-2 space-y-2">
+          <li v-for="r in g.reports" :key="r.name" class="rounded-xl p-2 ring-1 ring-line">
+            <span class="block text-sm font-bold text-ink">{{ r.title }}</span>
+            <span class="line-clamp-2 text-[0.7rem] leading-snug text-muted" :title="r.description">{{ r.description }}</span>
+            <span class="mt-2 flex gap-2">
+              <button type="button" class="btn-ghost h-8 flex-1 text-xs" :disabled="downloading === `view-${r.name}`" :data-testid="`view-${r.name}`" @click="view(r.name, r.title)">
+                {{ downloading === `view-${r.name}` ? 'Loading…' : 'View' }}
+              </button>
+              <button type="button" class="btn-ghost h-8 flex-1 text-xs" :disabled="downloading === `quick-${r.name}`" @click="download(r.name, quickArgs(), `quick-${r.name}`)">
+                <AppIcon name="copy" :size="14" class="text-hela-green" />{{ downloading === `quick-${r.name}` ? 'Preparing…' : 'CSV' }}
+              </button>
+            </span>
           </li>
         </ul>
+        </template>
         <p v-if="catalog && !catalog.showMoney" class="mt-3 text-xs text-[#6d5622]">Money columns are left out: you don’t have the “View revenue figures” permission.</p>
       </aside>
     </div>

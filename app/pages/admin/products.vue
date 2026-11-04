@@ -84,8 +84,15 @@ const columns: TableColumn[] = [
 // ---- create / edit
 const SHAPES: ProductShape[] = ['box', 'tallBox', 'bottle', 'can', 'jar', 'bag', 'carton', 'tray', 'loaf', 'round', 'long', 'roll']
 const editing = ref<AdminProduct | 'new' | null>(null)
-const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: '' as '' | ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12 })
+const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: '' as '' | ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12, cost: '', vatExempt: false })
 const formError = ref('')
+/** Live margin next to the cost price. */
+const marginHint = computed(() => {
+  const price = Number.parseFloat(form.price)
+  const cost = Number(form.cost)
+  if (!form.cost || !(price > 0) || !(cost >= 0)) return 'Used for profit reports. Only people with “View financial reports” see this.'
+  return `Margin ${(((price - cost) / price) * 100).toFixed(1)}% at the chain price`
+})
 const saving = ref(false)
 
 // ---- product photo (shown on the 3D shelves and in the shop)
@@ -153,8 +160,8 @@ function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
   void resetPhoto(p === 'new' ? undefined : p.image)
-  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: '', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12 })
-  else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), shape: p.shape ?? '', badge: p.badge ?? '' })
+  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: '', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12, cost: '', vatExempt: false })
+  else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), shape: p.shape ?? '', badge: p.badge ?? '', cost: p.costCents == null ? '' : (p.costCents / 100).toFixed(2), vatExempt: !!p.vatExempt })
 }
 
 async function save() {
@@ -164,10 +171,13 @@ async function save() {
     priceCents: Math.round(Number.parseFloat(form.price) * 100), description: form.description, shape: form.shape || null,
     color: form.color, accent: form.accent, badge: form.badge || undefined, reorderLevel: Math.floor(Number(form.reorderLevel)),
     ownerBranchId: editing.value === 'new' ? form.owner || undefined : undefined,
+    costCents: form.cost ? Math.round(Number(form.cost) * 100) : null,
+    vatExempt: form.vatExempt,
   }
   saving.value = true
   try {
     if (photo.busy) throw new Error('Wait for the photo to finish processing.')
+    if (form.cost && !(Number(form.cost) >= 0)) throw new Error('Enter a valid cost price.')
     if (!hasPhoto.value && !form.shape) throw new Error('Upload a product photo or choose a package shape.')
     if (photo.pending) {
       const { blob, width, height } = photo.pending
@@ -335,6 +345,12 @@ async function saveStock() {
         <label><span class="field-label">Brand</span><input v-model="form.brand" class="field" maxlength="60"></label>
         <label><span class="field-label">Category</span><select v-model="form.categoryId" class="field"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}{{ c.visible ? '' : ' (hidden)' }}</option></select></label>
         <label><span class="field-label">Price (LKR)</span><input v-model="form.price" class="field" inputmode="decimal" placeholder="0.00" required></label>
+        <label v-if="auth.can('finance.view')">
+          <span class="field-label">Cost price (LKR, optional)</span>
+          <input v-model="form.cost" class="field" inputmode="decimal" placeholder="0.00" data-testid="cost-input">
+          <span class="mt-1 block text-xs text-muted">{{ marginHint }}</span>
+          <span class="mt-1.5 flex items-center gap-2 text-xs"><input v-model="form.vatExempt" type="checkbox" class="size-4" data-testid="vat-exempt">VAT exempt</span>
+        </label>
         <label><span class="field-label">Pack size</span><input v-model="form.size" class="field" placeholder="e.g. 1 kg"></label>
         <label><span class="field-label">Sold per</span><input v-model="form.unit" class="field" placeholder="pack, bottle, per kg"></label>
         <label><span class="field-label">Badge</span><select v-model="form.badge" class="field"><option value="">None</option><option>Fresh</option><option>Local</option><option>New</option><option>Popular</option></select></label>

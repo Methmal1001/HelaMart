@@ -5,23 +5,25 @@ export interface ConfirmOptions {
   tone?: 'default' | 'danger'
   /** Ask for a free-text reason (stored in the audit log). */
   reasonLabel?: string
+  /** Ask for a reason from a list too: the text becomes optional (except for "other") and defaults to the chosen label. */
+  reasonOptions?: { value: string; label: string }[]
 }
 
-let resolver: ((result: { ok: boolean; reason: string }) => void) | null = null
+let resolver: ((result: { ok: boolean; reason: string; code: string }) => void) | null = null
 
 /** Promise-based confirmation dialog for admin actions. */
 export function useAdminConfirm() {
   const current = useState<ConfirmOptions | null>('admin-confirm', () => null)
 
-  function confirm(options: ConfirmOptions): Promise<{ ok: boolean; reason: string }> {
-    resolver?.({ ok: false, reason: '' })
+  function confirm(options: ConfirmOptions): Promise<{ ok: boolean; reason: string; code: string }> {
+    resolver?.({ ok: false, reason: '', code: '' })
     current.value = options
     return new Promise((r) => (resolver = r))
   }
 
-  function settle(ok: boolean, reason = '') {
+  function settle(ok: boolean, reason = '', code = '') {
     current.value = null
-    resolver?.({ ok, reason })
+    resolver?.({ ok, reason, code })
     resolver = null
   }
 

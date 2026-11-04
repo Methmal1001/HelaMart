@@ -5,6 +5,7 @@ import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, OrderProg
 /** Platform-level permissions (HelaMart head office). */
 export type PlatformPermission =
   | 'platform.dashboard'
+  | 'platform.finance'
   | 'tenants.view'
   | 'tenants.review'
   | 'tenants.moderate'
@@ -21,6 +22,8 @@ export type PlatformPermission =
 export type TenantPermission =
   | 'dashboard.view'
   | 'reports.view'
+  | 'finance.view'
+  | 'finance.cash'
   | 'branches.view'
   | 'branches.manage'
   | 'orders.view'
@@ -378,6 +381,10 @@ export interface AdminProduct extends Omit<Product, 'stock' | 'shape'> {
   /** Stock held at each branch. */
   stock: Record<string, number>
   reorderLevel: number
+  /** What it costs the supermarket; only sent to people with "View financial reports". */
+  costCents?: number | null
+  /** No VAT on this product; only sent with "View financial reports". */
+  vatExempt?: boolean | null
   status: 'active' | 'hidden'
   updatedAt: string
   /** Branch price overrides (branchId → cents). Other branches use `priceCents`. */
