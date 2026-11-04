@@ -15,6 +15,7 @@ const showPassword = ref(false)
 const busy = ref(false)
 const error = ref<{ text: string; code?: string } | null>(null)
 const reg = reactive({ name: '', phone: '', confirm: '', agree: false })
+const legal = ref({ terms: false, privacy: false })
 const regErrors = reactive<Record<string, string>>({})
 const rules = computed(() => PASSWORD_RULES.map((r) => ({ ...r, ok: r.test(password.value) })))
 
@@ -24,6 +25,7 @@ watch(dialogOpen, (v) => {
   error.value = null
   password.value = ''
   Object.assign(reg, { name: '', phone: '', confirm: '', agree: false })
+  legal.value = { terms: false, privacy: false }
   Object.keys(regErrors).forEach((k) => delete regErrors[k])
 })
 
@@ -69,6 +71,7 @@ async function submitRegister() {
   if (!isStrongPassword(password.value)) regErrors.password = 'Your password doesn’t meet all the rules below.'
   if (reg.confirm !== password.value) regErrors.confirm = 'Passwords don’t match.'
   if (!reg.agree) regErrors.agree = 'Please accept the partner terms to continue.'
+  if (!legal.value.terms || !legal.value.privacy) regErrors.legal = 'Please read and accept both to continue.'
   if (Object.keys(regErrors).length) return
   busy.value = true
   try {
@@ -196,10 +199,15 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
         <label class="flex items-start gap-2.5 text-sm text-ink">
           <input v-model="reg.agree" type="checkbox" class="mt-0.5 size-4 accent-hela-green" :aria-invalid="!!regErrors.agree">
           <span>
-            I agree to HelaMart’s partner terms and privacy policy.
+            I agree to HelaMart’s partner terms.
             <span v-if="regErrors.agree" class="block text-xs text-[#8A2E2E]">{{ regErrors.agree }}</span>
           </span>
         </label>
+
+        <div>
+          <p class="mb-1.5 text-xs text-muted">Your partner account also gives you a HelaMart shopping account:</p>
+          <LegalConsent v-model="legal" context="register" :attention="!!regErrors.legal" />
+        </div>
 
         <div v-if="error" class="rounded-xl bg-[#fbeaea] px-3.5 py-2.5 text-sm text-[#8A2E2E]" role="alert">
           <p class="flex items-start gap-2"><AppIcon name="alert" :size="16" class="mt-0.5 shrink-0" />{{ error.text }}</p>

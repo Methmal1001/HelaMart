@@ -398,6 +398,8 @@ export interface Order {
   received?: { at: string; via: 'customer_qr' | 'customer_app' | 'staff'; receivedBy?: string }
   /** It's with the rider or at the pickup counter: the customer can confirm they have it. */
   canConfirmReceipt?: boolean
+  /** The Terms of Order / Privacy Policy versions accepted when it was placed. */
+  consent?: { termsVersion: string; privacyVersion: string; acceptedAt?: string | null }
 }
 
 /** What the tracking QR on an order slip shows (public: no phone number or address). */

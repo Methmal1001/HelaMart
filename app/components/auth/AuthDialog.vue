@@ -20,7 +20,10 @@ const error = ref<{ text: string; code?: string } | null>(null)
 const other = reactive({ open: false, email: '', name: '' })
 const hasGoogleClient = !!useRuntimeConfig().public.googleClientId
 
-const reg = reactive({ name: '', phone: '', town: '', confirm: '', agree: false })
+const reg = reactive({ name: '', phone: '', town: '', confirm: '' })
+/** Terms of Order + Privacy Policy, both required to create an account. */
+const legal = ref({ terms: false, privacy: false })
+const { read: readLegal } = useLegal()
 const { area } = useShoppingArea()
 const regErrors = reactive<Record<string, string>>({})
 const rules = computed(() => PASSWORD_RULES.map((r) => ({ ...r, ok: r.test(password.value) })))
@@ -30,7 +33,8 @@ watch(open, (v) => {
   view.value = 'login'
   error.value = null
   password.value = ''
-  Object.assign(reg, { name: '', phone: '', town: area.value?.label ?? '', confirm: '', agree: false })
+  Object.assign(reg, { name: '', phone: '', town: area.value?.label ?? '', confirm: '' })
+  legal.value = { terms: false, privacy: false }
   Object.keys(regErrors).forEach((k) => delete regErrors[k])
   other.open = false
 })
@@ -79,7 +83,7 @@ async function submitRegister() {
   if (!town) regErrors.town = 'Choose your town from the list — we use it to show supermarkets near you.'
   if (!isStrongPassword(password.value)) regErrors.password = 'Your password doesn’t meet all the rules below.'
   if (reg.confirm !== password.value) regErrors.confirm = 'Passwords don’t match.'
-  if (!reg.agree) regErrors.agree = 'Please accept the terms to continue.'
+  if (!legal.value.terms || !legal.value.privacy) regErrors.agree = 'Please read and accept both to create your account.'
   if (Object.keys(regErrors).length) return
   busy.value = true
   try {
@@ -256,13 +260,7 @@ const inputCls =
           <input v-model="remember" type="checkbox" class="mt-0.5 size-4 accent-hela-green">
           Keep me signed in on this device
         </label>
-        <label class="flex items-start gap-2.5 text-sm text-ink">
-          <input v-model="reg.agree" type="checkbox" class="mt-0.5 size-4 accent-hela-green" :aria-invalid="!!regErrors.agree">
-          <span>
-            I agree to HelaMart’s terms of use and privacy policy.
-            <span v-if="regErrors.agree" class="block text-xs text-[#8A2E2E]">{{ regErrors.agree }}</span>
-          </span>
-        </label>
+        <LegalConsent v-model="legal" context="register" :attention="!!regErrors.agree" />
 
         <div v-if="error" class="rounded-xl bg-[#fbeaea] px-3.5 py-2.5 text-sm text-[#8A2E2E]" role="alert">
           <p class="flex items-start gap-2">
@@ -297,6 +295,11 @@ const inputCls =
       </div>
       <p class="mt-2 text-center text-xs text-muted">
         {{ view === 'register' ? 'No password needed — your Google account creates your HelaMart account.' : 'New or returning — Google signs you in either way.' }}
+      </p>
+      <p class="mt-1.5 text-center text-[0.7rem] text-muted" data-testid="google-legal">
+        By continuing with Google you agree to our
+        <button type="button" class="font-semibold text-hela-green underline" @click="readLegal('terms')">Terms of Order</button> and
+        <button type="button" class="font-semibold text-hela-green underline" @click="readLegal('privacy')">Privacy Policy</button>.
       </p>
 
       <section v-if="view === 'login'" class="mt-6 rounded-2xl bg-hela-gold-100/70 p-4" aria-labelledby="test-accounts">

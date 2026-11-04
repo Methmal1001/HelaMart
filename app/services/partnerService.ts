@@ -2,6 +2,7 @@ import type { BrandingProfile, TenantDocument, TenantStatus } from '~/types/admi
 import { api } from './http'
 import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PartnerDto, PartnerSessionDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
 import { circlePolygon } from '~/lib/geo'
+import { LEGAL_CONSENT } from '~/data/legal'
 import { townsInside } from '~/lib/coverage'
 
 /**
@@ -33,7 +34,8 @@ export type Partner = PartnerDto & { status: TenantStatus | 'draft' }
 export type PartnerSession = PartnerSessionDto & { partner: Partner }
 
 export function registerPartner(input: { name: string; email: string; phone: string; password: string }, remember: boolean): Promise<PartnerSession> {
-  return api<PartnerSession>('/partners/register', { method: 'POST', body: { ...input, remember } })
+  // Registering as a partner also creates the shopper account, so the customer Terms and Privacy Policy are accepted too.
+  return api<PartnerSession>('/partners/register', { method: 'POST', body: { ...input, remember, consent: { ...LEGAL_CONSENT } } })
 }
 
 export function loginPartner(email: string, password: string, remember: boolean): Promise<PartnerSession> {

@@ -311,7 +311,8 @@ export function stageAction(
         const prev = o.stages![i - 1]!
         Object.assign(cur, { state: 'waiting', assigneeId: undefined, assigneeName: undefined, startedAt: undefined, holdReason: undefined })
         Object.assign(prev, { state: 'waiting', completedAt: undefined, completedBy: undefined, startedAt: undefined, assigneeId: undefined, assigneeName: undefined })
-        prev.notes.push({ at, by: me, text: `Sent back from ${cur.name}: ${note}`, shared: false })
+        // Both sides see why: the order desk (Updates) and the customer's tracking.
+        prev.notes.push({ at, by: me, text: `Sent back to ${prev.name} from ${cur.name}: ${note}`, shared: true })
         o.stageIndex = i - 1
         event = `Sent back from ${cur.name} to ${prev.name}`
         break

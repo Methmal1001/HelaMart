@@ -42,6 +42,13 @@ export interface AuthResultDto {
   tokens: AuthTokensDto
 }
 
+/** The Terms of Order / Privacy Policy versions the customer accepted (app/data/legal.ts). */
+export interface ConsentDto {
+  termsVersion: string
+  privacyVersion: string
+  acceptedAt?: string | null
+}
+
 export interface RegisterRequest {
   name: string
   email: string
@@ -49,6 +56,7 @@ export interface RegisterRequest {
   password: string
   location?: ShopperLocationDto
   remember: boolean
+  consent: ConsentDto
 }
 
 export interface LoginRequest {
@@ -181,6 +189,7 @@ export interface PlaceOrderRequest {
   lines: { productId: string; quantity: number }[]
   delivery: { method: FulfilmentMethod; fullName: string; phone: string; address: string; city: string; slot: string; notes: string }
   payment: { method: PaymentMethod; card?: { name: string; number: string; expiry: string; cvc: string } }
+  consent: ConsentDto
 }
 
 // OrderDto and PriceBreakdownDto are the app's own `Order` and `PriceBreakdown` types (~/types).

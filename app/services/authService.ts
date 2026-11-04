@@ -1,6 +1,7 @@
 import type { AuthResult, ShopperLocation, User } from '~/types'
 import { api } from './http'
 import type { AuthResultDto, GoogleLoginRequest, LoginRequest, PhoneRequest, RegisterRequest, UserDto } from './apiTypes'
+import { LEGAL_CONSENT } from '~/data/legal'
 
 /**
  * Auth API (HelaMart backend):
@@ -36,7 +37,8 @@ export interface RegisterInput {
 
 /** POST /auth/register — creates a customer account and signs it in. */
 export function register(input: RegisterInput, remember: boolean): Promise<AuthResult> {
-  return api<AuthResultDto>('/auth/register', { method: 'POST', body: { ...input, remember } satisfies RegisterRequest })
+  // Creating an account means accepting the current Terms of Order and Privacy Policy (ticked in the form).
+  return api<AuthResultDto>('/auth/register', { method: 'POST', body: { ...input, remember, consent: { ...LEGAL_CONSENT } } satisfies RegisterRequest })
 }
 
 /**

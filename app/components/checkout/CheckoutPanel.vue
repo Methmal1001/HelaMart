@@ -3,6 +3,7 @@ import type { CardDetails, DeliveryDetails, FulfilmentMethod, Order, PaymentMeth
 import { getProduct } from '~/data/products'
 import { placeOrder } from '~/services/orderService'
 import { ApiError, isUnauthorized } from '~/services/apiError'
+import { LEGAL } from '~/data/legal'
 
 type Step = 'review' | 'delivery' | 'payment' | 'done'
 
@@ -30,7 +31,12 @@ const bill = useBill(fulfilment)
 const placing = ref(false)
 const error = ref('')
 const order = ref<Order | null>(null)
-
+/** Terms of Order + Privacy Policy, accepted for this order (asked again for every order). */
+const consent = ref({ terms: false, privacy: false })
+const consentAttention = ref(false)
+const consentBox = ref<HTMLElement | null>(null)
+const { read: readLegal } = useLegal()
+watch(consent, (c) => c.terms && c.privacy && (consentAttention.value = false), { deep: true })
 
 const slots = computed(() => {
   const day = new Intl.DateTimeFormat('en-LK', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -53,6 +59,7 @@ watch(open, (v) => {
     if (step.value === 'done') {
       step.value = 'review'
       order.value = null
+      consent.value = { terms: false, privacy: false }
     }
     return
   }
@@ -124,6 +131,14 @@ function back() {
 
 async function pay() {
   if (!validateCard() || placing.value) return
+  // Remind and ask for approval before anything is sent.
+  if (!consent.value.terms || !consent.value.privacy) {
+    consentAttention.value = false
+    await nextTick()
+    consentAttention.value = true
+    consentBox.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    return
+  }
   error.value = ''
   placing.value = true
   if (!storeChoice.value) {
@@ -154,6 +169,7 @@ async function pay() {
       if (await requestLogin('Your session expired — log in again to complete payment.')) error.value = ''
     } else {
       error.value = e instanceof ApiError ? e.message : 'Payment could not be completed. Please try again.'
+      if (e instanceof ApiError && e.code === 'CONSENT_REQUIRED') consent.value = { terms: false, privacy: false }
       // Stock changed or an item stopped selling: reload the branch's shelves so the cart can be fixed.
       cartProblem.value = e instanceof ApiError && ['OUT_OF_STOCK', 'PRODUCT_UNAVAILABLE', 'CART_EMPTY', 'CART_TOO_LARGE'].includes(e.code ?? '')
       if (cartProblem.value) void refreshStores()
@@ -235,6 +251,12 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
         <div class="mt-4 rounded-2xl bg-white p-4 ring-1 ring-line">
           <CartSummary :bill="bill" />
         </div>
+        <p class="mt-3 flex items-start gap-2 text-xs text-muted" data-testid="review-legal">
+          <AppIcon name="clipboard" :size="14" class="mt-px shrink-0" />
+          <span>Before you pay you’ll be asked to accept our
+            <button type="button" class="font-bold text-hela-green underline underline-offset-2" @click="readLegal('terms')">{{ LEGAL.terms.title }}</button> and
+            <button type="button" class="font-bold text-hela-green underline underline-offset-2" @click="readLegal('privacy')">{{ LEGAL.privacy.title }}</button>.</span>
+        </p>
       </section>
 
       <!-- 2. Delivery -->
@@ -357,6 +379,10 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
         <div class="rounded-2xl bg-white p-4 ring-1 ring-line">
           <CartSummary :bill="bill" :show-hints="false" />
         </div>
+
+        <div ref="consentBox">
+          <LegalConsent v-model="consent" context="order" :cod="paymentMethod === 'cod'" :attention="consentAttention" />
+        </div>
       </section>
 
       <!-- 4. Done -->
@@ -374,6 +400,10 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
             <button type="button" class="font-bold text-hela-green underline" data-testid="open-my-orders" @click="openOrders(order.id)">Your orders</button>.</span>
         </p>
         <OrderReceipt :order="order" />
+        <p v-if="order.consent" class="mt-3 flex items-center gap-2 text-xs text-muted" data-testid="consent-proof">
+          <AppIcon name="shield" :size="14" class="shrink-0 text-hela-green" />
+          You accepted the {{ LEGAL.terms.short }} v{{ order.consent.termsVersion }} and {{ LEGAL.privacy.short }} v{{ order.consent.privacyVersion }}{{ order.consent.acceptedAt ? ` on ${new Date(order.consent.acceptedAt).toLocaleString('en-LK', { dateStyle: 'medium', timeStyle: 'short' })}` : '' }}.
+        </p>
       </section>
 
       <p v-if="error" class="mt-4 flex items-start gap-2 rounded-xl bg-[#fbeaea] px-3.5 py-2.5 text-sm text-[#8A2E2E]" role="alert">

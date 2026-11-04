@@ -134,7 +134,7 @@ async function askReason(o: DeskOrder, action: 'hold' | 'send_back' | 'reject') 
     title: action === 'hold' ? `Put ${o.number} on hold?` : action === 'send_back' ? `Send ${o.number} back to ${prev?.name}?` : `Reject ${o.number}?`,
     message:
       action === 'hold' ? 'Use this when something stops the work (item out of stock, waiting for the customer…). The customer sees a short delay.'
-      : action === 'send_back' ? `Something needs fixing in ${prev?.name}. It goes back to that section’s queue with your reason.`
+      : action === 'send_back' ? `Something needs fixing in ${prev?.name}. It goes back to that section’s queue with your reason, and the customer sees the reason in their order tracking.`
       : 'The order is cancelled, items go back into stock and any card payment is refunded. The customer sees your reason.',
     confirmLabel: action === 'hold' ? 'Put on hold' : action === 'send_back' ? 'Send back' : 'Reject order',
     tone: action === 'reject' ? 'danger' : undefined,
@@ -254,6 +254,12 @@ onBeforeUnmount(stopScan)
 const handedTo = ref('')
 const VIA = { customer_qr: 'Customer scanned the slip QR', customer_app: 'Customer confirmed in the HelaMart app', staff: 'Confirmed by staff' } as const
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+/** Why the order is back in this section (the latest send-back, while it's still being redone). */
+function sentBack(o: DeskOrder) {
+  const cur = currentStage(o)
+  const n = cur && cur.state !== 'done' ? cur.notes.findLast((x) => x.text.startsWith('Sent back')) : undefined
+  return n && { ...n, reason: n.text.replace(/^Sent back[^:]*:\s*/, '') }
+}
 const allNotes = (o: DeskOrder) => (o.stages ?? []).flatMap((s) => s.notes.map((n) => ({ ...n, stage: s.name }))).sort((a, b) => b.at.localeCompare(a.at))
 </script>
 
@@ -338,6 +344,7 @@ const allNotes = (o: DeskOrder) => (o.stages ?? []).flatMap((s) => s.notes.map((
               <p v-if="view.branches.length > 1 && branch === 'all'" class="truncate text-[0.7rem] text-muted">{{ o.branchName }} branch</p>
               <p v-if="currentStage(o)!.assigneeName" class="mt-1 truncate text-[0.7rem] text-ink"><AppIcon name="user" :size="10" class="inline" /> {{ currentStage(o)!.assigneeName }}</p>
               <p v-if="currentStage(o)!.holdReason" class="mt-1 line-clamp-2 text-[0.7rem] font-semibold text-[#8a3d00]">{{ currentStage(o)!.holdReason }}</p>
+              <p v-if="sentBack(o)" class="mt-1 line-clamp-2 text-[0.7rem] font-semibold text-[#8A2E2E]" data-testid="card-sent-back"><AppIcon name="arrow-left" :size="10" class="inline" /> Sent back: {{ sentBack(o)!.reason }}</p>
               <button
                 v-if="primary(o)"
                 type="button"
@@ -413,6 +420,13 @@ const allNotes = (o: DeskOrder) => (o.stages ?? []).flatMap((s) => s.notes.map((
         <div v-if="selected.received" class="flex items-center gap-3 rounded-xl bg-hela-green p-3 text-sm text-white" data-testid="desk-received">
           <span class="grid size-9 shrink-0 place-items-center rounded-full bg-hela-gold text-hela-green-900"><AppIcon name="check" :size="18" :stroke-width="3" /></span>
           <span><b>{{ selected.delivery.method === 'pickup' ? 'Collected' : 'Received' }} by {{ selected.received.receivedBy ?? selected.customerName }}</b> · {{ fmt(selected.received.at) }}<span class="block text-xs text-white/80">{{ VIA[selected.received.via] }}<template v-if="selected.received.staffName"> · {{ selected.received.staffName }}</template></span></span>
+        </div>
+
+        <div v-if="sentBack(selected) && !isClosed(selected)" class="flex items-start gap-3 rounded-xl bg-[#FBEAEA] p-3 text-sm text-[#8A2E2E] ring-1 ring-[#E8A0A0]" data-testid="desk-sent-back">
+          <AppIcon name="arrow-left" :size="16" class="mt-0.5 shrink-0" />
+          <span><b>{{ sentBack(selected)!.text.split(':')[0] }}</b> · {{ sentBack(selected)!.by }} · {{ fmt(sentBack(selected)!.at) }}
+            <span class="mt-0.5 block text-ink">{{ sentBack(selected)!.reason }}</span>
+            <span class="mt-0.5 block text-xs text-hela-green">Shown to the customer</span></span>
         </div>
 
         <div v-if="selected.status === 'cancelled' || selected.status === 'refunded'" class="rounded-xl bg-[#FBEAEA] p-3 text-sm text-[#8A2E2E]">This order was {{ selected.status }}. {{ selected.history.at(-1)?.note }}</div>

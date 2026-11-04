@@ -3,6 +3,7 @@ import type { AdminOrder } from '~/types/admin'
 import { ApiError } from './apiError'
 import { api, backendEnabled } from './http'
 import type { PlaceOrderRequest as PlaceOrderBody } from './apiTypes'
+import { LEGAL_CONSENT } from '~/data/legal'
 import { latency, readDb, verifyAccessToken } from './mock/server'
 import { readAdminDb, writeAdminDb } from './admin/db'
 import { markReceived } from './admin/handover'
@@ -136,6 +137,8 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _u
     lines: req.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
     delivery: req.delivery,
     payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
+    // Checkout only calls this once the customer has agreed to both documents.
+    consent: { ...LEGAL_CONSENT },
   }
   // "Your orders", the slip QR and the Order desk read the order back from the API.
   const order = await api<Order>('/orders', { method: 'POST', body, token: accessToken })

@@ -11,6 +11,7 @@
     <OffersPanel />
     <AuthDialog />
     <PartnerAuthDialog />
+    <LegalReader />
     <AreaFinder />
     <PhoneRequiredDialog />
   </div>
