@@ -113,7 +113,8 @@ export function trackingSteps(o: AdminOrder, storeName?: string): TrackingStep[]
   const index = o.stageIndex ?? 0
   const pickup = o.delivery.method === 'pickup'
   stages.forEach((s, i) => {
-    const shared = s.notes.filter((n) => n.shared).map((n) => ({ at: n.at, text: n.text }))
+    // Shared updates, and always the reason an order was sent back (older ones were saved as internal notes).
+    const shared = s.notes.filter((n) => n.shared || n.text.startsWith('Sent back')).map((n) => ({ at: n.at, text: n.text }))
     const notes = shared.length ? shared : undefined
     if (i < index) return steps.push({ label: s.customerDoneLabel, hint: s.customerHint, icon: s.icon, state: 'done', at: s.completedAt, notes })
     if (i > index) return steps.push({ label: s.customerDoneLabel, icon: s.icon, state: 'todo' })
