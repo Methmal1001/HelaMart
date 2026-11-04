@@ -1,8 +1,11 @@
 <script setup lang="ts">
+/** `shopper: false` hides the cart and shopper account buttons (pages that aren't for shopping, e.g. the partner sign-up). */
+const { shopper = true } = defineProps<{ shopper?: boolean }>()
 const { itemCount } = useCart()
 const { openPanel } = useStoreUi()
 const { hasEntered } = useStoreExperience()
 const bill = useBill()
+const { openPartner } = usePartnerEntry()
 </script>
 
 <template>
@@ -16,13 +19,14 @@ const bill = useBill()
           <AppIcon name="door" :size="17" />
           {{ hasEntered ? 'Back to 3D store' : 'Enter 3D store' }}
         </NuxtLink>
-        <NuxtLink to="/partner" class="hidden h-10 items-center px-2 text-sm font-semibold text-hela-green hover:underline lg:inline-flex">Sell on HelaMart</NuxtLink>
+        <a href="/partner" class="hidden h-10 items-center px-2 text-sm font-semibold text-hela-green hover:underline lg:inline-flex" @click.prevent="openPartner()">Sell on HelaMart</a>
         <NuxtLink to="/browse" class="btn-ghost h-10" active-class="!bg-hela-green-50 !ring-hela-green/30">
           <AppIcon name="list" :size="17" />
           <span class="hidden sm:inline">Aisles</span>
         </NuxtLink>
-        <AccountButton compact />
-        <button type="button" class="btn-primary relative h-10" :aria-label="`Open cart, ${itemCount} items`" @click="openPanel('cart')">
+        <slot name="actions" />
+        <AccountButton v-if="shopper" compact />
+        <button v-if="shopper" type="button" class="btn-primary relative h-10" :aria-label="`Open cart, ${itemCount} items`" @click="openPanel('cart')">
           <AppIcon name="cart" :size="18" />
           <span class="hidden tabular-nums sm:inline">{{ formatLKR(bill.itemsTotalCents) }}</span>
           <span

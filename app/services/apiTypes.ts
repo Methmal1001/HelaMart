@@ -209,6 +209,27 @@ export interface ApplicationReceiptDto {
   reference: string
 }
 
+/** A partner (supermarket owner) account — kept on the supermarket's row in Tenants, not with shoppers. */
+export interface PartnerDto {
+  id: string
+  name: string
+  email: string
+  phone: string
+  /** "draft" until the application is submitted, then the supermarket's review status. */
+  status: string
+  reference: string
+  supermarketName?: string | null
+  reason?: string | null
+  submittedAt?: string | null
+}
+
+export interface PartnerSessionDto {
+  partner: PartnerDto
+  token: string
+  expiresAt: number
+  remember: boolean
+}
+
 export interface ApplicationStatusDto {
   name: string
   reference: string

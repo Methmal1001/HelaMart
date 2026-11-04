@@ -1,6 +1,6 @@
 import type { BrandingProfile, TenantDocument, TenantStatus } from '~/types/admin'
 import { api } from './http'
-import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
+import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PartnerDto, PartnerSessionDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
 import { circlePolygon } from '~/lib/geo'
 import { townsInside } from '~/lib/coverage'
 
@@ -27,10 +27,31 @@ export interface ApplicationInput {
   declaration: boolean
 }
 
-/** POST /partners/applications — validated (and rate limited) again on the server. */
-export function submitApplication(input: ApplicationInput): Promise<{ reference: string }> {
+// ---- partner accounts (the supermarket owner's own sign-in, separate from shopper accounts)
+
+export type Partner = PartnerDto & { status: TenantStatus | 'draft' }
+export type PartnerSession = PartnerSessionDto & { partner: Partner }
+
+export function registerPartner(input: { name: string; email: string; phone: string; password: string }, remember: boolean): Promise<PartnerSession> {
+  return api<PartnerSession>('/partners/register', { method: 'POST', body: { ...input, remember } })
+}
+
+export function loginPartner(email: string, password: string, remember: boolean): Promise<PartnerSession> {
+  return api<PartnerSession>('/partners/login', { method: 'POST', body: { email, password, remember } })
+}
+
+export function logoutPartner(token: string): Promise<void> {
+  return api<void>('/partners/logout', { method: 'POST', token })
+}
+
+export function partnerMe(token: string): Promise<Partner> {
+  return api<Partner>('/partners/me', { token })
+}
+
+/** POST /partners/applications — the signed-in partner's application, validated (and rate limited) again on the server. */
+export function submitApplication(token: string, input: ApplicationInput): Promise<{ reference: string }> {
   const body: ApplicationRequest = { ...input, vatNumber: input.vatNumber.trim() || undefined }
-  return api<ApplicationReceiptDto>('/partners/applications', { method: 'POST', body })
+  return api<ApplicationReceiptDto>('/partners/applications', { method: 'POST', body, token })
 }
 
 /** Status lookup needs both the reference and the email used — no enumeration of applicants. */

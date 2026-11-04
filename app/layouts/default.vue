@@ -10,6 +10,7 @@
     <OrdersPanel />
     <OffersPanel />
     <AuthDialog />
+    <PartnerAuthDialog />
     <AreaFinder />
     <PhoneRequiredDialog />
   </div>

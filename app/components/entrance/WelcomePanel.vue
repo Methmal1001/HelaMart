@@ -4,6 +4,7 @@ import { AVATAR_OPTIONS } from '~/composables/useAvatar'
 const { avatar, select } = useAvatar()
 const xp = useStoreExperience()
 const { show } = useToasts()
+const { openPartner } = usePartnerEntry()
 const panel = ref<HTMLElement | null>(null)
 const body = ref<HTMLElement | null>(null)
 
@@ -365,7 +366,7 @@ const steps = ['Choose avatar', 'Enter store', 'Explore aisles', 'Checkout']
             <div class="mt-3 lg:hidden"><HomeBanners variant="strip" /></div>
             <p class="mt-3 border-t border-line pt-3 text-xs text-muted">
               Own a supermarket in Sri Lanka?
-              <NuxtLink to="/partner" class="font-semibold text-hela-green underline-offset-4 hover:underline">Join HelaMart →</NuxtLink>
+              <a href="/partner" class="font-semibold text-hela-green underline-offset-4 hover:underline" @click.prevent="openPartner()">Join HelaMart →</a>
             </p>
           </div>
         </div>

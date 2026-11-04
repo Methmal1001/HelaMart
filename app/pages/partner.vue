@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TenantDocument, TenantStatus } from '~/types/admin'
 import { DISTRICTS, isValidBrNumber, isValidNic } from '~/data/sriLanka'
-import { applicationStatus, submitApplication, type ApplicationInput } from '~/services/partnerService'
+import { submitApplication, type ApplicationInput } from '~/services/partnerService'
 import { ApiError } from '~/services/apiError'
 
 useHead({ title: 'Sell on HelaMart — register your supermarket' })
@@ -15,6 +15,25 @@ const errors = reactive<Record<string, string>>({})
 const busy = ref(false)
 const serverError = ref('')
 const reference = ref('')
+
+// Applying needs a partner account (kept with the supermarket's record, not a shopper account).
+const { partner, status, restore, refresh, logout, token, requestLogin } = usePartnerAuth()
+const askLogin = () => requestLogin('Log in or register as a partner to bring your supermarket to HelaMart.')
+onMounted(() => void restore().then(() => refresh().catch(() => undefined)))
+watch(status, (s) => s === 'anonymous' && void askLogin(), { immediate: true })
+// Start the owner details from the partner account; the email is the account's sign-in.
+watch(partner, (p) => {
+  if (!p) return
+  f.ownerName ||= p.name
+  f.email = p.email
+  f.phone ||= p.phone
+}, { immediate: true })
+/** The form is for a new application, or for applying again after a rejection. */
+const canApply = computed(() => partner.value?.status === 'draft' || partner.value?.status === 'rejected')
+async function signOut() {
+  await logout()
+  await navigateTo('/')
+}
 
 const DOCS: { kind: TenantDocument['kind']; label: string; required: boolean }[] = [
   { kind: 'br_certificate', label: 'Business registration certificate', required: true },
@@ -71,7 +90,8 @@ async function submit() {
       expectedBranches: Number(f.expectedBranches),
       documents: DOCS.flatMap((d) => (docs[d.kind] ? [{ kind: d.kind, ...docs[d.kind]! }] : [])),
     }
-    reference.value = (await submitApplication(input)).reference
+    reference.value = (await submitApplication(token(), input)).reference
+    await refresh().catch(() => undefined)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   } catch (e) {
     serverError.value = e instanceof ApiError ? e.message : 'Something went wrong. Please try again.'
@@ -80,24 +100,8 @@ async function submit() {
   }
 }
 
-// ---- status lookup
-const lookup = reactive({ reference: '', email: '' })
-const lookupBusy = ref(false)
-const lookupError = ref('')
-const result = ref<Awaited<ReturnType<typeof applicationStatus>> | null>(null)
-async function check() {
-  lookupError.value = ''
-  result.value = null
-  lookupBusy.value = true
-  try {
-    result.value = await applicationStatus(lookup.reference, lookup.email)
-  } catch (e) {
-    lookupError.value = e instanceof ApiError ? e.message : 'Could not check the status.'
-  } finally {
-    lookupBusy.value = false
-  }
-}
-const STATUS_TEXT: Record<TenantStatus, string> = {
+const STATUS_TEXT: Record<TenantStatus | 'draft', string> = {
+  draft: 'Not submitted yet — fill in the application form to apply.',
   pending: 'Under review — HelaMart is verifying your documents.',
   active: 'Approved — your admin sign-in details have been sent to the owner’s email.',
   restricted: 'Approved, but currently restricted by HelaMart.',
@@ -109,9 +113,28 @@ const field = 'field h-11'
 
 <template>
   <div class="min-h-dvh bg-warm-white">
-    <SiteHeader />
+    <SiteHeader :shopper="false">
+      <template #actions>
+        <span v-if="partner" class="hidden items-center gap-1.5 rounded-full bg-hela-gold-100 px-3 py-1.5 text-xs font-bold text-[#5a4518] ring-1 ring-hela-gold sm:inline-flex" data-testid="partner-chip">
+          <AppIcon name="store" :size="13" />Partner · {{ partner.name }}
+        </span>
+        <button v-if="partner" type="button" class="btn-ghost h-10" @click="signOut()">Sign out</button>
+      </template>
+    </SiteHeader>
     <main class="mx-auto max-w-6xl px-4 pt-8 pb-16 sm:px-6">
-      <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
+      <div v-if="status === 'unknown'" class="grid min-h-[50vh] place-items-center text-sm text-muted" role="status">Checking your sign-in…</div>
+
+      <section v-else-if="status === 'anonymous'" class="card mx-auto mt-6 max-w-lg p-8 text-center" data-testid="partner-login-required">
+        <span class="mx-auto grid size-12 place-items-center rounded-full bg-hela-green-50 text-hela-green"><AppIcon name="user" :size="22" /></span>
+        <h1 class="mt-4 text-2xl font-extrabold tracking-[-0.03em] text-hela-green">Log in to become a partner</h1>
+        <p class="mt-2 text-sm text-muted">Bringing your supermarket to HelaMart needs a partner account — separate from a shopping account. Log in, or register one, to continue.</p>
+        <div class="mt-6 flex flex-wrap justify-center gap-2">
+          <button type="button" class="btn-primary h-11 px-6" @click="askLogin()">Log in or register</button>
+          <NuxtLink to="/" class="btn-ghost h-11 px-5">Back to HelaMart</NuxtLink>
+        </div>
+      </section>
+
+      <div v-else class="grid gap-8 lg:grid-cols-[1fr_22rem]">
         <section>
           <p class="eyebrow">For supermarkets</p>
           <h1 class="mt-2 text-3xl font-extrabold tracking-[-0.04em] text-hela-green sm:text-4xl">Bring your supermarket to HelaMart</h1>
@@ -120,13 +143,15 @@ const field = 'field h-11'
             Once approved you get a secure admin portal to run your branches, officers, products, stock and orders.
           </p>
 
-          <div v-if="reference" class="card mt-6 p-6" role="status">
+          <div v-if="reference || !canApply" class="card mt-6 p-6" role="status" data-testid="partner-application-status">
             <div class="flex items-start gap-3">
               <span class="grid size-11 shrink-0 place-items-center rounded-full bg-hela-green text-hela-gold"><AppIcon name="check" :size="22" :stroke-width="3" /></span>
               <div>
-                <h2 class="text-lg font-extrabold text-ink">Application received</h2>
-                <p class="mt-1 text-sm text-muted">Your reference number is <b class="text-ink">{{ reference }}</b>. Keep it safe — you’ll need it with your email to check progress.</p>
-                <p class="mt-2 text-sm text-muted">HelaMart reviews applications within 3 working days. When approved, the owner receives the admin sign-in details by email.</p>
+                <h2 class="text-lg font-extrabold text-ink">{{ reference ? 'Application received' : partner?.supermarketName }}</h2>
+                <p class="mt-1 text-sm text-muted">Your reference number is <b class="text-ink">{{ reference || partner?.reference }}</b>. Log in to this partner account any time to follow its progress.</p>
+                <p v-if="partner" class="mt-2 flex flex-wrap items-center gap-2 text-sm"><AdminBadge :value="partner.status" /><span class="text-muted">{{ STATUS_TEXT[partner.status] }}</span></p>
+                <p v-if="partner?.reason" class="mt-1 text-xs text-[#8A2E2E]">Reason: {{ partner.reason }}</p>
+                <p v-if="partner?.status === 'pending'" class="mt-2 text-sm text-muted">HelaMart reviews applications within 3 working days. When approved, the owner receives the admin sign-in details by email.</p>
               </div>
             </div>
           </div>
@@ -150,7 +175,7 @@ const field = 'field h-11'
               <legend class="px-1 text-sm font-bold text-ink">Owner (becomes the chain admin)</legend>
               <label><span class="field-label">Full name</span><input v-model="f.ownerName" :class="field" maxlength="80" autocomplete="name" :aria-invalid="!!errors.ownerName"><span v-if="errors.ownerName" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.ownerName }}</span></label>
               <label><span class="field-label">NIC number</span><input v-model="f.ownerNic" :class="field" maxlength="12" :aria-invalid="!!errors.ownerNic"><span v-if="errors.ownerNic" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.ownerNic }}</span></label>
-              <label><span class="field-label">Email</span><input v-model="f.email" type="email" :class="field" autocomplete="email" :aria-invalid="!!errors.email"><span v-if="errors.email" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.email }}</span></label>
+              <label><span class="field-label">Email</span><input v-model="f.email" type="email" :class="field" class="bg-cream" autocomplete="email" readonly title="Your partner account’s email" :aria-invalid="!!errors.email"><span v-if="errors.email" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.email }}</span></label>
               <label><span class="field-label">Mobile</span><input v-model="f.phone" type="tel" :class="field" autocomplete="tel" :aria-invalid="!!errors.phone"><span v-if="errors.phone" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.phone }}</span></label>
             </fieldset>
 
@@ -183,19 +208,16 @@ const field = 'field h-11'
         </section>
 
         <aside class="space-y-4">
-          <section class="card p-5" aria-labelledby="status-h">
-            <h2 id="status-h" class="font-bold text-ink">Check your application</h2>
-            <form class="mt-3 space-y-2.5" @submit.prevent="check">
-              <label class="block"><span class="field-label">Reference number</span><input v-model="lookup.reference" class="field" placeholder="HMA-2026-0004"></label>
-              <label class="block"><span class="field-label">Owner email</span><input v-model="lookup.email" type="email" class="field"></label>
-              <button type="submit" class="btn-ghost h-10 w-full" :disabled="lookupBusy || !lookup.reference || !lookup.email">{{ lookupBusy ? 'Checking…' : 'Check status' }}</button>
-            </form>
-            <p v-if="lookupError" class="mt-3 text-sm text-[#8A2E2E]" role="alert">{{ lookupError }}</p>
-            <div v-if="result" class="mt-3 rounded-xl bg-white p-3 text-sm ring-1 ring-line" role="status">
-              <p class="flex items-center justify-between gap-2"><b class="text-ink">{{ result.name }}</b><AdminBadge :value="result.status" /></p>
-              <p class="mt-1 text-muted">{{ STATUS_TEXT[result.status] }}</p>
-              <p v-if="result.reason" class="mt-1 text-xs text-[#8A2E2E]">Reason: {{ result.reason }}</p>
-            </div>
+          <section v-if="partner" class="card p-5" aria-labelledby="status-h">
+            <h2 id="status-h" class="font-bold text-ink">Your partner account</h2>
+            <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+              <dt class="text-muted">Owner</dt><dd class="font-semibold text-ink">{{ partner.name }}</dd>
+              <dt class="text-muted">Email</dt><dd class="truncate text-ink">{{ partner.email }}</dd>
+              <dt class="text-muted">Reference</dt><dd class="font-mono text-ink">{{ partner.reference }}</dd>
+              <dt class="text-muted">Status</dt><dd><AdminBadge :value="partner.status" /></dd>
+            </dl>
+            <p class="mt-2 text-xs text-muted">{{ STATUS_TEXT[partner.status] }}</p>
+            <p v-if="partner.reason" class="mt-1 text-xs text-[#8A2E2E]">Reason: {{ partner.reason }}</p>
           </section>
           <section class="card space-y-2 p-5 text-sm text-muted">
             <h2 class="font-bold text-ink">How it works</h2>

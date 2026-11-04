@@ -23,6 +23,7 @@ const TONES: Record<string, string> = {
   scheduled: 'bg-[#E3EEF9] text-[#1F4E7A]',
   ended: 'bg-[#F1F1EF] text-[#55595C]',
   rejected: 'bg-[#FBEAEA] text-[#8A2E2E]',
+  draft: 'bg-[#F1F1EF] text-[#55595C]',
   withdrawn: 'bg-[#F1F1EF] text-[#55595C]',
   // tasks
   todo: 'bg-[#F1F1EF] text-[#55595C]',
