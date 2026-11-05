@@ -64,6 +64,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/branches', label: 'Branches', icon: 'store', perm: 'branches.view' },
       { to: '/admin/order-desk', label: 'Order desk', icon: 'clipboard' },
       { to: '/admin/orders', label: 'Orders', icon: 'receipt', perm: 'orders.view' },
+      { to: '/admin/returns', label: 'Returns & refunds', icon: 'refresh', perm: 'orders.view' },
       { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'orders.view' },
       { to: '/admin/cash-handovers', label: 'Cash handovers', icon: 'tag', perm: 'finance.cash' },
       { to: '/admin/products', label: 'Products & stock', icon: 'package', perm: 'products.view' },

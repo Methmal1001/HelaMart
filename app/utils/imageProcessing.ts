@@ -181,3 +181,25 @@ async function encodeCanvas(c: HTMLCanvasElement, backgroundRemoved: boolean, qu
   if (!blob) throw new ImageRejected('Could not process this image.')
   return { blob, url: URL.createObjectURL(blob), width: c.width, height: c.height, backgroundRemoved }
 }
+
+/**
+ * A photo for a return / complaint: checked, resized to at most 1280 px on the long side and re-encoded as JPEG,
+ * returned as a data URL (sent with the request; the server re-checks it).
+ */
+export async function prepareEvidencePhoto(file: File): Promise<string> {
+  if (file.size > MAX_UPLOAD_BYTES) throw new ImageRejected('Photos must be 8 MB or smaller.')
+  if (!(await sniffImageType(file))) throw new ImageRejected('Upload a JPG, PNG or WebP photo.')
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    throw new ImageRejected('That photo couldn’t be read. Try another one.')
+  }
+  const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return canvas.toDataURL('image/jpeg', 0.82)
+}

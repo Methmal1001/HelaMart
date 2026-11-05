@@ -9,6 +9,7 @@ import { confirmMyOrderReceived } from '~/services/orderService'
 const { panel, closePanel, openPanel } = useStoreUi()
 const { isAuthenticated } = useAuth()
 const { orders, loaded, loading, error, viewingId, load } = useMyOrders()
+const { load: loadReturns, openFor } = useMyReturns()
 const { authorized } = useAuth()
 const { show } = useToasts()
 const confirming = ref(false)
@@ -27,7 +28,7 @@ async function confirmReceived(id: string) {
 }
 
 const open = computed(() => panel.value === 'orders' && isAuthenticated.value)
-watch(open, (v) => v && load(), { immediate: true })
+watch(open, (v) => v && (load(), loadReturns()), { immediate: true })
 
 const viewing = computed(() => orders.value.find((o) => o.id === viewingId.value) ?? null)
 const query = ref('')
@@ -48,7 +49,7 @@ function printBill() {
 let timer: ReturnType<typeof setInterval> | null = null
 watch(open, (v) => {
   if (timer) clearInterval(timer)
-  timer = v ? setInterval(() => document.visibilityState === 'visible' && load(), 20000) : null
+  timer = v ? setInterval(() => document.visibilityState === 'visible' && (load(), loadReturns()), 20000) : null
 })
 onBeforeUnmount(() => timer && clearInterval(timer))
 
@@ -82,6 +83,7 @@ function close() {
         · {{ viewing.received.via === 'customer_qr' ? 'confirmed by QR scan' : viewing.received.via === 'customer_app' ? 'confirmed by you' : 'confirmed by the store' }}
       </p>
       <OrderTracking :order="viewing" class="mb-3" />
+      <OrderReturns :order="viewing" />
       <OrderReceipt :order="viewing" />
     </div>
 
@@ -119,6 +121,7 @@ function close() {
               <span class="flex items-center gap-2">
                 <b class="truncate text-sm text-ink">{{ o.number }}</b>
                 <span class="shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold" :class="progressOf(o).tone">{{ progressOf(o).label }}</span>
+                <span v-if="openFor(o.id)" class="shrink-0 rounded-full bg-[#FFF4D6] px-2 py-0.5 text-[0.65rem] font-bold text-[#7A5600]" data-testid="order-return-badge">Return {{ openFor(o.id)!.status === 'approved' ? 'approved' : 'open' }}</span>
               </span>
               <span class="block truncate text-xs text-muted">{{ when(o.createdAt) }}<template v-if="o.storeName"> · {{ o.storeName }}</template></span>
               <span class="block truncate text-xs text-muted">{{ itemsText(o.breakdown.itemCount) }} · {{ o.lines.map((l) => l.name).join(', ') }}</span>

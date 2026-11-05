@@ -80,6 +80,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   return data as T
 }
 
+/** A protected image (e.g. a return photo) as an object URL for an <img>. Revoke it when done. */
+export async function apiImage(path: string, token: string): Promise<string> {
+  const base = useRuntimeConfig().public.apiBase.replace(/\/+$/, '')
+  const res = await fetch(`${base}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw new ApiError(res.status, 'The photo couldn’t be loaded.')
+  return URL.createObjectURL(await res.blob())
+}
+
 // ------------------------------------------------------------------ API health ("API offline" banner)
 
 /** Shared reachability flag: false after a request can't reach the API, true again on the next success. */
