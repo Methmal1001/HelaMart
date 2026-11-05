@@ -265,6 +265,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
                   <span class="min-w-0 flex-1">
                     <span class="block truncate font-bold text-ink">{{ r.store.name }}</span>
                     <span class="block truncate text-xs text-muted">{{ r.serving!.name }} · {{ formatKm(r.serving!.distanceKm) }}</span>
+                    <span class="mt-0.5 block"><ShopRating :rating="r.store.rating" /></span>
                   </span>
                   <span v-if="r.serving!.delivers" class="chip shrink-0 bg-hela-green-50 text-[0.65rem] text-hela-green"><AppIcon name="truck" :size="11" />Delivers</span>
                   <span v-else class="chip shrink-0 bg-hela-gold text-[0.65rem] font-extrabold text-hela-green-900"><AppIcon name="store" :size="11" />Pickup only</span>
@@ -290,7 +291,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
                 <li v-for="r in notDelivering" :key="r.store.id" class="rounded-xl bg-white/60 ring-1 ring-line">
                   <button type="button" class="flex w-full items-center gap-3 p-2.5 text-left text-sm" @click="focusStore(r.store.id)">
                     <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" size="size-8" class="opacity-70" />
-                    <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-ink/80">{{ r.store.name }}</span><span class="block text-xs text-muted">{{ r.nearest.name }} · {{ formatKm(r.nearest.distanceKm) }} · not available in your area</span></span>
+                    <span class="min-w-0 flex-1"><span class="block truncate font-semibold text-ink/80">{{ r.store.name }}</span><span class="block text-xs text-muted">{{ r.nearest.name }} · {{ formatKm(r.nearest.distanceKm) }} · not available in your area</span><span class="mt-0.5 block"><ShopRating :rating="r.store.rating" /></span></span>
                     <AppIcon name="eye" :size="15" class="shrink-0 text-muted" />
                   </button>
                 </li>
