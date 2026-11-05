@@ -101,6 +101,8 @@ export const TENANT_PERMISSION_GROUPS: PermissionGroup<TenantPermission>[] = [
       { id: 'customers.manage', label: 'Block customers from this chain', description: 'Stop a shopper ordering from your stores.', sensitive: true },
       { id: 'promotions.view', label: 'View promotions', description: 'See offers and their usage.' },
       { id: 'promotions.manage', label: 'Manage promotions', description: 'Create, pause and delete offers.' },
+      { id: 'reviews.view', label: 'View customer reviews', description: 'Read what customers say about your products.' },
+      { id: 'reviews.manage', label: 'Reply to customer reviews', description: 'Reply publicly to reviews; shoppers see it under the review.' },
     ],
   },
   {
@@ -153,7 +155,7 @@ export const ROLE_IDS = {
 /** Permissions a Branch Manager role template holds. */
 export const BRANCH_MANAGER_PERMISSIONS: TenantPermission[] = [
   'dashboard.view', 'reports.view', 'finance.cash', 'branches.view', 'orders.view', 'orders.manage', 'orders.refund', 'products.view',
-  'inventory.manage', 'customers.view', 'promotions.view', 'tasks.view', 'tasks.manage', 'staff.view', 'staff.manage', 'audit.view',
+  'inventory.manage', 'customers.view', 'promotions.view', 'reviews.view', 'reviews.manage', 'tasks.view', 'tasks.manage', 'staff.view', 'staff.manage', 'audit.view',
 ]
 
 /**

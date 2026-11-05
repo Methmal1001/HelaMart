@@ -70,6 +70,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/categories', label: 'Categories', icon: 'list', perm: 'products.view' },
       { to: '/admin/customers', label: 'Customers', icon: 'users', perm: 'customers.view' },
       { to: '/admin/promotions', label: 'Promotions', icon: 'gift', perm: 'promotions.view' },
+      { to: '/admin/reviews', label: 'Customer reviews', icon: 'sparkle', perm: 'reviews.view' },
     ],
   },
   {

@@ -100,12 +100,19 @@ export interface PublicBranchDto {
   phone?: string
 }
 
+/** A supermarket's rating from the last 12 months of reviews. `average` is absent until it has enough reviews. */
+export interface ShopRatingDto {
+  average?: number
+  count: number
+}
+
 export interface PublicStoreDto {
   id: string
   name: string
   brandColor: string
   branding?: BrandingProfileDto
   branches: PublicBranchDto[]
+  rating?: ShopRatingDto
 }
 
 export interface ProductDto {
@@ -125,6 +132,7 @@ export interface ProductDto {
   model?: string
   /** Units available at the requested branch. */
   stock: number
+  reviewsEnabled?: boolean
 }
 
 /** GET /stores/{storeId}/categories — visible categories in the supermarket's order. */
@@ -245,6 +253,38 @@ export interface ApplicationStatusDto {
   status: string
   reason?: string
   submittedAt: string
+}
+
+// ------------------------------------------------------------------ product reviews
+
+export interface ReviewReplyDto {
+  text: string
+  at: string
+  /** The supermarket's name for shoppers; the staff member's name in the admin panel. */
+  by: string
+}
+
+export interface ReviewDto {
+  id: string
+  /** First name + last initial, e.g. "Nimal P." */
+  author: string
+  rating: number
+  comment: string
+  createdAt: string
+  updatedAt: string
+  reply?: ReviewReplyDto
+}
+
+export interface ProductReviewsDto {
+  summary: { average: number; count: number; breakdown: number[] }
+  reviews: ReviewDto[]
+  page: number
+  pageSize: number
+  canReview: boolean
+  cannotReviewReason?: 'sign_in' | 'not_purchased' | 'not_received' | 'blocked' | 'disabled'
+  mine?: ReviewDto
+  /** False when the supermarket turned reviews off for this product: nothing is listed. */
+  reviewsEnabled: boolean
 }
 
 /** Codes the server sends that end a signed-in session (sign in again). */

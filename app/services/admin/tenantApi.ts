@@ -114,6 +114,8 @@ export interface ProductInput {
   image?: string | null
   /** New products only: make it this branch's own product (branch staff always add to their branch). */
   ownerBranchId?: string
+  /** Does this product have a review section for shoppers? Required for a new product. */
+  reviewsEnabled: boolean
 }
 
 export function createProduct(token: string, input: ProductInput): Promise<AdminProduct> {

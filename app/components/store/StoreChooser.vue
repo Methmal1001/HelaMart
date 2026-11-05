@@ -133,7 +133,8 @@ watch([() => choice.value?.storeId, loaded], async () => {
             <span v-if="choice?.storeId === r.store.id" class="absolute top-2 right-2 grid size-5 place-items-center rounded-full text-white" :style="{ background: r.store.branding.primaryColor }"><AppIcon name="check" :size="12" :stroke-width="3" /></span>
             <StoreBadge :name="r.store.name" :branding="r.store.branding" :color="r.store.brandColor" size="size-10" />
             <span class="mt-2 line-clamp-2 text-sm leading-tight font-bold text-ink">{{ r.store.name }}</span>
-            <span class="mt-0.5 mb-2 block truncate text-[0.7rem] text-muted">{{ r.serving!.name }} branch</span>
+            <span class="mt-0.5 block truncate text-[0.7rem] text-muted">{{ r.serving!.name }} branch</span>
+            <span class="mt-1 mb-2 block"><ShopRating :rating="r.store.rating" /></span>
             <span v-if="r.serving!.delivers" class="mt-auto inline-flex items-center gap-1 self-start rounded-full bg-hela-green-50 px-1.5 py-0.5 text-[0.6rem] font-bold text-hela-green"><AppIcon name="truck" :size="10" />Delivers · {{ formatKm(r.serving!.distanceKm) }}</span>
             <span v-else class="mt-auto inline-flex items-center gap-1 self-start rounded-full bg-hela-gold px-1.5 py-0.5 text-[0.6rem] font-extrabold text-hela-green-900" :data-testid="`pickup-only-${r.store.id}`"><AppIcon name="store" :size="10" />Pickup only · {{ formatKm(r.serving!.distanceKm) }}</span>
           </button>

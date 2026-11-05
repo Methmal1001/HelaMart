@@ -24,6 +24,8 @@ export type TenantPermission =
   | 'reports.view'
   | 'finance.view'
   | 'finance.cash'
+  | 'reviews.view'
+  | 'reviews.manage'
   | 'branches.view'
   | 'branches.manage'
   | 'orders.view'
@@ -393,6 +395,8 @@ export interface AdminProduct extends Omit<Product, 'stock' | 'shape'> {
   notSoldAt?: string[]
   /** A branch's own product (added by that branch; sold only there). Absent = chain catalogue. */
   ownerBranchId?: string
+  /** Whether shoppers see a review section for this product. */
+  reviewsEnabled: boolean
 }
 
 export interface AdminCategory {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { progressOf } from '~/composables/useMyOrders'
 import { confirmMyOrderReceived } from '~/services/orderService'
+import { backendEnabled } from '~/services/http'
 
 /**
  * "Your orders": every order the customer has placed, newest first. Tap one to
@@ -83,6 +84,7 @@ function close() {
       </p>
       <OrderTracking :order="viewing" class="mb-3" />
       <OrderReceipt :order="viewing" />
+      <OrderReviewPrompt v-if="viewing.progress === 'delivered' && viewing.storeId && backendEnabled()" :key="viewing.id" :order="viewing" />
     </div>
 
     <!-- The list -->

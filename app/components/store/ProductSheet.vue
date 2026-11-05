@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { catalogVersion, getProduct } from '~/data/products'
 import { getCategory } from '~/data/categories'
+import { backendEnabled } from '~/services/http'
+import type { StoreChoice } from '~/composables/useStoreSelection'
 
 const { selectedProductId, closeProduct, openPanel } = useStoreUi()
 const { add, quantityOf } = useCart()
@@ -9,6 +11,9 @@ const { phase, goToProduct } = useStoreExperience()
 const { promoFor } = useOffers()
 const promo = computed(() => (product.value ? promoFor(product.value) : null))
 const route = useRoute()
+// Reviews belong to the supermarket the shopper is browsing.
+const storeChoice = useState<StoreChoice | null>('store-choice', () => null)
+const reviewStoreId = computed(() => (backendEnabled() ? storeChoice.value?.storeId ?? null : null))
 
 const product = computed(() => {
   void catalogVersion.value
@@ -119,6 +124,8 @@ async function findInStore() {
         <AppIcon name="pin" :size="16" />
         Show me where it is
       </button>
+
+      <ProductReviews v-if="reviewStoreId && product.reviewsEnabled !== false" :key="`${reviewStoreId}-${product.id}`" :store-id="reviewStoreId" :product-id="product.id" />
     </div>
   </SidePanel>
 </template>

@@ -1,6 +1,6 @@
 import type { BrandingProfile, TenantDocument, TenantStatus } from '~/types/admin'
 import { api } from './http'
-import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PartnerDto, PartnerSessionDto, PublicBranchDto, PublicStoreDto } from './apiTypes'
+import type { ApplicationReceiptDto, ApplicationRequest, ApplicationStatusDto, PartnerDto, PartnerSessionDto, PublicBranchDto, PublicStoreDto, ShopRatingDto } from './apiTypes'
 import { circlePolygon } from '~/lib/geo'
 import { LEGAL_CONSENT } from '~/data/legal'
 import { townsInside } from '~/lib/coverage'
@@ -70,6 +70,7 @@ export interface PublicStore {
   /** HelaMart-approved branding, limited to the supermarket's current plan. */
   branding: BrandingProfile
   branches: PublicBranch[]
+  rating?: ShopRatingDto
 }
 
 export interface PublicBranch {
@@ -117,6 +118,7 @@ function fromStoreDto(s: PublicStoreDto): PublicStore {
       logoOnFixtures: !!s.branding?.logoOnFixtures,
     },
     branches: s.branches.filter((b) => b.status !== 'closed' && Number.isFinite(b.lat) && Number.isFinite(b.lng)).map(fromBranchDto),
+    rating: s.rating,
   }
 }
 function fromBranchDto(b: PublicBranchDto): PublicBranch {
