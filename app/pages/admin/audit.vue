@@ -4,17 +4,20 @@ import { listAudit } from '~/services/admin/common'
 
 type Entry = AuditEntry & { tenantName: string | null }
 
-definePageMeta({ layout: 'admin', middleware: 'admin', permission: { platform: 'platform.audit.view', tenant: 'audit.view' } })
+definePageMeta({ layout: 'admin', middleware: 'admin', superAdminOnly: true, permission: { platform: 'platform.audit.view', tenant: 'audit.view' } })
 useHead({ title: 'Audit log' })
 
 const auth = useAdminAuth()
 const notify = useAdminNotify()
 const entries = ref<Entry[]>([])
 const org = ref('all')
-const orgs = computed(() => [...new Set(entries.value.map((e) => e.tenantName ?? 'HelaMart platform'))].sort())
 const loading = ref(true)
 const severity = ref<'all' | 'warning' | 'critical'>('all')
 const area = ref('all')
+
+const TECHNICAL_ACTIONS = ['auth.', 'access.denied', 'report.chat']
+const businessEntries = computed(() => entries.value.filter((e) => !TECHNICAL_ACTIONS.some((prefix) => e.action.startsWith(prefix))))
+const orgs = computed(() => [...new Set(businessEntries.value.map((e) => e.tenantName ?? 'HelaMart platform'))].sort())
 
 async function load() {
   loading.value = true
@@ -28,9 +31,39 @@ async function load() {
 }
 onMounted(load)
 
-const AREAS = ['auth', 'tenant', 'branch', 'order', 'product', 'inventory', 'category', 'customer', 'promotion', 'task', 'staff', 'role', 'settings', 'platform', 'access']
+const AREAS = ['tenant', 'branch', 'order', 'product', 'inventory', 'category', 'customer', 'promotion', 'task', 'staff', 'role', 'settings', 'platform', 'banner', 'branding', 'cash', 'commission', 'finance', 'media', 'report', 'review', 'workflow']
+const ACTION_VERBS: Record<string, string> = {
+  approve: 'approved',
+  ban: 'banned',
+  cancel: 'cancelled',
+  complete: 'completed',
+  create: 'created',
+  delete: 'deleted',
+  hide: 'hidden',
+  reject: 'rejected',
+  remove: 'removed',
+  restrict: 'restricted',
+  resume: 'resumed',
+  show: 'made visible',
+  suspend: 'suspended',
+  update: 'updated',
+  withdraw: 'withdrawn',
+}
+const ACTION_LABELS: Record<string, string> = {
+  'platform.manage_start': 'Started managing supermarket',
+  'platform.manage_stop': 'Stopped managing supermarket',
+  'report.export': 'Exported report',
+}
+function actionLabel(action: string) {
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action]
+  const words = action.split(/[._]/)
+  const last = words.pop()!
+  const label = [...words, ACTION_VERBS[last] ?? last].join(' ')
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
 const rows = computed(() =>
-  entries.value.filter(
+  businessEntries.value.filter(
     (e) => (severity.value === 'all' || e.severity === severity.value || (severity.value === 'warning' && e.severity === 'critical')) && (area.value === 'all' || e.action.startsWith(area.value)) &&
       (org.value === 'all' || (e.tenantName ?? 'HelaMart platform') === org.value),
   ),
@@ -48,7 +81,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'nume
 
 function exportCsv() {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`
-  const csv = ['When,Who,Action,Target,Details,Level', ...rows.value.map((e) => [e.at, e.actorName, e.action, e.target, e.details ?? '', e.severity].map(esc).join(','))].join('\n')
+  const csv = ['When,Who,Action,Target,Details,Level', ...rows.value.map((e) => [e.at, e.actorName, actionLabel(e.action), e.target, e.details ?? '', e.severity].map(esc).join(','))].join('\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
   const a = Object.assign(document.createElement('a'), { href: url, download: `helamart-audit-${new Date().toISOString().slice(0, 10)}.csv` })
   a.click()
@@ -58,7 +91,7 @@ function exportCsv() {
 
 <template>
   <div>
-    <AdminPageHeader title="Audit log" description="Every sign-in, permission change and data change, with who did it and when. Entries can’t be edited or deleted.">
+    <AdminPageHeader title="Business audit log" description="Business changes and operational actions by staff, with who did them and when. Entries can’t be edited or deleted.">
       <button type="button" class="btn-ghost h-10" @click="load"><AppIcon name="refresh" :size="16" />Refresh</button>
       <button type="button" class="btn-ghost h-10" :disabled="!rows.length" @click="exportCsv"><AppIcon name="copy" :size="16" />Export CSV</button>
     </AdminPageHeader>
@@ -71,7 +104,7 @@ function exportCsv() {
       <template #cell-at="{ row }"><span class="whitespace-nowrap text-xs text-muted">{{ when(row.at) }}</span></template>
       <template #cell-actorName="{ row }"><span class="font-semibold text-ink">{{ row.actorName }}</span></template>
       <template #cell-tenantName="{ row }"><span class="text-xs text-muted">{{ row.tenantName ?? 'HelaMart platform' }}</span></template>
-      <template #cell-action="{ row }"><code class="text-xs">{{ row.action }}</code></template>
+      <template #cell-action="{ row }"><span class="text-sm font-medium text-ink">{{ actionLabel(row.action) }}</span></template>
       <template #cell-details="{ row }"><span class="text-xs text-muted">{{ row.details }}</span></template>
       <template #cell-severity="{ row }"><AdminBadge :value="row.severity" /></template>
     </AdminDataTable>

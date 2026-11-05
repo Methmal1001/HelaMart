@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IconName } from '~/types'
 import type { Permission } from '~/types/admin'
+import { ROLE_IDS } from '~/data/admin/permissions'
 
 useHead({
   titleTemplate: (t) => (t ? `${t} · HelaMart Admin` : 'HelaMart Admin'),
@@ -20,7 +21,7 @@ async function stopManaging() {
 const mobileOpen = ref(false)
 watch(() => route.fullPath, () => (mobileOpen.value = false))
 
-interface NavItem { to: string; label: string; icon: IconName; perm?: Permission }
+interface NavItem { to: string; label: string; icon: IconName; perm?: Permission; superAdminOnly?: boolean; disabled?: boolean }
 const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
   {
     label: 'Overview',
@@ -52,7 +53,7 @@ const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
   {
     label: 'System',
     items: [
-      { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'platform.audit.view' },
+      { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'platform.audit.view', superAdminOnly: true },
       { to: '/admin/settings', label: 'Platform settings', icon: 'settings', perm: 'platform.settings.manage' },
     ],
   },
@@ -72,6 +73,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/categories', label: 'Categories', icon: 'list', perm: 'products.view' },
       { to: '/admin/customers', label: 'Customers', icon: 'users', perm: 'customers.view' },
       { to: '/admin/promotions', label: 'Promotions', icon: 'gift', perm: 'promotions.view' },
+      { to: '/admin/reviews', label: 'Customer reviews', icon: 'sparkle', perm: 'reviews.view' },
     ],
   },
   {
@@ -85,7 +87,7 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
   {
     label: 'Records',
     items: [
-      { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'audit.view' },
+      { to: '/admin/audit', label: 'Audit log', icon: 'history', perm: 'audit.view', superAdminOnly: true },
       { to: '/admin/branding', label: 'Store branding', icon: 'sparkle', perm: 'settings.manage' },
       { to: '/admin/order-workflow', label: 'Order workflow', icon: 'list', perm: 'workflow.manage' },
       { to: '/admin/settings', label: 'Supermarket settings', icon: 'settings', perm: 'settings.manage' },
@@ -94,7 +96,12 @@ const TENANT_NAV: { label: string; items: NavItem[] }[] = [
 ]
 const nav = computed(() =>
   (auth.isPlatform.value ? PLATFORM_NAV : TENANT_NAV)
-    .map((g) => ({ ...g, items: g.items.filter((i) => (!i.perm || auth.can(i.perm))) }))
+    .map((g) => ({
+      ...g,
+      items: g.items
+        .filter((i) => (!i.perm || auth.can(i.perm)))
+        .map((i) => ({ ...i, disabled: !!i.superAdminOnly && auth.user.value?.roleId !== ROLE_IDS.superAdmin })),
+    }))
     .filter((g) => g.items.length),
 )
 const isActive = (to: string) => (to === '/admin' ? route.path === '/admin' : route.path.startsWith(to))
@@ -128,7 +135,7 @@ const orgLabel = computed(() => {
         <div v-for="g in nav" :key="g.label" class="mt-4">
           <p class="px-3 pb-1.5 text-[0.65rem] font-bold tracking-[0.16em] text-white/50 uppercase">{{ g.label }}</p>
           <NuxtLink
-            v-for="i in g.items"
+            v-for="i in g.items.filter((item) => !item.disabled)"
             :key="i.to"
             :to="i.to"
             class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition"
@@ -138,6 +145,16 @@ const orgLabel = computed(() => {
             <AppIcon :name="i.icon" :size="18" />
             {{ i.label }}
           </NuxtLink>
+          <span
+            v-for="i in g.items.filter((item) => item.disabled)"
+            :key="i.to"
+            class="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/40"
+            aria-disabled="true"
+            title="Only a Super Admin can view the audit log"
+          >
+            <AppIcon :name="i.icon" :size="18" />
+            {{ i.label }}
+          </span>
         </div>
       </nav>
       <div v-if="auth.user.value" class="border-t border-white/10 p-3">

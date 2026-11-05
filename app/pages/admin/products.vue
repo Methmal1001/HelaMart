@@ -84,7 +84,7 @@ const columns: TableColumn[] = [
 // ---- create / edit
 const SHAPES: ProductShape[] = ['box', 'tallBox', 'bottle', 'can', 'jar', 'bag', 'carton', 'tray', 'loaf', 'round', 'long', 'roll']
 const editing = ref<AdminProduct | 'new' | null>(null)
-const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: '' as '' | ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12, cost: '', vatExempt: false })
+const form = reactive({ owner: '' as string, name: '', brand: '', categoryId: 'staples' as CategoryId, size: '', unit: 'pack', price: '', description: '', shape: '' as '' | ProductShape, color: '#174D38', accent: '#E1C987', badge: '' as '' | NonNullable<AdminProduct['badge']>, reorderLevel: 12, cost: '', vatExempt: false, reviewsEnabled: null as boolean | null })
 const formError = ref('')
 /** Live margin next to the cost price. */
 const marginHint = computed(() => {
@@ -160,12 +160,17 @@ function openEdit(p: AdminProduct | 'new') {
   editing.value = p
   formError.value = ''
   void resetPhoto(p === 'new' ? undefined : p.image)
-  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: '', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12, cost: '', vatExempt: false })
+  if (p === 'new') Object.assign(form, { owner: isChain.value ? '' : (branch.value !== 'all' ? branch.value : (branches.value[0]?.id ?? '')), name: '', brand: '', categoryId: categories.value.find((c) => c.visible)?.id ?? categories.value[0]?.id ?? '', size: '', unit: 'pack', price: '', description: '', shape: '', color: '#174D38', accent: '#E1C987', badge: '', reorderLevel: 12, cost: '', vatExempt: false, reviewsEnabled: null })
   else Object.assign(form, { ...p, price: (p.priceCents / 100).toFixed(2), shape: p.shape ?? '', badge: p.badge ?? '', cost: p.costCents == null ? '' : (p.costCents / 100).toFixed(2), vatExempt: !!p.vatExempt })
 }
 
 async function save() {
   formError.value = ''
+  // Asked for every product: there's no default answer.
+  if (form.reviewsEnabled === null) {
+    formError.value = 'Choose whether customers can review this product.'
+    return
+  }
   const input: ProductInput = {
     name: form.name, brand: form.brand, categoryId: form.categoryId, size: form.size, unit: form.unit,
     priceCents: Math.round(Number.parseFloat(form.price) * 100), description: form.description, shape: form.shape || null,
@@ -173,6 +178,7 @@ async function save() {
     ownerBranchId: editing.value === 'new' ? form.owner || undefined : undefined,
     costCents: form.cost ? Math.round(Number(form.cost) * 100) : null,
     vatExempt: form.vatExempt,
+    reviewsEnabled: form.reviewsEnabled,
   }
   saving.value = true
   try {
@@ -303,7 +309,7 @@ async function saveStock() {
       <template #cell-name="{ row }">
         <div class="flex items-center gap-3">
           <ProductThumb :product="{ ...row, shape: row.shape ?? 'box' }" class="size-10 shrink-0" rounded="rounded-lg" />
-          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span><span v-if="row.ownerBranchId" class="ml-1.5 rounded bg-hela-green-50 px-1 text-[0.65rem] font-semibold text-hela-green" :data-testid="`own-${row.id}`">{{ branchNameOf(row.ownerBranchId) }} only</span><span v-if="branch !== 'all' && !soldAt(row, branch)" class="ml-1.5 rounded bg-[#FBEAEA] px-1 text-[0.65rem] font-semibold text-[#8A2E2E]">Not sold here</span></span></span>
+          <span class="min-w-0"><span class="block truncate font-semibold text-ink">{{ row.name }}</span><span class="block truncate text-xs text-muted">{{ row.brand }} · {{ row.size }}<span v-if="!row.image" class="ml-1.5 rounded bg-[#FFF4D6] px-1 text-[0.65rem] font-semibold text-[#7A5600]">No photo</span><span v-if="row.ownerBranchId" class="ml-1.5 rounded bg-hela-green-50 px-1 text-[0.65rem] font-semibold text-hela-green" :data-testid="`own-${row.id}`">{{ branchNameOf(row.ownerBranchId) }} only</span><span v-if="branch !== 'all' && !soldAt(row, branch)" class="ml-1.5 rounded bg-[#FBEAEA] px-1 text-[0.65rem] font-semibold text-[#8A2E2E]">Not sold here</span><span v-if="!row.reviewsEnabled" class="ml-1.5 rounded bg-[#F1F1EF] px-1 text-[0.65rem] font-semibold text-[#55595C]" :data-testid="`reviews-off-${row.id}`">Reviews off</span></span></span>
         </div>
       </template>
       <template #cell-categoryId="{ row }"><span class="text-muted">{{ getCategory(row.categoryId).shortName }}</span></template>
@@ -356,6 +362,18 @@ async function saveStock() {
         <label><span class="field-label">Badge</span><select v-model="form.badge" class="field"><option value="">None</option><option>Fresh</option><option>Local</option><option>New</option><option>Popular</option></select></label>
         <label><span class="field-label">Reorder level (per branch)</span><input v-model.number="form.reorderLevel" type="number" min="0" class="field"></label>
         <label class="sm:col-span-2"><span class="field-label">Description</span><textarea v-model="form.description" rows="2" maxlength="300" class="field h-auto py-2" /></label>
+        <fieldset class="sm:col-span-2" data-testid="reviews-choice">
+          <legend class="field-label">Should customers be able to review this product?</legend>
+          <div class="flex flex-wrap gap-2">
+            <label class="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ring-1 transition" :class="form.reviewsEnabled === true ? 'bg-hela-green-50 text-hela-green ring-hela-green' : 'bg-white text-ink ring-line'">
+              <input v-model="form.reviewsEnabled" type="radio" name="reviews-enabled" class="size-4 accent-hela-green" :value="true" data-testid="reviews-yes">Yes, show a review section
+            </label>
+            <label class="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ring-1 transition" :class="form.reviewsEnabled === false ? 'bg-hela-green-50 text-hela-green ring-hela-green' : 'bg-white text-ink ring-line'">
+              <input v-model="form.reviewsEnabled" type="radio" name="reviews-enabled" class="size-4 accent-hela-green" :value="false" data-testid="reviews-no">No reviews for this product
+            </label>
+          </div>
+          <p v-if="form.reviewsEnabled !== null" class="mt-1 text-xs text-muted">{{ form.reviewsEnabled === false ? 'Shoppers won’t see a review section. Reviews already written are kept and come back if you turn this on again.' : 'Shoppers can read reviews; customers who received the product can write one.' }}</p>
+        </fieldset>
         <fieldset class="sm:col-span-2" :aria-busy="photo.busy">
           <legend class="field-label">Product photo (shown on the shop shelves)</legend>
           <div class="flex flex-col gap-4 sm:flex-row">

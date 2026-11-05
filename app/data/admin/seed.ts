@@ -400,7 +400,7 @@ export function buildSeed({ hashPassword, now }: SeedInput) {
         const roll = r()
         stock[b.id] = roll < 0.07 ? 0 : roll < 0.18 ? 2 + Math.floor(r() * 10) : 20 + Math.floor(r() * 120)
       }
-      adminProducts.push({ ...prod, tenantId: t.id, priceCents: Math.round((prod.priceCents * factor) / 500) * 500 || prod.priceCents, stock, reorderLevel: 12, status: 'active', updatedAt: iso(now - Math.floor(r() * 30) * DAY) })
+      adminProducts.push({ ...prod, tenantId: t.id, priceCents: Math.round((prod.priceCents * factor) / 500) * 500 || prod.priceCents, stock, reorderLevel: 12, status: 'active', reviewsEnabled: true, updatedAt: iso(now - Math.floor(r() * 30) * DAY) })
     }
   }
 

@@ -81,6 +81,8 @@ export interface Product {
   model?: string
   /** Units available at the shopper's selected branch (undefined = not tracked). */
   stock?: number
+  /** The supermarket turned this product's review section on or off. */
+  reviewsEnabled?: boolean
 }
 
 export interface CartLine {
