@@ -142,7 +142,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
       <template #cell-createdAt="{ row }"><span class="whitespace-nowrap text-muted">{{ fmt(row.createdAt) }}</span></template>
       <template #cell-items="{ row }"><span class="tabular-nums">{{ row.breakdown.itemCount }}</span></template>
       <template #cell-total="{ row }"><span class="font-semibold tabular-nums">{{ formatLKR(row.breakdown.totalCents) }}</span></template>
-      <template #cell-payment="{ row }"><span class="text-xs text-muted">{{ row.payment.method === 'card' ? `Card •${row.payment.cardLast4}` : 'Cash on delivery' }}</span></template>
+      <template #cell-payment="{ row }"><span class="text-xs text-muted">{{ paymentLabel(row.payment, true) }}</span></template>
       <template #cell-status="{ row }"><AdminBadge :value="row.status" /></template>
       <template #cell-section="{ row }"><span class="text-xs font-semibold text-ink">{{ sectionOf(row) }}</span><span v-if="!isClosed(row) && currentStage(row)?.state === 'on_hold'" class="ml-1 text-[0.65rem] font-bold text-[#8a3d00]">ON HOLD</span></template>
     </AdminDataTable>
@@ -160,7 +160,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'numer
           <p v-if="selected.delivery.method === 'delivery'" class="text-ink">{{ selected.delivery.address }}, {{ selected.delivery.city }}</p>
           <p class="text-muted">{{ selected.delivery.slot }}</p>
           <p v-if="selected.delivery.notes" class="text-muted">Note: {{ selected.delivery.notes }}</p>
-          <p class="text-muted">Payment: {{ selected.payment.method === 'card' ? `Card •${selected.payment.cardLast4}` : 'Cash on delivery' }} · <b class="text-ink">{{ selected.payment.status.replace(/-/g, ' ') }}</b></p>
+          <p class="text-muted">Payment: {{ paymentLabel(selected.payment, true) }} · <b class="text-ink">{{ selected.payment.status.replace(/-/g, ' ') }}</b></p>
         </section>
         <section class="md:col-span-2">
           <h3 class="mb-2 text-xs font-bold tracking-wide text-muted uppercase">Items</h3>

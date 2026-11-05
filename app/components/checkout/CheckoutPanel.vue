@@ -16,6 +16,7 @@ const { choice: storeChoice, currentStore, pickupOnly, refresh: refreshStores } 
 const { load: loadOffers } = useOffers()
 const { load: loadOrders, openOrders } = useMyOrders()
 const { area } = useShoppingArea()
+const { balanceFor, load: loadCredit } = useStoreCredit()
 /** Home delivery only goes to the cities / villages in the chosen branch's delivery area. */
 const branch = computed(() => currentStore.value?.branches.find((b) => b.id === storeChoice.value?.branchId))
 const CITIES = computed(() => [...(branch.value?.coverage.places ?? [])].sort((a, b) => a.localeCompare(b)))
@@ -50,6 +51,12 @@ const slots = computed(() => {
 const delivery = reactive<DeliveryDetails>({ method: 'delivery', fullName: '', phone: '', address: '', city: '', slot: '', notes: '' })
 watch(CITIES, pickCity)
 const paymentMethod = ref<PaymentMethod>('cod')
+/** Store credit with this supermarket is spent first (the customer can turn it off); card or cash covers the rest. */
+const useCredit = ref(true)
+const creditAvailable = computed(() => balanceFor(storeChoice.value?.storeId))
+const creditApplied = computed(() => (useCredit.value ? Math.min(creditAvailable.value, bill.value.totalCents) : 0))
+const due = computed(() => bill.value.totalCents - creditApplied.value)
+const coveredByCredit = computed(() => creditApplied.value > 0 && due.value === 0)
 const card = reactive<CardDetails>({ name: '', number: '', expiry: '', cvc: '' })
 const errors = reactive<Record<string, string>>({})
 
@@ -65,6 +72,7 @@ watch(open, (v) => {
   }
   error.value = ''
   refreshStores()
+  void loadCredit()
   if (!delivery.fullName) delivery.fullName = user.value?.name ?? ''
   if (!delivery.phone) delivery.phone = user.value?.phone ?? ''
   pickCity()
@@ -99,7 +107,7 @@ function validateDelivery() {
 
 function validateCard() {
   Object.keys(errors).forEach((k) => delete errors[k])
-  if (paymentMethod.value !== 'card') return true
+  if (paymentMethod.value !== 'card' || coveredByCredit.value) return true
   const num = card.number.replace(/\s+/g, '')
   if (card.name.trim().length < 3) errors.cardName = 'Enter the name on the card.'
   if (!/^\d{13,19}$/.test(num)) errors.cardNumber = 'Enter a valid card number.'
@@ -151,7 +159,9 @@ async function pay() {
     branchId: storeChoice.value.branchId,
     lines: lines.value.map((l) => ({ ...l })),
     delivery: { ...delivery, method: fulfilment.value },
-    payment: { method: paymentMethod.value, card: paymentMethod.value === 'card' ? { ...card } : undefined },
+    payment: coveredByCredit.value
+      ? { method: 'credit' as const, useStoreCredit: true }
+      : { method: paymentMethod.value, card: paymentMethod.value === 'card' ? { ...card } : undefined, useStoreCredit: creditApplied.value > 0 },
   }
   try {
     const labels = { storeName: storeChoice.value.storeName, branchName: storeChoice.value.branchName }
@@ -163,6 +173,7 @@ async function pay() {
     void refreshStores()
     void loadOffers()
     void loadOrders()
+    void loadCredit()
   } catch (e) {
     if (isUnauthorized(e)) {
       error.value = 'Your session expired. Please log in again to finish paying.'
@@ -170,6 +181,7 @@ async function pay() {
     } else {
       error.value = e instanceof ApiError ? e.message : 'Payment could not be completed. Please try again.'
       if (e instanceof ApiError && e.code === 'CONSENT_REQUIRED') consent.value = { terms: false, privacy: false }
+      if (e instanceof ApiError && e.code === 'STORE_CREDIT_CHANGED') void loadCredit()
       // Stock changed or an item stopped selling: reload the branch's shelves so the cart can be fixed.
       cartProblem.value = e instanceof ApiError && ['OUT_OF_STOCK', 'PRODUCT_UNAVAILABLE', 'CART_EMPTY', 'CART_TOO_LARGE'].includes(e.code ?? '')
       if (cartProblem.value) void refreshStores()
@@ -331,7 +343,20 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
 
       <!-- 3. Payment -->
       <section v-else-if="step === 'payment'" class="space-y-4" aria-label="Payment">
-        <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Payment method">
+        <label v-if="creditAvailable > 0" class="flex cursor-pointer items-start gap-3 rounded-2xl bg-hela-gold-100/70 p-3.5 ring-1 ring-hela-gold" data-testid="use-store-credit">
+          <input v-model="useCredit" type="checkbox" class="mt-0.5 size-4 shrink-0 accent-hela-green">
+          <span class="min-w-0 flex-1 text-sm">
+            <b class="block text-ink">Use my store credit</b>
+            <span class="text-xs text-[#6d5622]">{{ formatLKR(creditAvailable) }} available at {{ storeChoice?.storeName }}<template v-if="useCredit && creditAvailable > creditApplied"> · {{ formatLKR(creditAvailable - creditApplied) }} left for next time</template></span>
+          </span>
+          <b v-if="useCredit" class="shrink-0 text-sm tabular-nums text-hela-green">− {{ formatLKR(creditApplied) }}</b>
+        </label>
+
+        <p v-if="coveredByCredit" class="flex items-center gap-2.5 rounded-xl bg-hela-green-50 p-3.5 text-sm text-ink ring-1 ring-hela-green/30" data-testid="paid-by-credit">
+          <AppIcon name="check" :size="18" :stroke-width="3" class="shrink-0 text-hela-green" />
+          <span><b>Paid in full with store credit.</b> Nothing to pay {{ fulfilment === 'delivery' ? 'on delivery' : 'at pickup' }}.</span>
+        </p>
+        <div v-else class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Payment method">
           <button
             v-for="m in (['cod', 'card'] as const)"
             :key="m"
@@ -350,7 +375,7 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
           </button>
         </div>
 
-        <div v-if="paymentMethod === 'card'" class="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-line">
+        <div v-if="paymentMethod === 'card' && !coveredByCredit" class="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-line">
           <label class="block">
             <span class="mb-1.5 block text-xs font-semibold text-ink">Name on card</span>
             <input v-model="card.name" :class="inputCls" autocomplete="cc-name" data-autofocus>
@@ -373,15 +398,19 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
               <span v-if="errors.cardCvc" class="mt-1 block text-xs text-[#8A2E2E]">{{ errors.cardCvc }}</span>
             </label>
           </div>
-          <p class="text-xs text-muted">Test cards: <b>4242 4242 4242 4242</b> succeeds · <b>4000 0000 0000 0002</b> is declined. Any future expiry and CVC.</p>
+          <p class="text-xs text-muted">Test cards: <b>4242 4242 4242 4242</b> succeeds · <b>4000 0000 0000 0002</b> is declined · <b>4000 0000 0000 0069</b> pays, but refunds to it are declined. Any future expiry and CVC.</p>
         </div>
 
         <div class="rounded-2xl bg-white p-4 ring-1 ring-line">
           <CartSummary :bill="bill" :show-hints="false" />
+          <dl v-if="creditApplied" class="mt-2 space-y-1 border-t border-line pt-2 text-sm" data-testid="credit-summary">
+            <div class="flex justify-between"><dt class="text-muted">Store credit</dt><dd class="font-semibold text-hela-green tabular-nums">− {{ formatLKR(creditApplied) }}</dd></div>
+            <div class="flex justify-between"><dt class="font-bold text-ink">To pay{{ coveredByCredit ? '' : paymentMethod === 'card' ? ' by card' : fulfilment === 'delivery' ? ' on delivery' : ' at pickup' }}</dt><dd class="font-extrabold text-ink tabular-nums">{{ formatLKR(due) }}</dd></div>
+          </dl>
         </div>
 
         <div ref="consentBox">
-          <LegalConsent v-model="consent" context="order" :cod="paymentMethod === 'cod'" :attention="consentAttention" />
+          <LegalConsent v-model="consent" context="order" :cod="paymentMethod === 'cod' && !coveredByCredit" :attention="consentAttention" />
         </div>
       </section>
 
@@ -427,8 +456,8 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
           Back
         </button>
         <div class="min-w-0 flex-1 text-right">
-          <p class="text-xs text-muted">Total</p>
-          <p class="text-lg font-extrabold tabular-nums text-hela-green">{{ formatLKR(bill.totalCents) }}</p>
+          <p class="text-xs text-muted">{{ step === 'payment' && creditApplied ? 'To pay' : 'Total' }}</p>
+          <p class="text-lg font-extrabold tabular-nums text-hela-green">{{ formatLKR(step === 'payment' ? due : bill.totalCents) }}</p>
         </div>
         <button v-if="step !== 'payment'" type="button" class="btn-primary h-12 px-5" :disabled="!bill.itemCount" @click="next">
           Continue
@@ -437,7 +466,7 @@ const inputCls = 'h-11 w-full rounded-xl border-0 bg-white px-3.5 text-sm text-i
         <button v-else type="button" class="btn-primary h-12 px-5" :disabled="placing || !bill.itemCount" @click="pay">
           <span v-if="placing" class="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" />
           <AppIcon v-else name="lock" :size="16" />
-          {{ placing ? 'Processing…' : paymentMethod === 'card' ? `Pay ${formatLKR(bill.totalCents)}` : 'Place order' }}
+          {{ placing ? 'Processing…' : paymentMethod === 'card' && !coveredByCredit ? `Pay ${formatLKR(due)}` : 'Place order' }}
         </button>
       </div>
     </template>

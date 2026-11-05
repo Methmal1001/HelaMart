@@ -100,6 +100,10 @@
     width: 100%;
     box-shadow: none !important;
   }
+  /* Printing a credit note: only the credit note, not the bill behind it. */
+  body.printing-credit-note .print-area:not(.credit-note-doc) {
+    display: none !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

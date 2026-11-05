@@ -6,6 +6,7 @@ import type { CategoryId, DeliveryDetails, IconName, Offer, OrderLine, OrderProg
 export type PlatformPermission =
   | 'platform.dashboard'
   | 'platform.finance'
+  | 'platform.disputes'
   | 'tenants.view'
   | 'tenants.review'
   | 'tenants.moderate'
@@ -29,6 +30,7 @@ export type TenantPermission =
   | 'orders.view'
   | 'orders.manage'
   | 'orders.refund'
+  | 'returns.approve_large'
   | 'workflow.manage'
   | 'products.view'
   | 'products.manage'
@@ -361,7 +363,7 @@ export interface AdminOrder {
   lines: OrderLine[]
   breakdown: PriceBreakdown
   delivery: DeliveryDetails
-  payment: { method: 'cod' | 'card'; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
+  payment: { method: 'cod' | 'card' | 'credit' | 'none'; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded'; storeCreditCents?: number }
   status: OrderStatus
   history: OrderEvent[]
   /** The sections this order goes through, and which one it's in (= stages.length once finished). */

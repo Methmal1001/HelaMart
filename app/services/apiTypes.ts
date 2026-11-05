@@ -188,7 +188,7 @@ export interface PlaceOrderRequest {
   branchId: string
   lines: { productId: string; quantity: number }[]
   delivery: { method: FulfilmentMethod; fullName: string; phone: string; address: string; city: string; slot: string; notes: string }
-  payment: { method: PaymentMethod; card?: { name: string; number: string; expiry: string; cvc: string } }
+  payment: { method: PaymentMethod; card?: { name: string; number: string; expiry: string; cvc: string }; useStoreCredit?: boolean }
   consent: ConsentDto
 }
 

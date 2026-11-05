@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Order } from '~/types'
-import type { Returnable, ReturnReason, ReturnRequest } from '~/types/returns'
-import { createReturn, myReturnPhoto, returnable, withdrawReturn } from '~/services/returnService'
+import type { Resolution, Returnable, ReturnReason, ReturnRequest } from '~/types/returns'
+import { createReturn, escalateReturn, myReturnPhoto, returnable, withdrawReturn } from '~/services/returnService'
 import { ApiError } from '~/services/apiError'
 import { ImageRejected, prepareEvidencePhoto } from '~/utils/imageProcessing'
 import { RETURN_TONE } from '~/composables/useMyReturns'
@@ -13,15 +13,21 @@ import { RETURN_TONE } from '~/composables/useMyReturns'
 const { order } = defineProps<{ order: Order }>()
 const { authorized } = useAuth()
 const { forOrder, upsert, load: loadReturns } = useMyReturns()
+const { load: loadCredit } = useStoreCredit()
+/** The refunded return whose credit note is open. */
+const noteOf = ref<ReturnRequest | null>(null)
 const { show } = useToasts()
 
 const info = ref<Returnable | null>(null)
 const requests = computed(() => forOrder(order.id))
+// A refund may have gone to store credit: keep the balance current.
+watch(() => requests.value.filter((r) => r.status === 'refunded').length, (n, was) => n > (was ?? 0) && loadCredit())
 const formOpen = ref(false)
 const busy = ref(false)
 const error = ref('')
 const picks = reactive<Record<number, { on: boolean; quantity: number; reason: ReturnReason | '' }>>({})
 const note = ref('')
+const resolution = ref<Resolution>('refund')
 const photos = ref<string[]>([])
 const photoError = ref('')
 
@@ -37,6 +43,7 @@ watch(() => `${order.id}|${order.received?.at ?? ''}|${requests.value.length}`, 
 function openForm() {
   error.value = ''
   note.value = ''
+  resolution.value = 'refund'
   photos.value = []
   photoError.value = ''
   for (const l of info.value?.lines ?? []) picks[l.lineNumber] = { on: false, quantity: Math.min(1, l.returnableQuantity), reason: '' }
@@ -80,6 +87,7 @@ async function submit() {
         items: chosen.value.map((l) => ({ lineNumber: l.lineNumber, quantity: picks[l.lineNumber]!.quantity, reason: picks[l.lineNumber]!.reason as ReturnReason })),
         note: note.value,
         photos: photos.value,
+        resolution: resolution.value,
       }),
     )
     upsert(r)
@@ -87,6 +95,23 @@ async function submit() {
     show(`Sent to ${order.storeName ?? 'the store'} — request ${r.number}. We’ll show their reply here.`, 'success', 4500)
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Couldn’t send your request. Please try again.'
+  } finally {
+    busy.value = false
+  }
+}
+
+// ---- ask HelaMart to review
+const reviewFor = ref<string | null>(null)
+const reviewReason = ref('')
+async function escalate(r: ReturnRequest) {
+  busy.value = true
+  try {
+    upsert(await authorized((t) => escalateReturn(t, r.id, reviewReason.value)))
+    reviewFor.value = null
+    reviewReason.value = ''
+    show('HelaMart support will review it and reply within 2 working days.', 'success', 4500)
+  } catch (e) {
+    show(e instanceof ApiError ? e.message : 'Couldn’t send it. Please try again.', 'error')
   } finally {
     busy.value = false
   }
@@ -121,34 +146,67 @@ const when = (iso: string) => new Intl.DateTimeFormat('en-LK', { dateStyle: 'med
             {{ i.approvedQuantity != null && r.status !== 'requested' ? `${i.approvedQuantity} of ${i.quantity}` : i.quantity }} × {{ i.name }}
             <span class="block text-xs text-muted">{{ i.reasonLabel }}</span>
           </span>
-          <span v-if="r.status !== 'requested' && r.status !== 'withdrawn'" class="shrink-0 text-xs font-semibold tabular-nums text-ink">{{ formatLKR(i.refundCents) }}</span>
+          <span v-if="!['requested', 'withdrawn', 'replaced'].includes(r.status)" class="shrink-0 text-xs font-semibold tabular-nums text-ink">{{ formatLKR(i.refundCents) }}</span>
         </li>
       </ul>
+      <p v-if="r.status === 'requested' && r.preferredResolution === 'replace'" class="mt-2 text-xs font-semibold text-[#1F4E7A]">You asked for these to be sent again.</p>
       <p v-if="r.customerNote" class="mt-2 rounded-lg bg-cream/70 px-3 py-2 text-xs text-[#3d4245]">“{{ r.customerNote }}”</p>
       <ReturnPhotos class="mt-2" :ids="r.photoIds" :load="photoLoader(r)" />
 
+      <p v-if="r.status === 'replaced'" class="mt-3 flex items-start gap-2 rounded-xl bg-hela-green-50 px-3 py-2.5 text-sm text-hela-green" data-testid="return-replacement">
+        <AppIcon name="truck" :size="16" class="mt-0.5 shrink-0" />
+        <span><b>Sending the items again — no charge</b><span class="block text-xs">Replacement order {{ r.replacementOrderNumber }} is in Your orders, where you can track it.</span></span>
+      </p>
       <div v-if="r.status === 'approved' || r.status === 'refunded'" class="mt-3 flex items-center justify-between rounded-xl bg-hela-green-50 px-3 py-2.5 text-sm" data-testid="return-refund">
         <span class="text-hela-green">
           <b>{{ r.status === 'refunded' ? 'Refunded' : 'Refund approved' }}</b>
+          <span v-if="r.needsSupervisor" class="block text-xs">A supervisor at the store confirms it next</span>
           <span v-if="r.deliveryRefundCents" class="block text-xs">Includes the delivery fee</span>
-          <span v-if="r.refundMethodLabel" class="block text-xs">{{ r.refundMethodLabel }}<template v-if="r.refundReference"> · ref {{ r.refundReference }}</template><template v-if="r.refundedAt"> · {{ when(r.refundedAt) }}</template></span>
+          <span v-if="r.creditNote" class="block text-xs" data-testid="return-refund-how">{{ r.creditNote.summary }}<template v-if="r.refundedAt"> · {{ when(r.refundedAt) }}</template></span>
+          <span v-else-if="r.refundMethodLabel" class="block text-xs">{{ r.refundMethodLabel }}<template v-if="r.refundReference"> · ref {{ r.refundReference }}</template><template v-if="r.refundedAt"> · {{ when(r.refundedAt) }}</template></span>
+          <span v-if="r.creditNote?.method === 'original'" class="block text-[0.7rem] text-muted">Card refunds usually show on your statement within 5–10 working days.</span>
         </span>
         <b class="text-base tabular-nums text-hela-green">{{ formatLKR(r.refundCents) }}</b>
       </div>
+      <button v-if="r.creditNote" type="button" class="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-hela-green hover:underline" data-testid="view-credit-note" @click="noteOf = r">
+        <AppIcon name="receipt" :size="13" />Credit note {{ r.creditNote.number }}
+      </button>
       <p v-if="r.decisionNote" class="mt-2 flex gap-2 text-xs" :class="r.status === 'rejected' ? 'text-[#8A2E2E]' : 'text-[#3d4245]'" data-testid="return-decision">
         <AppIcon name="info" :size="13" class="mt-px shrink-0" /><span><b>{{ r.storeName ?? 'The store' }}:</b> {{ r.decisionNote }}</span>
+      </p>
+
+      <p v-if="r.escalation" class="mt-2 flex gap-2 rounded-lg px-3 py-2 text-xs" :class="r.escalation.status === 'open' ? 'bg-[#FFF4D6] text-[#7A5600]' : 'bg-[#E3EEF9] text-[#1F4E7A]'" data-testid="return-escalation">
+        <AppIcon name="shield" :size="13" class="mt-px shrink-0" />
+        <span v-if="r.escalation.status === 'open'"><b>HelaMart is reviewing this request.</b> We’ll reply within 2 working days.</span>
+        <span v-else><b>HelaMart’s review:</b> {{ r.escalation.status === 'overturned' ? 'refund approved — the store pays it next.' : 'the store’s decision stands.' }} {{ r.escalation.note }}</span>
       </p>
 
       <ol class="mt-3 space-y-1 border-l-2 border-line pl-3 text-xs text-muted">
         <li v-for="(e, k) in r.events" :key="k"><b class="text-ink">{{ e.label }}</b> · {{ when(e.at) }}</li>
       </ol>
+      <div v-if="r.canEscalate" class="mt-3">
+        <button v-if="reviewFor !== r.id" type="button" class="text-xs font-bold text-hela-green underline" data-testid="return-escalate" @click="reviewFor = r.id; reviewReason = ''">
+          {{ r.status === 'rejected' ? 'Disagree? Ask HelaMart to review' : 'No reply yet? Ask HelaMart to help' }}
+        </button>
+        <form v-else class="space-y-2 rounded-xl bg-cream/70 p-3" data-testid="escalate-form" @submit.prevent="escalate(r)">
+          <label class="block text-xs font-semibold text-ink">What should HelaMart know?
+            <textarea v-model="reviewReason" rows="2" maxlength="500" class="field mt-1 text-sm" placeholder="e.g. The photos show the eggs were broken when they arrived." data-testid="escalate-reason" />
+          </label>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn-ghost h-9 text-xs" @click="reviewFor = null">Cancel</button>
+            <button type="submit" class="btn-primary h-9 text-xs" :disabled="busy || reviewReason.trim().length < 10" data-testid="escalate-submit">Send to HelaMart</button>
+          </div>
+        </form>
+      </div>
       <button v-if="r.status === 'requested'" type="button" class="mt-3 text-xs font-bold text-[#8A2E2E] underline" data-testid="return-withdraw" @click="withdraw(r)">Withdraw this request</button>
     </article>
+
+    <CreditNoteDialog :ret="noteOf" @close="noteOf = null" />
 
     <!-- Report a problem -->
     <div v-if="info?.eligible && !formOpen" class="rounded-2xl bg-white p-4 ring-1 ring-line">
       <p class="font-bold text-ink">Something wrong with your order?</p>
-      <p class="mt-0.5 text-xs text-muted">Damaged, spoiled, wrong or missing items — tell {{ order.storeName ?? 'the store' }} by {{ deadlineText }}.</p>
+      <p class="mt-0.5 text-xs text-muted">Damaged, spoiled, wrong or missing items — tell {{ order.storeName ?? 'the store' }} by {{ deadlineText }}<template v-if="info.windowHours !== 24"> ({{ info.windowHours % 24 === 0 && info.windowHours >= 48 ? `${info.windowHours / 24} days` : `${info.windowHours} hours` }} after receiving it)</template>.</p>
       <button type="button" class="btn-ghost mt-3 h-10 w-full" data-testid="report-problem" @click="openForm"><AppIcon name="alert" :size="16" />Report a problem</button>
     </div>
 
@@ -157,7 +215,7 @@ const when = (iso: string) => new Intl.DateTimeFormat('en-LK', { dateStyle: 'med
         <p class="font-bold text-ink">Report a problem</p>
         <button type="button" class="text-xs font-semibold text-muted hover:text-ink" @click="formOpen = false">Cancel</button>
       </div>
-      <p class="text-xs text-muted">Tick each item with a problem. The store reviews your request and refunds what it approves.</p>
+      <p class="text-xs text-muted">Tick each item with a problem. The store reviews your request and {{ info.replacements ? 'refunds or replaces' : 'refunds' }} what it approves.</p>
       <ul class="space-y-2">
         <li v-for="l in info.lines" :key="l.lineNumber" class="rounded-xl p-3 ring-1" :class="picks[l.lineNumber]?.on ? 'bg-hela-green-50/60 ring-hela-green/30' : 'ring-line'">
           <label class="flex items-start gap-2.5" :class="l.returnableQuantity ? 'cursor-pointer' : 'opacity-50'">
@@ -196,12 +254,29 @@ const when = (iso: string) => new Intl.DateTimeFormat('en-LK', { dateStyle: 'med
         <p v-if="photoError" class="mt-1 text-xs text-[#8A2E2E]">{{ photoError }}</p>
       </div>
 
+      <fieldset v-if="info.replacements">
+        <legend class="mb-1.5 text-sm font-semibold text-ink">What would you like?</legend>
+        <div class="grid grid-cols-2 gap-2" role="radiogroup">
+          <button
+            v-for="o in ([['refund', 'A refund', 'Money back for these items'], ['replace', 'Send them again', 'At no charge, with a new order']] as const)"
+            :key="o[0]"
+            type="button"
+            role="radio"
+            :aria-checked="resolution === o[0]"
+            class="rounded-xl bg-white p-2.5 text-left text-sm ring-1 transition"
+            :class="resolution === o[0] ? 'ring-2 ring-hela-green' : 'ring-line hover:bg-hela-green-50'"
+            :data-testid="`return-resolution-${o[0]}`"
+            @click="resolution = o[0]"
+          ><b class="block text-ink">{{ o[1] }}</b><span class="text-xs text-muted">{{ o[2] }}</span></button>
+        </div>
+      </fieldset>
+
       <label class="block">
         <span class="mb-1.5 block text-sm font-semibold text-ink">Anything else? <span class="font-normal text-muted">(optional)</span></span>
         <textarea v-model="note" rows="2" maxlength="500" class="field text-sm" placeholder="e.g. The egg tray was crushed and 4 eggs were broken." data-testid="return-note" />
       </label>
 
-      <p v-if="chosen.length" class="flex items-center justify-between rounded-xl bg-cream/70 px-3 py-2 text-sm">
+      <p v-if="chosen.length && resolution === 'refund'" class="flex items-center justify-between rounded-xl bg-cream/70 px-3 py-2 text-sm">
         <span class="text-muted">Estimated refund <span class="block text-[0.7rem]">The store confirms the final amount.</span></span>
         <b class="tabular-nums text-ink" data-testid="return-estimate">{{ formatLKR(estimate) }}</b>
       </p>

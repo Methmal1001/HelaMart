@@ -28,6 +28,7 @@ const PLATFORM_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin', label: 'Platform dashboard', icon: 'grid', perm: 'platform.dashboard' },
       { to: '/admin/reports', label: 'Reports assistant', icon: 'list', perm: 'platform.dashboard' },
       { to: '/admin/commission', label: 'Commission', icon: 'tag', perm: 'platform.finance' },
+      { to: '/admin/disputes', label: 'Return disputes', icon: 'refresh', perm: 'platform.disputes' },
     ],
   },
   {

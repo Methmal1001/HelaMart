@@ -8,6 +8,8 @@ const { show } = useToasts()
 const { openFinder } = useShoppingArea()
 const { orders, loaded: ordersLoaded, load: loadOrders, openOrders } = useMyOrders()
 const recent = computed(() => orders.value.slice(0, 3))
+const { credits, load: loadCredit } = useStoreCredit()
+const creditOpen = ref<string | null>(null)
 
 // ---- mobile number (required; shown to the supermarket for deliveries)
 const editingPhone = ref(false)
@@ -38,7 +40,7 @@ function changeArea() {
 const open = computed(() => panel.value === 'account' && isAuthenticated.value)
 const info = ref<ReturnType<typeof sessionInfo>>(null)
 watch(open, (v) => v && (info.value = sessionInfo()), { immediate: true })
-watch(open, (v) => v && loadOrders(), { immediate: true })
+watch(open, (v) => v && (loadOrders(), loadCredit()), { immediate: true })
 
 const dateFmt = new Intl.DateTimeFormat('en-LK', { dateStyle: 'medium' })
 const timeFmt = new Intl.DateTimeFormat('en-LK', { dateStyle: 'medium', timeStyle: 'short' })
@@ -107,6 +109,30 @@ async function signOut() {
               <span class="shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-bold" :class="progressOf(o).tone">{{ progressOf(o).label }}</span>
               <b class="shrink-0 text-sm text-ink tabular-nums">{{ formatLKR(o.breakdown.totalCents) }}</b>
             </button>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="credits.length" aria-labelledby="credit-h" data-testid="account-store-credit">
+        <h3 id="credit-h" class="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
+          <AppIcon name="cash" :size="16" class="text-hela-green" />
+          Store credit
+        </h3>
+        <ul class="space-y-2">
+          <li v-for="c in credits" :key="c.storeId" class="rounded-xl bg-white ring-1 ring-line">
+            <button type="button" class="flex w-full items-center gap-3 p-3 text-left" :aria-expanded="creditOpen === c.storeId" :data-testid="`store-credit-${c.storeId}`" @click="creditOpen = creditOpen === c.storeId ? null : c.storeId">
+              <span class="min-w-0 flex-1">
+                <b class="block truncate text-sm text-ink">{{ c.storeName }}</b>
+                <span class="block text-xs text-muted">{{ c.balanceCents ? 'Used automatically at checkout' : 'All spent' }}</span>
+              </span>
+              <b class="shrink-0 text-sm tabular-nums text-hela-green">{{ formatLKR(c.balanceCents) }}</b>
+            </button>
+            <ul v-if="creditOpen === c.storeId" class="space-y-1 border-t border-line px-3 py-2 text-xs">
+              <li v-for="(e, k) in c.entries" :key="k" class="flex items-center justify-between gap-2">
+                <span class="min-w-0 truncate text-ink">{{ e.label }} <span class="text-muted">· {{ e.reference }} · {{ dateFmt.format(new Date(e.at)) }}</span></span>
+                <span class="shrink-0 font-semibold tabular-nums" :class="e.amountCents < 0 ? 'text-ink' : 'text-hela-green'">{{ e.amountCents < 0 ? '−' : '+' }} {{ formatLKR(Math.abs(e.amountCents)) }}</span>
+              </li>
+            </ul>
           </li>
         </ul>
       </section>

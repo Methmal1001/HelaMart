@@ -7,7 +7,7 @@ import { api } from '../http'
  * Every report is limited on the server to what the signed-in staff member may see.
  */
 
-export type ReportName = 'order_summary' | 'top_products' | 'order_list' | 'order_items' | 'order_tasks' | 'offer_performance' | 'supermarket_comparison' | 'branch_performance' | 'stock_levels' | 'cancellations' | 'fulfilment_time' | 'profit_margin' | 'sales_summary' | 'cash_collection' | 'payment_reconciliation' | 'refunds' | 'discount_cost' | 'profit_loss' | 'vat_report' | 'stock_value' | 'commission_owed' | 'platform_revenue' | 'commission_statement' | 'payments_due'
+export type ReportName = 'order_summary' | 'top_products' | 'order_list' | 'order_items' | 'order_tasks' | 'offer_performance' | 'supermarket_comparison' | 'branch_performance' | 'stock_levels' | 'cancellations' | 'returns_analysis' | 'fulfilment_time' | 'profit_margin' | 'sales_summary' | 'cash_collection' | 'payment_reconciliation' | 'refunds' | 'discount_cost' | 'profit_loss' | 'vat_report' | 'stock_value' | 'store_credit' | 'commission_owed' | 'platform_revenue' | 'commission_statement' | 'payments_due'
 export type ReportArgs = Record<string, unknown>
 
 export interface ReportCatalog {

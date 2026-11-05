@@ -342,7 +342,8 @@ export interface PriceBreakdown {
 // ------------------------------------------------------------------ checkout & orders
 
 export type FulfilmentMethod = 'delivery' | 'pickup'
-export type PaymentMethod = 'cod' | 'card'
+/** credit: paid in full with store credit · none: a no-charge replacement order. */
+export type PaymentMethod = 'cod' | 'card' | 'credit' | 'none'
 
 export interface DeliveryDetails {
   method: FulfilmentMethod
@@ -379,7 +380,8 @@ export interface Order {
   lines: OrderLine[]
   breakdown: PriceBreakdown
   delivery: DeliveryDetails
-  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded' }
+  /** storeCreditCents: paid with store credit; card or cash covers the rest. */
+  payment: { method: PaymentMethod; cardLast4?: string; status: 'paid' | 'pay-on-delivery' | 'refunded'; storeCreditCents?: number }
   status: 'confirmed'
   /** Supermarket and branch names at the time of the order (for the bill). */
   storeName?: string

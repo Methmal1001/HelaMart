@@ -46,8 +46,8 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-LK', { day: 'nume
     </section>
 
     <div class="pay" :class="{ cod }">
-      <template v-if="cod">COLLECT CASH {{ formatLKR(o.breakdown.totalCents) }}</template>
-      <template v-else>PAID · {{ o.payment.method === 'card' ? `Card •${o.payment.cardLast4}` : 'Cash' }} · {{ formatLKR(o.breakdown.totalCents) }}</template>
+      <template v-if="cod">COLLECT CASH {{ formatLKR(amountDue(o)) }}<span v-if="o.payment.storeCreditCents" class="block text-[10px] font-semibold">{{ formatLKR(o.payment.storeCreditCents) }} paid with store credit</span></template>
+      <template v-else>PAID · {{ o.payment.method === 'cod' ? 'Cash' : paymentLabel(o.payment, true) }} · {{ formatLKR(o.breakdown.totalCents) }}</template>
     </div>
 
     <table class="mt-2 w-full text-[11px]">

@@ -15,7 +15,8 @@ export interface PlaceOrderRequest {
   branchId: string
   lines: CartLine[]
   delivery: DeliveryDetails
-  payment: { method: PaymentMethod; card?: CardDetails }
+  /** useStoreCredit: spend the customer's store credit with this supermarket first. */
+  payment: { method: PaymentMethod; card?: CardDetails; useStoreCredit?: boolean }
 }
 
 // With the HelaMart API these go to /me/orders and /track; without it (offline demo) the
@@ -125,9 +126,10 @@ export async function confirmReceivedByQr(number: string, code: string, received
 
 /**
  * POST /orders — the server re-prices the cart from its own prices and the customer's offers
- * (client totals are never trusted), "charges" the card, takes the items out of the branch's
- * stock and stores the order for that branch.
- * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined.
+ * (client totals are never trusted), spends store credit if asked, charges the rest to the card,
+ * takes the items out of the branch's stock and stores the order for that branch.
+ * Test cards: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined ·
+ * 4000 0000 0000 0069 pays, but refunds to it are declined.
  */
 export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _user: User, labels?: { storeName?: string; branchName?: string }): Promise<Order> {
   // The server re-prices the cart and applies offers; the returned breakdown is the bill.
@@ -136,7 +138,11 @@ export async function placeOrder(accessToken: string, req: PlaceOrderRequest, _u
     branchId: req.branchId,
     lines: req.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
     delivery: req.delivery,
-    payment: req.payment.method === 'card' && req.payment.card ? { method: 'card', card: { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } } : { method: req.payment.method },
+    payment: {
+      method: req.payment.method,
+      card: req.payment.method === 'card' && req.payment.card ? { ...req.payment.card, number: req.payment.card.number.replace(/\s+/g, '') } : undefined,
+      useStoreCredit: req.payment.useStoreCredit,
+    },
     // Checkout only calls this once the customer has agreed to both documents.
     consent: { ...LEGAL_CONSENT },
   }

@@ -14,6 +14,7 @@ export const PLATFORM_PERMISSION_GROUPS: PermissionGroup<PlatformPermission>[] =
     permissions: [
       { id: 'platform.dashboard', label: 'View platform dashboard', description: 'Supermarkets, sales and customers across Sri Lanka.' },
       { id: 'platform.finance', label: 'View commission and record payments', description: 'Commission statements, payments due and recording what supermarkets pay.', sensitive: true },
+      { id: 'platform.disputes', label: 'Review return disputes', description: 'Decide returns customers ask HelaMart to review: uphold the store’s decision or approve the refund.', sensitive: true },
     ],
   },
   {
@@ -80,6 +81,7 @@ export const TENANT_PERMISSION_GROUPS: PermissionGroup<TenantPermission>[] = [
       { id: 'orders.view', label: 'View orders', description: 'See orders and delivery details.' },
       { id: 'orders.manage', label: 'Supervise orders', description: 'Act on every section of the order desk, reassign work and cancel orders. (Officers only need to be assigned to their section.)' },
       { id: 'orders.refund', label: 'Issue refunds', description: 'Refund paid orders.', sensitive: true },
+      { id: 'returns.approve_large', label: 'Approve large refunds', description: 'Confirm return refunds above the supermarket’s approval limit (set in the return policy).', sensitive: true },
       { id: 'workflow.manage', label: 'Customise the order workflow', description: 'Set up order sections and assign their officers — the chain default, or a branch’s own workflow for branch staff.' },
     ],
   },

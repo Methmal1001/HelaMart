@@ -36,7 +36,7 @@ const b = computed(() => props.order.breakdown)
       <dd class="text-right text-ink">{{ order.delivery.slot }}</dd>
       <dt class="text-muted">Payment</dt>
       <dd class="text-right text-ink">
-        {{ order.payment.method === 'card' ? `Card •••• ${order.payment.cardLast4} — Paid` : 'Cash on delivery — Pay on arrival' }}
+        {{ paymentLabel(order.payment) }} — {{ order.payment.method === 'cod' && order.payment.status === 'pay-on-delivery' ? `Pay ${formatLKR(amountDue(order))} on arrival` : order.payment.status === 'refunded' ? 'Refunded' : 'Paid' }}
       </dd>
     </dl>
 

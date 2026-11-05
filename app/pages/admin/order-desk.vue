@@ -484,7 +484,7 @@ const allNotes = (o: DeskOrder) => (o.stages ?? []).flatMap((s) => s.notes.map((
             <p v-if="selected.delivery.method === 'delivery'" class="text-ink">{{ selected.delivery.address }}, {{ selected.delivery.city }}</p>
             <p class="text-muted">{{ selected.delivery.slot }}</p>
             <p v-if="selected.delivery.notes" class="text-muted">Note: {{ selected.delivery.notes }}</p>
-            <p class="text-muted">Payment: {{ selected.payment.method === 'card' ? `Card •${selected.payment.cardLast4}` : 'Cash on delivery' }} · <b class="text-ink">{{ selected.payment.status.replace(/-/g, ' ') }}</b> · {{ formatLKR(selected.breakdown.totalCents) }}</p>
+            <p class="text-muted">Payment: {{ paymentLabel(selected.payment, true) }} · <b class="text-ink">{{ selected.payment.status.replace(/-/g, ' ') }}</b> · {{ formatLKR(selected.breakdown.totalCents) }}</p>
           </section>
           <section>
             <h3 class="mb-1 flex items-center text-xs font-bold tracking-wide text-muted uppercase">Items <span class="ml-auto font-semibold normal-case">{{ ticks[selected.id]?.length ?? 0 }}/{{ selected.lines.length }} ticked</span></h3>

@@ -30,6 +30,7 @@ export const RETURN_TONE: Record<string, string> = {
   requested: 'bg-[#FFF4D6] text-[#7A5600]',
   approved: 'bg-[#E3EEF9] text-[#1F4E7A]',
   refunded: 'bg-hela-green-50 text-hela-green',
+  replaced: 'bg-hela-green-50 text-hela-green',
   rejected: 'bg-[#FBEAEA] text-[#8A2E2E]',
   withdrawn: 'bg-[#F1F1EF] text-[#55595C]',
 }
