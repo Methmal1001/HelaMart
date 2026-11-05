@@ -1,4 +1,5 @@
 import type { Permission, Scope } from '~/types/admin'
+import { ROLE_IDS } from '~/data/admin/permissions'
 
 type Needed = Permission | Permission[] | Partial<Record<Scope, Permission | Permission[]>>
 
@@ -13,6 +14,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   await auth.restore()
   if (!auth.isAuthenticated.value) {
     return navigateTo({ path: '/admin/login', query: to.fullPath !== '/admin' ? { redirect: to.fullPath } : {} })
+  }
+  if (to.meta.superAdminOnly === true && auth.user.value?.roleId !== ROLE_IDS.superAdmin) {
+    return navigateTo({ path: '/admin/forbidden', query: { from: to.fullPath } })
   }
   const myScope: Scope = auth.isPlatform.value ? 'platform' : 'tenant'
   const scope = to.meta.scope as Scope | undefined
