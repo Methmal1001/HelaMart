@@ -72,6 +72,10 @@
 @utility hud-surface {
   @apply bg-white/92 shadow-card ring-1 ring-black/5 backdrop-blur-sm;
 }
+/* A labelled button in the mobile store rail: big enough for a thumb. */
+@utility hud-rail {
+  @apply hud-surface pointer-events-auto flex h-[3.25rem] w-[3.25rem] flex-col items-center justify-center gap-0.5 rounded-xl text-[0.6rem] font-bold text-ink transition active:scale-95;
+}
 @utility field {
   @apply h-10 w-full rounded-lg border-0 bg-white px-3 text-sm text-ink ring-1 ring-line placeholder:text-muted/70 focus:ring-2 focus:ring-hela-green focus:outline-none disabled:bg-cream disabled:text-muted;
 }

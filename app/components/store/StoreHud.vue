@@ -53,12 +53,103 @@ async function locate(id: string) {
   ui.closePanel()
   await xp.goToProduct(id)
 }
+
+// ---- phones and tablets: the same buttons as the desktop bar, arranged to fit
+const mapOpen = ref(false)
+function toggleMap() {
+  mapOpen.value = !mapOpen.value
+  if (mapOpen.value) ui.minimapOpen.value = true
+}
+/** Choosing a section walks there, so get the map out of the way. */
+function onMapTap(e: Event) {
+  if ((e.target as Element).closest('svg')) mapOpen.value = false
+}
+watch(ui.overlayOpen, (open) => open && (mapOpen.value = false))
 </script>
 
 <template>
   <div class="pointer-events-none absolute inset-0 z-20 select-none">
+    <!-- Phones and tablets: store and area, account and cart on top; everything else in a rail down the side. -->
+    <div class="lg:hidden" data-testid="hud-mobile">
+      <div class="flex items-center gap-2 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-3">
+        <button
+          type="button"
+          class="hud-surface pointer-events-auto flex h-12 min-w-0 flex-1 items-center gap-2 rounded-2xl pr-3 pl-1.5 text-left"
+          :aria-label="area ? `Shopping at ${storeChoice?.storeName ?? 'HelaMart'}. Your area: ${area.label}. Change area` : 'Find supermarkets near you'"
+          data-testid="hud-area"
+          @click="openFinder()"
+        >
+          <BrandLogo size="sm" mark />
+          <span class="min-w-0 leading-tight">
+            <span class="block truncate text-xs font-extrabold text-ink">{{ storeChoice ? `${storeChoice.storeName} · ${storeChoice.branchName}` : 'HelaMart' }}</span>
+            <span class="flex items-center gap-1 text-[0.7rem] font-semibold text-hela-green">
+              <AppIcon name="pin" :size="11" class="shrink-0" />
+              <span class="truncate">{{ area?.label ?? 'Set your area' }}</span>
+              <span class="shrink-0 underline underline-offset-2">Change</span>
+            </span>
+          </span>
+        </button>
+        <span class="pointer-events-auto shrink-0"><AccountButton compact /></span>
+        <button
+          type="button"
+          class="btn-primary pointer-events-auto relative h-11 shrink-0 px-3.5 transition-transform"
+          :class="cartBump ? 'scale-110' : ''"
+          :aria-label="`Open cart, ${itemCount} items`"
+          data-testid="hud-cart"
+          @click="ui.openPanel('cart')"
+        >
+          <AppIcon name="cart" :size="19" />
+          <span
+            v-if="itemCount"
+            class="absolute -top-1.5 -right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-hela-gold px-1 text-[0.68rem] font-extrabold text-hela-green-900 ring-2 ring-white"
+          >{{ itemCount > 99 ? '99+' : itemCount }}</span>
+        </button>
+      </div>
+
+      <div class="mt-2 flex items-start justify-between gap-2 px-2 sm:px-3">
+        <div class="flex min-w-0 flex-col items-start gap-1.5">
+          <div class="hud-surface pointer-events-auto flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-ink" role="status" aria-live="polite" data-testid="hud-section">
+            <span class="size-2.5 shrink-0 rounded-full" :style="{ background: sectionLook?.color ?? '#174D38' }" aria-hidden="true" />
+            <span class="truncate">
+              <template v-if="section">{{ section.aisle ? `${section.aisle} · ` : '' }}{{ sectionLook?.title }}</template>
+              <template v-else>Main walkway</template>
+            </span>
+          </div>
+          <button
+            v-if="itemCount && section?.id !== 'checkout'"
+            type="button"
+            class="pointer-events-auto flex max-w-full items-center gap-1.5 rounded-full bg-hela-green py-1.5 pr-1.5 pl-3 text-xs font-bold text-white shadow-card"
+            data-testid="hud-checkout"
+            @click="startCheckout()"
+          >
+            <span class="truncate tabular-nums">{{ formatLKR(bill.itemsTotalCents) }}</span>
+            <span class="shrink-0 rounded-full bg-hela-gold px-2.5 py-1 text-hela-green-900">Checkout</span>
+          </button>
+        </div>
+
+        <div class="flex shrink-0 flex-col gap-1.5 [@media(max-height:500px)]:flex-row" data-testid="hud-rail">
+          <button type="button" class="hud-rail relative" :aria-label="`Offers${storeOffers.length ? ` (${storeOffers.length})` : ''}`" data-testid="hud-rail-offers" @click="ui.openPanel('offers')">
+            <AppIcon name="gift" :size="18" class="text-[#C2361A]" />Offers
+            <span v-if="storeOffers.length" class="absolute -top-1 -right-1 grid min-w-4.5 place-items-center rounded-full bg-[#E23B3B] px-1 text-[0.6rem] font-bold text-white">{{ storeOffers.length }}</span>
+          </button>
+          <button type="button" class="hud-rail" aria-label="Browse aisles list" data-testid="hud-rail-browse" @click="ui.openPanel('browse')">
+            <AppIcon name="list" :size="18" />Browse
+          </button>
+          <button type="button" class="hud-rail" :aria-label="xp.viewMode.value === 'third' ? 'Switch to first-person view' : 'Switch to view behind avatar'" data-testid="hud-rail-view" @click="xp.toggleView()">
+            <AppIcon name="eye" :size="18" />View
+          </button>
+          <button type="button" class="hud-rail" aria-label="Settings" data-testid="hud-rail-settings" @click="ui.openPanel('settings')">
+            <AppIcon name="settings" :size="18" />Settings
+          </button>
+          <button type="button" class="hud-rail" aria-label="How to move around" data-testid="hud-rail-help" @click="ui.openPanel('help')">
+            <AppIcon name="info" :size="18" />Help
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Top bar -->
-    <div class="flex items-start justify-between gap-3 p-3 sm:p-4">
+    <div class="hidden items-start justify-between gap-3 p-3 sm:p-4 lg:flex">
       <div class="hud-surface pointer-events-auto flex items-center gap-3 rounded-2xl py-2 pr-4 pl-2">
         <BrandLogo size="sm" />
         <span class="hidden h-7 w-px bg-line md:block" aria-hidden="true" />
@@ -80,7 +171,7 @@ async function locate(id: string) {
       </div>
 
       <div
-        class="hud-surface pointer-events-auto absolute top-[4.6rem] left-1/2 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-ink sm:top-4 sm:text-sm"
+        class="hud-surface pointer-events-auto absolute top-[4.6rem] left-1/2 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-ink sm:text-sm xl:top-4"
         role="status"
         aria-live="polite"
       >
@@ -97,7 +188,7 @@ async function locate(id: string) {
       <!-- Nudge toward the checkout counters once something is in the cart. -->
       <div
         v-if="itemCount && section?.id !== 'checkout'"
-        class="pointer-events-auto absolute top-[7.4rem] left-1/2 hidden -translate-x-1/2 items-center gap-2 rounded-full bg-hela-green/92 py-1.5 pr-1.5 pl-4 text-xs font-semibold whitespace-nowrap text-white shadow-card sm:top-[4.1rem] sm:flex"
+        class="pointer-events-auto absolute top-[7.4rem] left-1/2 hidden -translate-x-1/2 items-center gap-2 rounded-full bg-hela-green/92 py-1.5 pr-1.5 pl-4 text-xs font-semibold whitespace-nowrap text-white shadow-card lg:flex xl:top-[4.1rem]"
       >
         <AppIcon name="receipt" :size="14" class="text-hela-gold" />
         Push your cart to the checkout counters to pay
@@ -144,8 +235,8 @@ async function locate(id: string) {
       enter-from-class="opacity-0 -translate-y-3"
       leave-to-class="opacity-0"
     >
-      <div v-if="xp.welcomeBanner.value" class="absolute inset-x-0 top-28 flex justify-center px-4 sm:top-24" role="status">
-        <div class="rounded-2xl bg-hela-green px-6 py-4 text-center text-white shadow-float">
+      <div v-if="xp.welcomeBanner.value" class="absolute inset-x-0 top-[7.5rem] flex justify-center pr-[4.5rem] pl-2 lg:top-24 lg:px-4" role="status">
+        <div class="rounded-2xl bg-hela-green px-4 py-3 text-center text-white shadow-float lg:px-6 lg:py-4">
           <p class="text-xs font-bold tracking-[0.2em] text-hela-gold uppercase">Ayubowan!</p>
           <p class="mt-1 text-lg font-extrabold tracking-tight">Welcome to HelaMart</p>
           <p v-if="currentStore" class="mx-auto mt-1.5 max-w-sm text-sm text-white/90">
@@ -204,12 +295,15 @@ async function locate(id: string) {
     </div>
 
     <!-- Bottom-right: minimap -->
-    <div class="pointer-events-auto absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] hidden sm:block">
+    <div class="pointer-events-auto absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] hidden lg:block">
       <StoreMinimap />
     </div>
-    <div class="pointer-events-auto absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] sm:hidden">
-      <button type="button" class="btn-icon hud-surface size-12" aria-label="Open store map and aisles" @click="ui.openPanel('browse')">
-        <AppIcon name="map" :size="20" />
+    <div v-if="mapOpen" class="pointer-events-auto absolute right-4 bottom-[calc(max(1rem,env(safe-area-inset-bottom))+3.75rem)] max-h-[60dvh] overflow-y-auto rounded-2xl lg:hidden" data-testid="hud-map-card" @click="onMapTap">
+      <StoreMinimap class="!w-56" />
+    </div>
+    <div class="pointer-events-auto absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:hidden">
+      <button type="button" class="hud-rail size-[3.25rem]" :aria-label="mapOpen ? 'Close store map' : 'Open store map'" :aria-expanded="mapOpen" data-testid="hud-map" @click="toggleMap">
+        <AppIcon :name="mapOpen ? 'close' : 'map'" :size="18" />Map
       </button>
     </div>
 
@@ -225,7 +319,7 @@ async function locate(id: string) {
       <template #subtitle>
         <p class="text-xs text-muted">Shop every section without walking — or jump to it in 3D.</p>
       </template>
-      <div class="border-b border-line px-5 py-4 sm:hidden">
+      <div class="border-b border-line px-5 py-4 lg:hidden">
         <StoreMinimap class="!w-full" />
       </div>
       <CatalogBrowser compact can-locate @locate="locate" />

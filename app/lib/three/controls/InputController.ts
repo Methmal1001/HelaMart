@@ -6,7 +6,7 @@ const MOVEMENT_KEYS = new Set([
 ])
 
 export interface InputHandlers {
-  onClick?: (x: number, y: number) => void
+  onClick?: (x: number, y: number, touch: boolean) => void
   onHoverMove?: (x: number, y: number) => void
   onHoverLeave?: () => void
   onPointerLock?: (locked: boolean) => void
@@ -42,6 +42,8 @@ export class InputController {
     el.addEventListener('pointerup', this.onPointerUp, opts)
     el.addEventListener('pointercancel', this.onPointerUp, opts)
     el.addEventListener('pointerleave', () => this.handlers.onHoverLeave?.(), opts)
+    // A tap opens a product on pointerup; without this the browser's follow-up click lands on the panel's backdrop and closes it.
+    el.addEventListener('touchend', (e) => e.cancelable && e.preventDefault(), { ...opts, passive: false })
     document.addEventListener('pointerlockchange', this.onLockChange, opts)
     document.addEventListener('mousemove', this.onLockedMouseMove, opts)
   }
@@ -79,7 +81,7 @@ export class InputController {
     if (this.locked) {
       // In pointer-lock mode, clicking picks whatever is under the crosshair.
       const r = this.el.getBoundingClientRect()
-      this.handlers.onClick?.(r.width / 2, r.height / 2)
+      this.handlers.onClick?.(r.width / 2, r.height / 2, false)
       return
     }
     if (e.button !== 0 && e.pointerType === 'mouse') return
@@ -97,7 +99,8 @@ export class InputController {
     if (this.drag && this.drag.id === e.pointerId) {
       const dx = e.clientX - this.drag.x
       const dy = e.clientY - this.drag.y
-      if (!this.drag.moved && Math.hypot(dx, dy) > 6) {
+      // A fingertip always wobbles a little: only a real swipe on a touch screen counts as looking around.
+      if (!this.drag.moved && Math.hypot(dx, dy) > (e.pointerType === 'touch' ? 14 : 6)) {
         this.drag.moved = true
         this.el.style.cursor = 'grabbing'
       }
@@ -125,7 +128,7 @@ export class InputController {
     }
     if (wasClick && e.type === 'pointerup') {
       const r = this.el.getBoundingClientRect()
-      this.handlers.onClick?.(e.clientX - r.left, e.clientY - r.top)
+      this.handlers.onClick?.(e.clientX - r.left, e.clientY - r.top, e.pointerType === 'touch')
     }
   }
 

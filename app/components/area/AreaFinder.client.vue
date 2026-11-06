@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ShopperLocation } from '~/types'
 import type { AreaMap, MapPin } from '~/lib/three/areaMap'
-import { PLACES, inSriLanka, nearestPlace, searchPlaces, type Place } from '~/data/places'
+import { PLACES, distanceKm, inSriLanka, nearestPlace, searchPlaces, type Place } from '~/data/places'
+import { DISTRICTS } from '~/data/sriLanka'
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS, formatKm, rankStores } from '~/lib/area'
 
 /**
@@ -34,6 +35,27 @@ const ranked = computed(() => (draft.value ? rankStores(selection.stores.value, 
 const available = computed(() => ranked.value.filter((r) => r.available))
 /** Close by, but they don't deliver here. */
 const notDelivering = computed(() => ranked.value.filter((r) => !r.available && r.nearby).slice(0, 4))
+
+// ---- towns to choose from: the chosen area's district, or any other
+const townDistrict = ref('')
+const allTowns = ref(false)
+const towns = computed(() => {
+  const here = draft.value
+  const list = townDistrict.value ? PLACES.filter((p) => p.district === townDistrict.value) : POPULAR
+  return list
+    .map((p) => ({
+      place: p,
+      shops: rankStores(selection.stores.value, { label: p.name, district: p.district, lat: p.lat, lng: p.lng, radiusKm: here?.radiusKm ?? DEFAULT_RADIUS_KM, source: 'town' }).filter((r) => r.available).length,
+      km: here ? distanceKm(here, p) : 0,
+    }))
+    .sort((a, b) => Number(b.place.name === here?.label) - Number(a.place.name === here?.label) || Number(b.shops > 0) - Number(a.shops > 0) || a.km - b.km || a.place.name.localeCompare(b.place.name))
+})
+const shownTowns = computed(() => (allTowns.value ? towns.value : towns.value.slice(0, 8)))
+watch(() => draft.value?.district, (d) => {
+  if (d) townDistrict.value = d
+})
+watch(townDistrict, () => (allTowns.value = false))
+
 const pins = computed<MapPin[]>(() =>
   selection.stores.value.flatMap((s) =>
     s.branches.filter((b) => b.status === 'open').map((b) => ({ storeId: s.id, branchId: b.id, lat: b.lat, lng: b.lng, color: s.branding.primaryColor, label: `${s.name} · ${b.name}` })),
@@ -145,6 +167,9 @@ watch(
     if (open) {
       if (!selection.stores.value.length) selection.refresh()
       draft.value = area.value ? { ...area.value } : null
+      townDistrict.value = draft.value?.district ?? ''
+      allTowns.value = false
+      searchFocused.value = false
       geoError.value = ''
       focusedStore.value = null
       void mountMap()
@@ -179,41 +204,46 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
   <Transition enter-active-class="transition duration-300" enter-from-class="opacity-0" leave-active-class="pointer-events-none transition duration-200" leave-to-class="opacity-0">
     <div v-if="finder.open" class="fixed inset-0 z-[60] flex flex-col bg-[#0b3a3f] lg:block" role="dialog" aria-modal="true" aria-labelledby="area-finder-title" data-testid="area-finder">
       <!-- Map -->
-      <div class="relative h-[42vh] shrink-0 lg:absolute lg:inset-0 lg:h-auto">
+      <div class="relative shrink-0 overflow-hidden transition-[height] duration-200 lg:absolute lg:inset-0 lg:h-auto" :class="searchFocused ? 'h-0' : 'h-[26dvh] min-h-36'" data-testid="area-map">
         <div ref="mapEl" class="absolute inset-0" />
         <div v-if="mapFailed" class="absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/80">The 3D map isn’t available on this device — use the search to choose your area.</div>
         <div v-if="hover" class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[130%] rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap text-ink shadow-float" :style="{ left: `${hover.x}px`, top: `${hover.y}px` }">
           {{ hover.pin.label }}
         </div>
+        <div class="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center lg:hidden">
+          <span class="rounded-full bg-black/35 px-3 py-1 text-[0.7rem] text-white/90 backdrop-blur">Drag to turn · tap to choose an area</span>
+        </div>
         <div class="pointer-events-none absolute inset-x-0 bottom-3 hidden justify-center lg:flex">
           <span class="rounded-full bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur">Drag to turn · scroll to zoom · tap the island to choose an area · tap a pin to see a supermarket</span>
         </div>
-        <button type="button" class="absolute top-3 right-3 grid size-11 place-items-center rounded-full bg-white/95 text-ink shadow-float hover:bg-white" aria-label="Close" @click="closeFinder"><AppIcon name="close" :size="20" /></button>
       </div>
+      <button type="button" class="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 z-20 grid size-11 place-items-center rounded-full bg-white/95 text-ink shadow-float ring-1 ring-black/5 hover:bg-white lg:top-3 lg:right-3" aria-label="Close" data-testid="area-close" @click="closeFinder"><AppIcon name="close" :size="20" /></button>
 
       <!-- Panel -->
       <section class="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden bg-warm-white lg:absolute lg:top-4 lg:bottom-4 lg:left-4 lg:w-[26rem] lg:rounded-3xl lg:shadow-float">
-        <header class="border-b border-line px-5 pt-5 pb-4">
-          <div class="flex items-center gap-2">
+        <div class="min-h-0 flex-1 overflow-y-auto lg:flex lg:flex-col lg:overflow-hidden" data-testid="area-scroll">
+        <header class="border-b border-line px-4 pt-3 pb-3 lg:px-5 lg:pt-5 lg:pb-4">
+          <div class="hidden items-center gap-2 lg:flex">
             <BrandLogo size="sm" />
           </div>
-          <h2 id="area-finder-title" class="mt-3 text-xl font-extrabold tracking-tight text-ink">Find supermarkets near you</h2>
-          <p class="text-sm text-muted">{{ finder.reason ?? 'Choose your area to see HelaMart-verified supermarkets around you.' }}</p>
+          <h2 id="area-finder-title" class="pr-12 text-lg font-extrabold tracking-tight text-ink lg:mt-3 lg:pr-0 lg:text-xl">Find supermarkets near you</h2>
+          <p class="text-xs text-muted lg:text-sm">{{ finder.reason ?? 'Choose your area to see HelaMart-verified supermarkets around you.' }}</p>
 
           <div class="relative mt-3">
             <AppIcon name="search" :size="17" class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted" />
             <input
               v-model="query"
               type="search"
-              class="h-11 w-full rounded-xl border-0 bg-white pr-3 pl-10 text-sm text-ink ring-1 ring-line placeholder:text-muted/80 focus:ring-2 focus:ring-hela-green focus:outline-none"
+              class="h-11 w-full rounded-xl border-0 bg-white pr-3 pl-10 text-base text-ink ring-1 ring-line placeholder:text-muted/80 focus:ring-2 focus:ring-hela-green focus:outline-none"
               placeholder="Search your town, e.g. Negombo"
               aria-label="Search your town"
               autocomplete="off"
               data-testid="area-search"
               @focus="searchFocused = true"
+              @blur="searchFocused = false"
               @keydown.enter.prevent="suggestions[0] && choosePlace(suggestions[0])"
             >
-            <ul v-if="query && searchFocused" class="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-xl bg-white shadow-float ring-1 ring-line" role="listbox">
+            <ul v-if="query && searchFocused" class="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-xl bg-white shadow-float ring-1 ring-line" role="listbox">
               <li v-for="p in suggestions" :key="`${p.name}-${p.district}`">
                 <button type="button" class="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-sm hover:bg-hela-green-50" role="option" @mousedown.prevent="choosePlace(p)">
                   <span class="font-semibold text-ink">{{ p.name }}</span><span class="text-xs text-muted">{{ p.district }} District</span>
@@ -230,25 +260,52 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
           <p v-if="geoError" class="mt-2 text-xs text-[#8A2E2E]" role="alert">{{ geoError }}</p>
         </header>
 
-        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <template v-if="!draft">
-            <p class="text-xs font-bold tracking-wide text-muted uppercase">Popular areas</p>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <button v-for="p in POPULAR" :key="p.name" type="button" class="chip bg-white text-ink ring-1 ring-line hover:bg-hela-green-50" @click="choosePlace(p)">{{ p.name }}</button>
+        <div class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-5">
+          <div v-if="draft" class="mb-4 flex items-center gap-3 rounded-2xl bg-hela-green p-3.5 text-white">
+            <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-hela-gold text-hela-green-900"><AppIcon name="pin" :size="19" /></span>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs text-white/70">{{ draft.source === 'gps' ? 'Near your location' : draft.source === 'map' ? 'Near the point you chose' : 'Your area' }}</p>
+              <p class="truncate font-bold" data-testid="area-label">{{ draft.label }}, {{ draft.district }}</p>
             </div>
-            <p class="mt-4 text-sm text-muted">{{ pins.length }} verified branches across Sri Lanka are on the map.</p>
-          </template>
+          </div>
+
+          <!-- Towns to choose from -->
+          <section aria-labelledby="area-towns-h" data-testid="area-towns">
+            <div class="flex items-center justify-between gap-3">
+              <h3 id="area-towns-h" class="text-xs font-bold tracking-wide text-muted uppercase">{{ draft ? 'Change town' : 'Choose your town' }}</h3>
+              <label class="min-w-0">
+                <span class="sr-only">District</span>
+                <select v-model="townDistrict" class="field h-11 w-auto max-w-44 text-base lg:h-9 lg:text-sm" data-testid="area-district">
+                  <option value="">Popular towns</option>
+                  <option v-for="d in DISTRICTS" :key="d" :value="d">{{ d }} District</option>
+                </select>
+              </label>
+            </div>
+            <ul class="mt-2 grid grid-cols-2 gap-1.5">
+              <li v-for="t in shownTowns" :key="`${t.place.name}-${t.place.district}`">
+                <button
+                  type="button"
+                  class="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-left text-sm font-semibold ring-1 transition"
+                  :class="draft?.label === t.place.name ? 'bg-hela-green-50 text-hela-green ring-2 ring-hela-green' : t.shops ? 'bg-white text-ink ring-line hover:bg-hela-green-50' : 'bg-white/60 text-muted ring-line hover:bg-hela-green-50'"
+                  :aria-pressed="draft?.label === t.place.name"
+                  :data-testid="`town-${t.place.name}`"
+                  @click="choosePlace(t.place)"
+                >
+                  <span class="min-w-0 truncate">{{ t.place.name }}</span>
+                  <span v-if="t.shops" class="shrink-0 rounded-full bg-hela-green-50 px-1.5 text-[0.68rem] font-bold text-hela-green" :aria-label="`${t.shops} supermarkets`"><AppIcon name="store" :size="10" class="inline" /> {{ t.shops }}</span>
+                </button>
+              </li>
+            </ul>
+            <button v-if="towns.length > 8" type="button" class="mt-1 min-h-11 w-full text-sm font-bold text-hela-green hover:underline" :aria-expanded="allTowns" data-testid="area-more-towns" @click="allTowns = !allTowns">
+              {{ allTowns ? 'Show fewer towns' : `Show all ${towns.length} towns` }}
+            </button>
+            <p class="mt-1 text-xs text-muted"><AppIcon name="store" :size="11" class="inline text-hela-green" /> The number shows how many supermarkets serve that town.</p>
+          </section>
+
+          <p v-if="!draft" class="mt-4 text-sm text-muted">{{ pins.length }} verified branches across Sri Lanka are on the map.</p>
 
           <template v-else>
-            <div class="flex items-center gap-3 rounded-2xl bg-hela-green p-3.5 text-white">
-              <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-hela-gold text-hela-green-900"><AppIcon name="pin" :size="19" /></span>
-              <div class="min-w-0 flex-1">
-                <p class="text-xs text-white/70">{{ draft.source === 'gps' ? 'Near your location' : draft.source === 'map' ? 'Near the point you chose' : 'Your area' }}</p>
-                <p class="truncate font-bold" data-testid="area-label">{{ draft.label }}, {{ draft.district }}</p>
-              </div>
-            </div>
-
-            <fieldset class="mt-3">
+            <fieldset class="mt-4">
               <legend class="text-xs font-bold tracking-wide text-muted uppercase">Search within</legend>
               <div class="mt-1.5 grid grid-cols-4 gap-1.5 rounded-xl bg-white p-1 ring-1 ring-line">
                 <button v-for="km in RADIUS_OPTIONS" :key="km" type="button" class="h-9 rounded-lg text-sm font-bold transition" :class="draft.radiusKm === km ? 'bg-hela-green text-white' : 'text-ink hover:bg-hela-green-50'" :aria-pressed="draft.radiusKm === km" @click="setRadius(km)">{{ km }} km</button>
@@ -277,6 +334,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
                       <span class="block truncate font-semibold text-ink">{{ b.name }}</span>
                       <span v-if="b.delivers" class="block text-xs text-muted">{{ formatKm(b.distanceKm) }} · delivers to {{ draft!.label }}</span>
                       <span v-else class="block text-xs font-semibold text-[#6d5622]">{{ formatKm(b.distanceKm) }} · pickup only — collect at the store</span>
+                      <span v-if="b.delivers && b.coverage.places.length" class="mt-0.5 block text-xs text-muted" data-testid="branch-places"><b class="font-semibold text-ink">Delivers to:</b> {{ b.coverage.places.join(', ') }}</span>
                     </span>
                     <button type="button" class="btn-primary h-9 shrink-0 px-3 text-xs" :data-testid="`shop-${b.id}`" @click="shopHere(r.store.id, b.id)">Shop here</button>
                   </div>
@@ -300,11 +358,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
           </template>
         </div>
 
-        <footer class="border-t border-line bg-white px-5 py-3.5">
+        </div>
+
+        <footer class="border-t border-line bg-white px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-5 lg:py-3.5">
           <button type="button" class="btn-primary h-11 w-full" :disabled="!draft" data-testid="area-apply" @click="apply">
             <AppIcon name="check" :size="17" />{{ isAuthenticated ? 'Save as my shopping area' : 'Show supermarkets in this area' }}
           </button>
-          <p class="mt-1.5 text-center text-xs text-muted">{{ isAuthenticated ? 'Saved to your account — change it anytime.' : 'Log in to keep your area on every device.' }}</p>
+          <p class="mt-1.5 hidden text-center text-xs text-muted lg:block">{{ isAuthenticated ? 'Saved to your account — change it anytime.' : 'Log in to keep your area on every device.' }}</p>
         </footer>
       </section>
     </div>

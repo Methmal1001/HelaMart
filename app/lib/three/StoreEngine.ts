@@ -198,7 +198,7 @@ export class StoreEngine {
     this.buildPin()
 
     this.input = new InputController(canvas, {
-      onClick: (x, y) => this.handleClick(x, y),
+      onClick: (x, y, touch) => this.handleClick(x, y, touch),
       onHoverMove: (x, y) => {
         this.hoverPoint = { x, y }
         const r = this.container.getBoundingClientRect()
@@ -893,15 +893,31 @@ export class StoreEngine {
     return new THREE.Vector2((x / w) * 2 - 1, -(y / h) * 2 + 1)
   }
 
-  private pickProduct(x: number, y: number) {
+  private pickProduct(x: number, y: number, reach = 7) {
     this.raycaster.setFromCamera(this.ndc(x, y), this.camera)
-    this.raycaster.far = 7
+    this.raycaster.far = reach
     const hits = this.raycaster.intersectObjects(this.products.pickables, false)
     const hit = hits.find((h) => h.instanceId !== undefined)
     if (!hit || hit.instanceId === undefined) return null
     const mesh = hit.object as THREE.InstancedMesh
     const id = this.products.productIdFor(mesh, hit.instanceId)
     return id ? { id, mesh, instanceId: hit.instanceId } : null
+  }
+
+  /** A fingertip is bigger than a product on a phone: try exactly under it, then close around it (nearest first). */
+  private pickProductByTouch(x: number, y: number) {
+    // Anything the shopper can see on the shelves opens, however far down the aisle.
+    const reach = 40
+    const hit = this.pickProduct(x, y, reach)
+    if (hit) return hit
+    for (const [radius, points] of [[14, 6], [28, 8]] as const) {
+      for (let i = 0; i < points; i++) {
+        const a = (i / points) * Math.PI * 2
+        const near = this.pickProduct(x + Math.cos(a) * radius, y + Math.sin(a) * radius, reach)
+        if (near) return near
+      }
+    }
+    return null
   }
 
   private pickAvatar(x: number, y: number): AvatarKind | null {
@@ -939,14 +955,14 @@ export class StoreEngine {
     }
   }
 
-  private handleClick(x: number, y: number) {
+  private handleClick(x: number, y: number, touch = false) {
     if (this.phase === 'welcome') {
       const kind = this.pickAvatar(x, y)
       if (kind) this.callbacks.onAvatarPick?.(kind)
       return
     }
     if (this.phase !== 'inside') return
-    const hit = this.pickProduct(x, y)
+    const hit = touch ? this.pickProductByTouch(x, y) : this.pickProduct(x, y)
     if (hit) this.callbacks.onProductPick?.(hit.id)
   }
 }

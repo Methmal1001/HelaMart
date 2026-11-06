@@ -1,5 +1,6 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ size?: 'sm' | 'md' | 'lg'; tagline?: boolean; inverted?: boolean }>(), {
+/** `mark`: the icon alone, where there's no room for the name. */
+withDefaults(defineProps<{ size?: 'sm' | 'md' | 'lg'; tagline?: boolean; inverted?: boolean; mark?: boolean }>(), {
   size: 'md',
   tagline: false,
   inverted: false,
@@ -19,7 +20,7 @@ withDefaults(defineProps<{ size?: 'sm' | 'md' | 'lg'; tagline?: boolean; inverte
         <circle cx="17" cy="19.5" r="1.4" fill="currentColor" />
       </svg>
     </span>
-    <span class="flex flex-col leading-none">
+    <span v-if="!mark" class="flex flex-col leading-none">
       <span
         class="font-extrabold tracking-[-0.05em]"
         :class="{ 'text-lg': size === 'sm', 'text-2xl': size === 'md', 'text-3xl': size === 'lg' }"
